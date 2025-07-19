@@ -77,6 +77,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authUsecase)
 	profileHandler := handlers.NewProfileHandler(profileUsecase)
 	departmentHandler := handlers.NewDepartmentHandler(departmentUsecase)
+	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)
 
 	// Create Gin router
 	router := gin.New()
@@ -85,7 +86,7 @@ func main() {
 	middleware.SetupCommonMiddleware(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -120,7 +121,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -162,48 +163,132 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			profile.GET("/:id", profileHandler.GetProfile)          // GET /api/v1/profile/:id (any user profile)
 		}
 
-		// Admin only routes
-		admin := v1.Group("/admin")
-		admin.Use(middleware.JWTMiddleware(jwtConfig))
-		admin.Use(middleware.RequireRole("admin", "super_admin"))
+		// Department management routes (admin only)
+		departments := v1.Group("/departments")
+		departments.Use(middleware.JWTMiddleware(jwtConfig))
+		departments.Use(middleware.RequireAdminRole())
 		{
-			// Department management
-			admin.GET("/departments", departmentHandler.GetDepartments)                   // GET /api/v1/admin/departments
-			admin.POST("/departments", departmentHandler.CreateDepartment)                // POST /api/v1/admin/departments
-			admin.GET("/departments/:id", departmentHandler.GetDepartment)                // GET /api/v1/admin/departments/:id
-			admin.PUT("/departments/:id", departmentHandler.UpdateDepartment)             // PUT /api/v1/admin/departments/:id
-			admin.DELETE("/departments/:id", departmentHandler.DeleteDepartment)          // DELETE /api/v1/admin/departments/:id
-			admin.GET("/departments/:id/users", departmentHandler.GetDepartmentWithUsers) // GET /api/v1/admin/departments/:id/users
+			departments.GET("", departmentHandler.GetDepartments)                   // GET /api/v1/departments
+			departments.POST("", departmentHandler.CreateDepartment)                // POST /api/v1/departments
+			departments.GET("/:id", departmentHandler.GetDepartment)                // GET /api/v1/departments/:id
+			departments.PUT("/:id", departmentHandler.UpdateDepartment)             // PUT /api/v1/departments/:id
+			departments.DELETE("/:id", departmentHandler.DeleteDepartment)          // DELETE /api/v1/departments/:id
+			departments.GET("/:id/users", departmentHandler.GetDepartmentWithUsers) // GET /api/v1/departments/:id/users
+		}
+	}
 
-			// User management (placeholder for now)
-			admin.GET("/users/stats", getUserStatsHandler)          // GET /api/v1/admin/users/stats
-			admin.PUT("/users/:id/status", updateUserStatusHandler) // PUT /api/v1/admin/users/:id/status
-			admin.PUT("/users/:id/role", updateUserRoleHandler)     // PUT /api/v1/admin/users/:id/role
+	// Admin routes with specific middleware and logging
+	admin := router.Group("/admin")
+	admin.Use(middleware.JWTMiddleware(jwtConfig)) // Require authentication
+	admin.Use(middleware.AdminOnlyMiddleware())    // Require admin role
+	admin.Use(middleware.ValidateAdminRequest())   // Validate request format
+	{
+		// User management endpoints
+		users := admin.Group("/users")
+		{
+			users.GET("",
+				middleware.LogAdminAction("list_users"),
+				adminHandler.GetUsers) // GET /admin/users
+
+			users.POST("",
+				middleware.LogAdminAction("create_user"),
+				adminHandler.CreateUser) // POST /admin/users
+
+			users.PUT("/:id",
+				middleware.LogAdminAction("update_user"),
+				adminHandler.UpdateUser) // PUT /admin/users/:id
+
+			users.GET("/stats",
+				middleware.LogAdminAction("get_user_stats"),
+				adminHandler.GetUserStats) // GET /admin/users/stats
+
+			// User role management
+			users.PUT("/:id/role",
+				middleware.LogAdminAction("update_user_role"),
+				adminHandler.UpdateUserRole) // PUT /admin/users/:id/role
+
+			// User status management
+			users.PUT("/:id/status",
+				middleware.LogAdminAction("update_user_status"),
+				adminHandler.UpdateUserStatus) // PUT /admin/users/:id/status
+
+			// User activation/deactivation
+			users.PUT("/:id/activate",
+				middleware.LogAdminAction("activate_user"),
+				adminHandler.ActivateUser) // PUT /admin/users/:id/activate
+
+			users.PUT("/:id/deactivate",
+				middleware.LogAdminAction("deactivate_user"),
+				adminHandler.DeactivateUser) // PUT /admin/users/:id/deactivate
+		}
+
+		// Department management for admins
+		departments := admin.Group("/departments")
+		{
+			departments.GET("",
+				middleware.LogAdminAction("list_departments"),
+				departmentHandler.GetDepartments) // GET /admin/departments
+
+			departments.POST("",
+				middleware.LogAdminAction("create_department"),
+				departmentHandler.CreateDepartment) // POST /admin/departments
+
+			departments.GET("/:id",
+				middleware.LogAdminAction("get_department"),
+				departmentHandler.GetDepartment) // GET /admin/departments/:id
+
+			departments.PUT("/:id",
+				middleware.LogAdminAction("update_department"),
+				departmentHandler.UpdateDepartment) // PUT /admin/departments/:id
+
+			departments.DELETE("/:id",
+				middleware.LogAdminAction("delete_department"),
+				departmentHandler.DeleteDepartment) // DELETE /admin/departments/:id
+
+			departments.GET("/:id/users",
+				middleware.LogAdminAction("get_department_users"),
+				departmentHandler.GetDepartmentWithUsers) // GET /admin/departments/:id/users
+		}
+
+		// System administration endpoints (super admin only)
+		system := admin.Group("/system")
+		system.Use(middleware.SuperAdminOnlyMiddleware()) // Require super admin role
+		{
+			system.GET("/health",
+				middleware.LogAdminAction("system_health_check"),
+				systemHealthHandler) // GET /admin/system/health
+
+			system.GET("/stats",
+				middleware.LogAdminAction("system_stats"),
+				systemStatsHandler) // GET /admin/system/stats
 		}
 	}
 }
 
-// Placeholder handlers for admin user management
-func getUserStatsHandler(c *gin.Context) {
+// System administration handlers
+func systemHealthHandler(c *gin.Context) {
 	requestID := requestid.Get(c)
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error":      "Get user stats not implemented yet",
-		"request_id": requestID,
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "healthy",
+		"service":     "user-service",
+		"timestamp":   time.Now().UTC(),
+		"version":     "1.0.0",
+		"environment": os.Getenv("ENVIRONMENT"),
+		"request_id":  requestID,
 	})
 }
 
-func updateUserStatusHandler(c *gin.Context) {
+func systemStatsHandler(c *gin.Context) {
 	requestID := requestid.Get(c)
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error":      "Update user status not implemented yet",
-		"request_id": requestID,
-	})
-}
 
-func updateUserRoleHandler(c *gin.Context) {
-	requestID := requestid.Get(c)
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error":      "Update user role not implemented yet",
+	// TODO: Implement actual system statistics
+	c.JSON(http.StatusOK, gin.H{
+		"uptime":     "24h",   // TODO: Calculate actual uptime
+		"memory":     "512MB", // TODO: Get actual memory usage
+		"cpu":        "5%",    // TODO: Get actual CPU usage
+		"requests":   "1000",  // TODO: Get actual request count
+		"timestamp":  time.Now().UTC(),
 		"request_id": requestID,
 	})
 }

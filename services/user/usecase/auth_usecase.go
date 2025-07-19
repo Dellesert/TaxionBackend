@@ -75,7 +75,7 @@ func (a *authUsecase) Register(req *models.CreateUserRequest) (*models.UserRespo
 	}
 
 	// Hash password
-	hashedPassword, err := hashPassword(req.Password)
+	hashedPassword, err := a.hashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
@@ -141,7 +141,7 @@ func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse
 	}
 
 	// Verify password
-	if err := verifyPassword(user.HashedPassword, password); err != nil {
+	if err := a.verifyPassword(user.HashedPassword, password); err != nil {
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
@@ -285,8 +285,8 @@ func (a *authUsecase) ValidatePassword(password string) error {
 	return nil
 }
 
-// hashPassword hashes a password using bcrypt
-func hashPassword(password string) (string, error) {
+// hashPassword hashes a password using bcrypt (private method for auth usecase)
+func (a *authUsecase) hashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -294,24 +294,7 @@ func hashPassword(password string) (string, error) {
 	return string(bytes), nil
 }
 
-// verifyPassword verifies a password against its hash
-func verifyPassword(hashedPassword, password string) error {
+// verifyPassword verifies a password against its hash (private method for auth usecase)
+func (a *authUsecase) verifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-}
-
-// isValidRole checks if the role is valid
-func isValidRole(role string) bool {
-	validRoles := []string{
-		string(sharedmodels.RoleSuperAdmin),
-		string(sharedmodels.RoleAdmin),
-		string(sharedmodels.RoleManager),
-		string(sharedmodels.RoleEmployee),
-	}
-
-	for _, validRole := range validRoles {
-		if role == validRole {
-			return true
-		}
-	}
-	return false
 }

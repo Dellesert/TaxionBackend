@@ -3,246 +3,230 @@ package usecase
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
-	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
-// AuthUsecase defines the interface for authentication business logic
-type AuthUsecase interface {
-	Register(req *models.CreateUserRequest) (*models.UserResponse, error)
-	Login(email, password string) (*sharedmodels.LoginResponse, error)
-	ValidateEmail(email string) error
-	ValidatePassword(password string) error
+// AdminUsecase defines the interface for admin business logic
+type AdminUsecase interface {
+	GetUserStats() (*models.UserStatsResponse, error)
+	UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest) (*models.UserResponse, error)
+	UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest) (*models.UserResponse, error)
+	ActivateUser(id uint) (*models.UserResponse, error)
+	DeactivateUser(id uint) (*models.UserResponse, error)
+	ResetUserPassword(id uint, newPassword string) error
 }
 
-// authUsecase implements AuthUsecase interface
-type authUsecase struct {
+// adminUsecase implements AdminUsecase interface
+type adminUsecase struct {
 	userRepo       repository.UserRepository
 	departmentRepo repository.DepartmentRepository
-	jwtConfig      *middleware.JWTConfig
 }
 
-// NewAuthUsecase creates a new auth usecase
-func NewAuthUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository, jwtConfig *middleware.JWTConfig) AuthUsecase {
-	return &authUsecase{
+// NewAdminUsecase creates a new admin usecase
+func NewAdminUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository) AdminUsecase {
+	return &adminUsecase{
 		userRepo:       userRepo,
 		departmentRepo: departmentRepo,
-		jwtConfig:      jwtConfig,
 	}
 }
 
-// Register handles user registration
-func (a *authUsecase) Register(req *models.CreateUserRequest) (*models.UserResponse, error) {
-	// Validate email format
-	if err := a.ValidateEmail(req.Email); err != nil {
-		return nil, fmt.Errorf("invalid email: %w", err)
-	}
-
-	// Validate password strength
-	if err := a.ValidatePassword(req.Password); err != nil {
-		return nil, fmt.Errorf("invalid password: %w", err)
-	}
-
-	// Normalize email
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-
-	// Check if user already exists
-	existingUser, err := a.userRepo.GetByEmail(req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		// If it's not a "not found" error, it's a real database error
-		if !strings.Contains(err.Error(), "user not found") {
-			return nil, fmt.Errorf("failed to check existing user: %w", err)
-		}
-	}
-	if existingUser != nil {
-		return nil, fmt.Errorf("user with email %s already exists", req.Email)
-	}
-
-	// Validate department if provided
-	if req.DepartmentID != nil {
-		_, err := a.departmentRepo.GetByID(*req.DepartmentID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid department: %w", err)
-		}
-	}
-
-	// Hash password
-	hashedPassword, err := hashPassword(req.Password)
+// GetUserStats retrieves user statistics
+func (a *adminUsecase) GetUserStats() (*models.UserStatsResponse, error) {
+	// Get total count
+	total, err := a.userRepo.Count()
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+		return nil, fmt.Errorf("failed to count users: %w", err)
 	}
 
-	// Create user model
-	user := &models.User{
-		Email:          req.Email,
-		Name:           strings.TrimSpace(req.Name),
-		HashedPassword: hashedPassword,
-		DepartmentID:   req.DepartmentID,
-		Position:       strings.TrimSpace(req.Position),
-		Phone:          strings.TrimSpace(req.Phone),
+	// For more detailed stats, we would need additional methods in the repository
+	// For now, return basic stats
+	stats := &models.UserStatsResponse{
+		TotalUsers:    int(total),
+		ActiveUsers:   0, // TODO: Implement active user count
+		InactiveUsers: 0, // TODO: Implement inactive user count
+		OnlineUsers:   0, // TODO: Implement online user count
 	}
 
-	// Set role if provided, otherwise use default (employee)
-	if req.Role != "" {
-		if !isValidRole(req.Role) {
-			return nil, fmt.Errorf("invalid role: %s", req.Role)
+	return stats, nil
+}
+
+// UpdateUserRole updates a user's role (admin only)
+func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest) (*models.UserResponse, error) {
+	// Validate request
+	if req == nil {
+		return nil, fmt.Errorf("request is required")
+	}
+
+	if !isValidRole(string(req.Role)) {
+		return nil, fmt.Errorf("invalid role: %s", req.Role)
+	}
+
+	// Get user
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
 		}
-		user.Role = sharedmodels.Role(req.Role)
-	} else {
-		user.Role = sharedmodels.RoleEmployee
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Save user
-	if err := a.userRepo.Create(user); err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
+	// Update role
+	user.Role = req.Role
+
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update user role: %w", err)
 	}
 
 	// Get user with department for response
 	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
 	if err != nil {
-		// If we can't get with department, just return the user without it
+		// Fallback to user without department
 		return user.ToResponse(), nil
 	}
 
 	return userWithDept.ToResponse(), nil
 }
 
-// Login handles user authentication
-func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse, error) {
-	// Validate input
-	if email == "" {
-		return nil, fmt.Errorf("email is required")
-	}
-	if password == "" {
-		return nil, fmt.Errorf("password is required")
+// UpdateUserStatus updates a user's status (admin only)
+func (a *adminUsecase) UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest) (*models.UserResponse, error) {
+	// Validate request
+	if req == nil {
+		return nil, fmt.Errorf("request is required")
 	}
 
-	// Normalize email
-	email = strings.ToLower(strings.TrimSpace(email))
+	if !isValidStatus(req.Status) {
+		return nil, fmt.Errorf("invalid status: %s", req.Status)
+	}
 
-	// Get user by email
-	user, err := a.userRepo.GetByEmail(email)
+	// Get user
+	user, err := a.userRepo.GetByID(id)
 	if err != nil {
-		// Don't reveal whether user exists or not for security
-		return nil, fmt.Errorf("invalid email or password")
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Check if user is active
-	if !user.IsActive {
-		return nil, fmt.Errorf("user account is deactivated")
+	// Update status
+	user.Status = req.Status
+
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update user status: %w", err)
 	}
 
-	// Verify password
-	if err := verifyPassword(user.HashedPassword, password); err != nil {
-		return nil, fmt.Errorf("invalid email or password")
-	}
-
-	// Update user status to online and last active time
-	if err := a.updateUserLoginStatus(user); err != nil {
-		// Log error but don't fail login
-		// In production, you might want to log this error properly
-	}
-
-	// Get user with department for complete response
+	// Get user with department for response
 	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
 	if err != nil {
 		// Fallback to user without department
-		userWithDept = user
+		return user.ToResponse(), nil
 	}
 
-	// Generate JWT tokens
-	tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
+	return userWithDept.ToResponse(), nil
+}
+
+// ActivateUser activates a user account
+func (a *adminUsecase) ActivateUser(id uint) (*models.UserResponse, error) {
+	// Get user
+	user, err := a.userRepo.GetByID(id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Convert user to shared model format for response
-	responseUser := convertUserToSharedModel(userWithDept)
+	// Activate user
+	user.IsActive = true
 
-	// Create login response
-	response := &sharedmodels.LoginResponse{
-		User:   *responseUser,
-		Tokens: *tokens,
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to activate user: %w", err)
 	}
 
-	return response, nil
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
 }
 
-// updateUserLoginStatus updates user status and last active time on login
-func (a *authUsecase) updateUserLoginStatus(user *models.User) error {
-	// Update status to online
-	user.Status = sharedmodels.StatusOnline
+// DeactivateUser deactivates a user account
+func (a *adminUsecase) DeactivateUser(id uint) (*models.UserResponse, error) {
+	// Get user
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
 
-	// BeforeUpdate hook will automatically set LastActiveAt
-	return a.userRepo.Update(user)
+	// Deactivate user
+	user.IsActive = false
+	user.Status = sharedmodels.StatusOffline // Set status to offline when deactivating
+
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to deactivate user: %w", err)
+	}
+
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
 }
 
-// convertUserToSharedModel converts service user model to shared user model
-func convertUserToSharedModel(user *models.User) *sharedmodels.User {
-	sharedUser := &sharedmodels.User{
-		BaseModel:    user.BaseModel,
-		Email:        user.Email,
-		Name:         user.Name,
-		Role:         user.Role,
-		Status:       user.Status,
-		Avatar:       user.Avatar,
-		Phone:        user.Phone,
-		Position:     user.Position,
-		LastActiveAt: user.LastActiveAt,
-		IsActive:     user.IsActive,
+// ResetUserPassword resets a user's password (admin only)
+func (a *adminUsecase) ResetUserPassword(id uint, newPassword string) error {
+	// Validate password
+	if err := validatePasswordStrength(newPassword); err != nil {
+		return fmt.Errorf("invalid password: %w", err)
 	}
 
-	// Set department as string if available
-	if user.Department != nil {
-		sharedUser.Department = user.Department.Name
+	// Get user
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("user not found")
+		}
+		return fmt.Errorf("failed to get user: %w", err)
 	}
 
-	return sharedUser
-}
-
-// ValidateEmail validates email format
-func (a *authUsecase) ValidateEmail(email string) error {
-	if email == "" {
-		return fmt.Errorf("email is required")
+	// Hash new password
+	hashedPassword, err := hashPasswordAdmin(newPassword)
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Trim whitespace
-	email = strings.TrimSpace(email)
+	// Update password
+	user.HashedPassword = hashedPassword
 
-	// Check length
-	if len(email) > 255 {
-		return fmt.Errorf("email too long (max 255 characters)")
-	}
-
-	// Simple email regex validation
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(email) {
-		return fmt.Errorf("invalid email format")
-	}
-
-	// Additional checks
-	if strings.Count(email, "@") != 1 {
-		return fmt.Errorf("invalid email format")
-	}
-
-	parts := strings.Split(email, "@")
-	if len(parts[0]) == 0 || len(parts[1]) == 0 {
-		return fmt.Errorf("invalid email format")
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
 	}
 
 	return nil
 }
 
-// ValidatePassword validates password strength
-func (a *authUsecase) ValidatePassword(password string) error {
+// validatePasswordStrength validates password strength for admin operations
+func validatePasswordStrength(password string) error {
 	if password == "" {
 		return fmt.Errorf("password is required")
 	}
@@ -257,44 +241,14 @@ func (a *authUsecase) ValidatePassword(password string) error {
 		return fmt.Errorf("password too long (max 100 characters)")
 	}
 
-	// Check for at least one letter
-	hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(password)
-	if !hasLetter {
-		return fmt.Errorf("password must contain at least one letter")
-	}
-
-	// Check for at least one number or symbol (optional but recommended)
-	hasNumberOrSymbol := regexp.MustCompile(`[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
-	if len(password) >= 8 && !hasNumberOrSymbol {
-		return fmt.Errorf("password should contain at least one number or symbol for better security")
-	}
-
-	// Check for common weak passwords
-	weakPasswords := []string{
-		"password", "123456", "qwerty", "abc123", "password123",
-		"admin", "letmein", "welcome", "monkey", "dragon",
-	}
-
-	lowerPassword := strings.ToLower(password)
-	for _, weak := range weakPasswords {
-		if lowerPassword == weak {
-			return fmt.Errorf("password is too common, please choose a stronger password")
-		}
-	}
-
 	return nil
 }
 
-// hashPassword hashes a password using bcrypt
-func hashPassword(password string) (string, error) {
+// hashPasswordAdmin hashes a password using bcrypt (admin specific to avoid conflicts)
+func hashPasswordAdmin(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
 	}
 	return string(bytes), nil
-}
-
-// verifyPassword verifies a password against its hash
-func verifyPassword(hashedPassword, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
 }

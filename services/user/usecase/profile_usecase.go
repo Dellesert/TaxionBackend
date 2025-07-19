@@ -3,298 +3,276 @@ package usecase
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
-	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
-// AuthUsecase defines the interface for authentication business logic
-type AuthUsecase interface {
-	Register(req *models.CreateUserRequest) (*models.UserResponse, error)
-	Login(email, password string) (*sharedmodels.LoginResponse, error)
-	ValidateEmail(email string) error
-	ValidatePassword(password string) error
+// ProfileUsecase defines the interface for profile business logic
+type ProfileUsecase interface {
+	GetProfile(id uint) (*models.UserResponse, error)
+	UpdateProfile(id uint, req *models.UpdateProfileRequest) (*models.UserResponse, error)
+	ChangePassword(id uint, req *models.ChangePasswordRequest) error
+	UpdateStatus(id uint, status sharedmodels.UserStatus) (*models.UserResponse, error)
 }
 
-// authUsecase implements AuthUsecase interface
-type authUsecase struct {
+// profileUsecase implements ProfileUsecase interface
+type profileUsecase struct {
 	userRepo       repository.UserRepository
 	departmentRepo repository.DepartmentRepository
-	jwtConfig      *middleware.JWTConfig
 }
 
-// NewAuthUsecase creates a new auth usecase
-func NewAuthUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository, jwtConfig *middleware.JWTConfig) AuthUsecase {
-	return &authUsecase{
+// NewProfileUsecase creates a new profile usecase
+func NewProfileUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository) ProfileUsecase {
+	return &profileUsecase{
 		userRepo:       userRepo,
 		departmentRepo: departmentRepo,
-		jwtConfig:      jwtConfig,
 	}
 }
 
-// Register handles user registration
-func (a *authUsecase) Register(req *models.CreateUserRequest) (*models.UserResponse, error) {
-	// Validate email format
-	if err := a.ValidateEmail(req.Email); err != nil {
-		return nil, fmt.Errorf("invalid email: %w", err)
-	}
-
-	// Validate password strength
-	if err := a.ValidatePassword(req.Password); err != nil {
-		return nil, fmt.Errorf("invalid password: %w", err)
-	}
-
-	// Normalize email
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-
-	// Check if user already exists
-	existingUser, err := a.userRepo.GetByEmail(req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		// If it's not a "not found" error, it's a real database error
-		if !strings.Contains(err.Error(), "user not found") {
-			return nil, fmt.Errorf("failed to check existing user: %w", err)
-		}
-	}
-	if existingUser != nil {
-		return nil, fmt.Errorf("user with email %s already exists", req.Email)
-	}
-
-	// Validate department if provided
-	if req.DepartmentID != nil {
-		_, err := a.departmentRepo.GetByID(*req.DepartmentID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid department: %w", err)
-		}
-	}
-
-	// Hash password
-	hashedPassword, err := hashPassword(req.Password)
+// GetProfile retrieves a user profile by ID
+func (p *profileUsecase) GetProfile(id uint) (*models.UserResponse, error) {
+	user, err := p.userRepo.GetWithDepartment(id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
-	}
-
-	// Create user model
-	user := &models.User{
-		Email:          req.Email,
-		Name:           strings.TrimSpace(req.Name),
-		HashedPassword: hashedPassword,
-		DepartmentID:   req.DepartmentID,
-		Position:       strings.TrimSpace(req.Position),
-		Phone:          strings.TrimSpace(req.Phone),
-	}
-
-	// Set role if provided, otherwise use default (employee)
-	if req.Role != "" {
-		if !isValidRole(req.Role) {
-			return nil, fmt.Errorf("invalid role: %s", req.Role)
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("profile not found")
 		}
-		user.Role = sharedmodels.Role(req.Role)
-	} else {
-		user.Role = sharedmodels.RoleEmployee
+		return nil, fmt.Errorf("failed to get profile: %w", err)
 	}
 
-	// Save user
-	if err := a.userRepo.Create(user); err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
+	// Check if user is active
+	if !user.IsActive {
+		return nil, fmt.Errorf("profile is deactivated")
+	}
+
+	return user.ToResponse(), nil
+}
+
+// UpdateProfile updates a user's profile
+func (p *profileUsecase) UpdateProfile(id uint, req *models.UpdateProfileRequest) (*models.UserResponse, error) {
+	// Validate request
+	if err := p.validateUpdateProfileRequest(req); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Get existing user
+	user, err := p.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("profile not found")
+		}
+		return nil, fmt.Errorf("failed to get profile: %w", err)
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		return nil, fmt.Errorf("profile is deactivated")
+	}
+
+	// Update fields if provided
+	if req.Name != nil {
+		user.Name = strings.TrimSpace(*req.Name)
+	}
+	if req.Avatar != nil {
+		user.Avatar = strings.TrimSpace(*req.Avatar)
+	}
+	if req.Phone != nil {
+		user.Phone = strings.TrimSpace(*req.Phone)
+	}
+	if req.Position != nil {
+		user.Position = strings.TrimSpace(*req.Position)
+	}
+	if req.DepartmentID != nil {
+		// Validate department exists
+		if *req.DepartmentID > 0 {
+			_, err := p.departmentRepo.GetByID(*req.DepartmentID)
+			if err != nil {
+				return nil, fmt.Errorf("department not found")
+			}
+		}
+		user.DepartmentID = req.DepartmentID
+	}
+
+	// Save updated user
+	if err := p.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
 	}
 
 	// Get user with department for response
-	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	userWithDept, err := p.userRepo.GetWithDepartment(user.ID)
 	if err != nil {
-		// If we can't get with department, just return the user without it
+		// Fallback to user without department
 		return user.ToResponse(), nil
 	}
 
 	return userWithDept.ToResponse(), nil
 }
 
-// Login handles user authentication
-func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse, error) {
-	// Validate input
-	if email == "" {
-		return nil, fmt.Errorf("email is required")
-	}
-	if password == "" {
-		return nil, fmt.Errorf("password is required")
+// ChangePassword changes a user's password
+func (p *profileUsecase) ChangePassword(id uint, req *models.ChangePasswordRequest) error {
+	// Validate request
+	if err := p.validateChangePasswordRequest(req); err != nil {
+		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Normalize email
-	email = strings.ToLower(strings.TrimSpace(email))
-
-	// Get user by email
-	user, err := a.userRepo.GetByEmail(email)
+	// Get user
+	user, err := p.userRepo.GetByID(id)
 	if err != nil {
-		// Don't reveal whether user exists or not for security
-		return nil, fmt.Errorf("invalid email or password")
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("profile not found")
+		}
+		return fmt.Errorf("failed to get profile: %w", err)
 	}
 
 	// Check if user is active
 	if !user.IsActive {
-		return nil, fmt.Errorf("user account is deactivated")
+		return fmt.Errorf("profile is deactivated")
 	}
 
-	// Verify password
-	if err := verifyPassword(user.HashedPassword, password); err != nil {
-		return nil, fmt.Errorf("invalid email or password")
+	// Verify current password
+	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.CurrentPassword)); err != nil {
+		return fmt.Errorf("current password is incorrect")
 	}
 
-	// Update user status to online and last active time
-	if err := a.updateUserLoginStatus(user); err != nil {
-		// Log error but don't fail login
-		// In production, you might want to log this error properly
-	}
-
-	// Get user with department for complete response
-	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
 	if err != nil {
-		// Fallback to user without department
-		userWithDept = user
+		return fmt.Errorf("failed to hash new password: %w", err)
 	}
 
-	// Generate JWT tokens
-	tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
-	}
-
-	// Convert user to shared model format for response
-	responseUser := convertUserToSharedModel(userWithDept)
-
-	// Create login response
-	response := &sharedmodels.LoginResponse{
-		User:   *responseUser,
-		Tokens: *tokens,
-	}
-
-	return response, nil
-}
-
-// updateUserLoginStatus updates user status and last active time on login
-func (a *authUsecase) updateUserLoginStatus(user *models.User) error {
-	// Update status to online
-	user.Status = sharedmodels.StatusOnline
-
-	// BeforeUpdate hook will automatically set LastActiveAt
-	return a.userRepo.Update(user)
-}
-
-// convertUserToSharedModel converts service user model to shared user model
-func convertUserToSharedModel(user *models.User) *sharedmodels.User {
-	sharedUser := &sharedmodels.User{
-		BaseModel:    user.BaseModel,
-		Email:        user.Email,
-		Name:         user.Name,
-		Role:         user.Role,
-		Status:       user.Status,
-		Avatar:       user.Avatar,
-		Phone:        user.Phone,
-		Position:     user.Position,
-		LastActiveAt: user.LastActiveAt,
-		IsActive:     user.IsActive,
-	}
-
-	// Set department as string if available
-	if user.Department != nil {
-		sharedUser.Department = user.Department.Name
-	}
-
-	return sharedUser
-}
-
-// ValidateEmail validates email format
-func (a *authUsecase) ValidateEmail(email string) error {
-	if email == "" {
-		return fmt.Errorf("email is required")
-	}
-
-	// Trim whitespace
-	email = strings.TrimSpace(email)
-
-	// Check length
-	if len(email) > 255 {
-		return fmt.Errorf("email too long (max 255 characters)")
-	}
-
-	// Simple email regex validation
-	emailRegex := regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
-	if !emailRegex.MatchString(email) {
-		return fmt.Errorf("invalid email format")
-	}
-
-	// Additional checks
-	if strings.Count(email, "@") != 1 {
-		return fmt.Errorf("invalid email format")
-	}
-
-	parts := strings.Split(email, "@")
-	if len(parts[0]) == 0 || len(parts[1]) == 0 {
-		return fmt.Errorf("invalid email format")
+	// Update password
+	user.HashedPassword = string(hashedPassword)
+	if err := p.userRepo.Update(user); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
 	}
 
 	return nil
 }
 
-// ValidatePassword validates password strength
-func (a *authUsecase) ValidatePassword(password string) error {
-	if password == "" {
-		return fmt.Errorf("password is required")
+// UpdateStatus updates a user's status
+func (p *profileUsecase) UpdateStatus(id uint, status sharedmodels.UserStatus) (*models.UserResponse, error) {
+	// Validate status
+	if !isValidStatus(status) {
+		return nil, fmt.Errorf("invalid status: %s", status)
 	}
 
-	// Check minimum length
-	if len(password) < 6 {
-		return fmt.Errorf("password must be at least 6 characters long")
+	// Get user
+	user, err := p.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("profile not found")
+		}
+		return nil, fmt.Errorf("failed to get profile: %w", err)
 	}
 
-	// Check maximum length
-	if len(password) > 100 {
-		return fmt.Errorf("password too long (max 100 characters)")
+	// Check if user is active
+	if !user.IsActive {
+		return nil, fmt.Errorf("profile is deactivated")
 	}
 
-	// Check for at least one letter
-	hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(password)
-	if !hasLetter {
-		return fmt.Errorf("password must contain at least one letter")
+	// Update status
+	user.Status = status
+
+	// Update last active time if going online
+	if status == sharedmodels.StatusOnline {
+		now := time.Now()
+		user.LastActiveAt = &now
 	}
 
-	// Check for at least one number or symbol (optional but recommended)
-	hasNumberOrSymbol := regexp.MustCompile(`[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
-	if len(password) >= 8 && !hasNumberOrSymbol {
-		return fmt.Errorf("password should contain at least one number or symbol for better security")
+	// Save updated user
+	if err := p.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update status: %w", err)
 	}
 
-	// Check for common weak passwords
-	weakPasswords := []string{
-		"password", "123456", "qwerty", "abc123", "password123",
-		"admin", "letmein", "welcome", "monkey", "dragon",
+	// Get user with department for response
+	userWithDept, err := p.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
 	}
 
-	lowerPassword := strings.ToLower(password)
-	for _, weak := range weakPasswords {
-		if lowerPassword == weak {
-			return fmt.Errorf("password is too common, please choose a stronger password")
+	return userWithDept.ToResponse(), nil
+}
+
+// validateUpdateProfileRequest validates profile update request
+func (p *profileUsecase) validateUpdateProfileRequest(req *models.UpdateProfileRequest) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
+	}
+
+	// Validate name if provided
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return fmt.Errorf("name cannot be empty")
+		}
+		if len(name) < 2 {
+			return fmt.Errorf("name must be at least 2 characters long")
+		}
+		if len(name) > 100 {
+			return fmt.Errorf("name must be less than 100 characters")
+		}
+	}
+
+	// Validate phone if provided
+	if req.Phone != nil {
+		phone := strings.TrimSpace(*req.Phone)
+		if phone != "" && len(phone) > 20 {
+			return fmt.Errorf("phone number must be less than 20 characters")
+		}
+	}
+
+	// Validate position if provided
+	if req.Position != nil {
+		position := strings.TrimSpace(*req.Position)
+		if position != "" && len(position) > 100 {
+			return fmt.Errorf("position must be less than 100 characters")
+		}
+	}
+
+	// Validate avatar URL if provided
+	if req.Avatar != nil {
+		avatar := strings.TrimSpace(*req.Avatar)
+		if avatar != "" && len(avatar) > 500 {
+			return fmt.Errorf("avatar URL must be less than 500 characters")
 		}
 	}
 
 	return nil
 }
 
-// hashPassword hashes a password using bcrypt
-func hashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
+// validateChangePasswordRequest validates password change request
+func (p *profileUsecase) validateChangePasswordRequest(req *models.ChangePasswordRequest) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
 	}
-	return string(bytes), nil
-}
 
-// verifyPassword verifies a password against its hash
-func verifyPassword(hashedPassword, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+	if req.CurrentPassword == "" {
+		return fmt.Errorf("current password is required")
+	}
+
+	if req.NewPassword == "" {
+		return fmt.Errorf("new password is required")
+	}
+
+	// Validate new password strength
+	if len(req.NewPassword) < 6 {
+		return fmt.Errorf("new password must be at least 6 characters long")
+	}
+
+	if len(req.NewPassword) > 100 {
+		return fmt.Errorf("new password must be less than 100 characters")
+	}
+
+	if req.CurrentPassword == req.NewPassword {
+		return fmt.Errorf("new password must be different from current password")
+	}
+
+	return nil
 }
