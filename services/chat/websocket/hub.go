@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"tachyon-messenger/services/chat/models"
@@ -35,70 +34,6 @@ var Upgrader = websocket.Upgrader{
 		// In production, implement proper origin checking
 		return true
 	},
-}
-
-// Client represents a websocket client
-type Client struct {
-	// The websocket connection
-	conn *websocket.Conn
-
-	// Buffered channel of outbound messages
-	send chan []byte
-
-	// The hub that manages this client
-	hub *Hub
-
-	// User ID
-	userID uint
-
-	// Chat rooms the client is subscribed to
-	chatRooms map[uint]bool
-
-	// Mutex for thread-safe access to chatRooms
-	mutex sync.RWMutex
-
-	// Last seen timestamp for presence tracking
-	lastSeen time.Time
-
-	// Client status (online, away, busy, offline)
-	status string
-}
-
-// Hub maintains the set of active clients and broadcasts messages to clients
-type Hub struct {
-	// Registered clients mapped by user ID
-	clients map[uint]*Client
-
-	// Chat rooms - maps chat ID to set of user IDs
-	chatRooms map[uint]map[uint]bool
-
-	// Inbound messages from the clients
-	broadcast chan *BroadcastMessage
-
-	// Register requests from the clients
-	register chan *Client
-
-	// Unregister requests from clients
-	unregister chan *Client
-
-	// Mutex for thread-safe access
-	mutex sync.RWMutex
-
-	// Channel to signal hub shutdown
-	shutdown chan struct{}
-
-	// Metrics for monitoring
-	metrics *HubMetrics
-}
-
-// BroadcastMessage represents a message to be broadcasted
-type BroadcastMessage struct {
-	Type        models.WSMessageType `json:"type"`
-	ChatID      uint                 `json:"chat_id"`
-	UserID      uint                 `json:"user_id,omitempty"`
-	Data        interface{}          `json:"data"`
-	Timestamp   time.Time            `json:"timestamp"`
-	ExcludeUser uint                 `json:"-"` // Don't send to this user
 }
 
 // HubMetrics contains hub statistics

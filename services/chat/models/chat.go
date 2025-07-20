@@ -199,3 +199,9 @@ type ChatListResponse struct {
 	Limit  int            `json:"limit"`
 	Offset int            `json:"offset"`
 }
+
+type CreateGroupChatRequest struct {
+	Name        string `json:"name" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
+	Description string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	MemberIDs   []uint `json:"member_ids" binding:"required,min=1" validate:"required,min=1,dive,min=1"`
+}
