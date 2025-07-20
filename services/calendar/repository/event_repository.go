@@ -641,3 +641,137 @@ func (r *eventRepository) loadEventDetails(events []*models.Event, userID uint) 
 		}
 	}
 }
+
+func (r *participantRepository) GetEventParticipants(eventID uint) ([]*models.EventParticipant, error) {
+	var participants []*models.EventParticipant
+	err := r.db.Where("event_id = ?", eventID).Find(&participants).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get event participants: %w", err)
+	}
+	return participants, nil
+}
+
+// GetUserParticipations retrieves all events where user is a participant
+func (r *participantRepository) GetUserParticipations(userID uint) ([]*models.EventParticipant, error) {
+	var participations []*models.EventParticipant
+	err := r.db.Where("user_id = ?", userID).Find(&participations).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user participations: %w", err)
+	}
+	return participations, nil
+}
+
+// IsParticipant checks if a user is a participant in an event
+func (r *participantRepository) IsParticipant(eventID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.EventParticipant{}).
+		Where("event_id = ? AND user_id = ?", eventID, userID).
+		Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("failed to check if user is participant: %w", err)
+	}
+	return count > 0, nil
+}
+
+// GetParticipantStatus retrieves participant status for a user in an event
+func (r *participantRepository) GetParticipantStatus(eventID, userID uint) (models.ParticipantStatus, error) {
+	var participant models.EventParticipant
+	err := r.db.Where("event_id = ? AND user_id = ?", eventID, userID).
+		First(&participant).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return "", fmt.Errorf("participant not found")
+		}
+		return "", fmt.Errorf("failed to get participant status: %w", err)
+	}
+	return participant.Status, nil
+}
+
+// ReminderRepository методы (добавить недостающие)
+
+// CreateReminder creates a new reminder
+func (r *reminderRepository) CreateReminder(reminder *models.EventReminder) error {
+	if reminder == nil {
+		return errors.New("reminder cannot be nil")
+	}
+	if err := r.db.Create(reminder).Error; err != nil {
+		return fmt.Errorf("failed to create reminder: %w", err)
+	}
+	return nil
+}
+
+// GetEventReminders retrieves all reminders for an event
+func (r *reminderRepository) GetEventReminders(eventID uint) ([]*models.EventReminder, error) {
+	var reminders []*models.EventReminder
+	err := r.db.Where("event_id = ?", eventID).Find(&reminders).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get event reminders: %w", err)
+	}
+	return reminders, nil
+}
+
+// GetUserReminders retrieves all reminders for a user
+func (r *reminderRepository) GetUserReminders(userID uint) ([]*models.EventReminder, error) {
+	var reminders []*models.EventReminder
+	err := r.db.Where("user_id = ?", userID).Find(&reminders).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user reminders: %w", err)
+	}
+	return reminders, nil
+}
+
+// GetPendingReminders retrieves reminders that need to be sent
+func (r *reminderRepository) GetPendingReminders(before time.Time) ([]*models.EventReminder, error) {
+	var reminders []*models.EventReminder
+	err := r.db.Where("trigger_time <= ? AND is_sent = ?", before, false).
+		Find(&reminders).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pending reminders: %w", err)
+	}
+	return reminders, nil
+}
+
+// MarkReminderSent marks a reminder as sent
+func (r *reminderRepository) MarkReminderSent(id uint) error {
+	now := time.Now()
+	result := r.db.Model(&models.EventReminder{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"is_sent": true,
+			"sent_at": &now,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("failed to mark reminder as sent: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("reminder not found")
+	}
+	return nil
+}
+
+// DeleteReminder deletes a reminder
+func (r *reminderRepository) DeleteReminder(id uint) error {
+	result := r.db.Delete(&models.EventReminder{}, id)
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete reminder: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("reminder not found")
+	}
+	return nil
+}
+
+// UpdateReminder updates an existing reminder
+func (r *reminderRepository) UpdateReminder(reminder *models.EventReminder) error {
+	if reminder == nil {
+		return errors.New("reminder cannot be nil")
+	}
+	result := r.db.Save(reminder)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update reminder: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("reminder not found")
+	}
+	return nil
+}
