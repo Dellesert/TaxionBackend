@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tachyon-messenger/services/chat/models"
+	"tachyon-messenger/services/chat/usecase"
 
 	"github.com/gorilla/websocket"
 )
@@ -48,14 +49,15 @@ type UserPresence struct {
 }
 
 // NewHub creates a new WebSocket hub
-func NewHub() *Hub {
+func NewHub(messageUsecase usecase.MessageUsecase) *Hub {
 	return &Hub{
-		clients:    make(map[uint]*Client),
-		chatRooms:  make(map[uint]map[uint]bool),
-		broadcast:  make(chan *BroadcastMessage, 1024),
-		register:   make(chan *Client),
-		unregister: make(chan *Client),
-		shutdown:   make(chan struct{}),
+		clients:        make(map[uint]*Client),
+		chatRooms:      make(map[uint]map[uint]bool),
+		broadcast:      make(chan *BroadcastMessage, 1024),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		shutdown:       make(chan struct{}),
+		messageUsecase: messageUsecase, // ДОБАВЛЯЕМ messageUsecase
 		metrics: &HubMetrics{
 			Uptime: time.Now(),
 		},

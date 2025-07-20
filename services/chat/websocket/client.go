@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"log"
+	"strings"
 	"time"
 
 	"tachyon-messenger/services/chat/models"
@@ -201,10 +202,67 @@ func (c *Client) handleReadMessage(wsMsg *models.WSMessage) {
 
 // handleChatMessage handles chat messages
 func (c *Client) handleChatMessage(wsMsg *models.WSMessage) {
-	// Forward the message to the hub for broadcasting
-	if chatData, ok := wsMsg.Data.(map[string]interface{}); ok {
-		log.Printf("Chat message from user %d in chat %d: %v", c.userID, wsMsg.ChatID, chatData)
-		// Here you can implement chat message processing logic
+	// Validate message data
+	chatData, ok := wsMsg.Data.(map[string]interface{})
+	if !ok {
+		log.Printf("Invalid chat message data from user %d", c.userID)
+		c.sendErrorMessage("Invalid message data")
+		return
+	}
+
+	// Extract content from message data
+	content, exists := chatData["content"].(string)
+	if !exists || strings.TrimSpace(content) == "" {
+		log.Printf("Missing or empty content in message from user %d", c.userID)
+		c.sendErrorMessage("Message content is required")
+		return
+	}
+
+	// Extract message type (optional)
+	messageType := "text"
+	if msgType, exists := chatData["type"].(string); exists {
+		messageType = msgType
+	}
+
+	log.Printf("Chat message from user %d in chat %d: %s", c.userID, wsMsg.ChatID, content)
+
+	// ВАЖНО: Сохраняем сообщение в базу данных через MessageUsecase
+	// Создаем request для сохранения сообщения
+	sendRequest := &models.SendMessageRequest{
+		ChatID:  wsMsg.ChatID,
+		Content: content,
+		Type:    models.MessageType(messageType),
+	}
+
+	// Получаем доступ к messageUsecase через хаб
+	if c.hub.messageUsecase != nil {
+		// Сохраняем сообщение в БД
+		savedMessage, err := c.hub.messageUsecase.SendMessage(c.userID, sendRequest)
+		if err != nil {
+			log.Printf("Failed to save message to database for user %d: %v", c.userID, err)
+			c.sendErrorMessage("Failed to save message")
+			return
+		}
+
+		// Обновляем данные сообщения с сохраненной информацией
+		enhancedData := map[string]interface{}{
+			"id":         savedMessage.ID,
+			"content":    savedMessage.Content,
+			"type":       savedMessage.Type,
+			"sender_id":  savedMessage.SenderID,
+			"chat_id":    savedMessage.ChatID,
+			"created_at": savedMessage.CreatedAt,
+			"status":     savedMessage.Status,
+		}
+
+		// Broadcast обогащенного сообщения всем пользователям в чате
+		c.hub.BroadcastToChat(wsMsg.ChatID, enhancedData, models.WSMessageTypeNewMessage, c.userID)
+
+		log.Printf("Message saved to database with ID %d and broadcasted to chat %d", savedMessage.ID, wsMsg.ChatID)
+	} else {
+		// Fallback: если messageUsecase недоступен, просто broadcast без сохранения
+		log.Printf("MessageUsecase not available, broadcasting without saving to database")
+		c.hub.BroadcastToChat(wsMsg.ChatID, chatData, models.WSMessageTypeNewMessage, c.userID)
 	}
 }
 

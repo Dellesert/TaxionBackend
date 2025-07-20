@@ -3,6 +3,7 @@ package websocket
 import (
 	"sync"
 	"tachyon-messenger/services/chat/models"
+	"tachyon-messenger/services/chat/usecase"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -85,6 +86,8 @@ type Hub struct {
 
 	// Metrics for monitoring
 	metrics *HubMetrics
+
+	messageUsecase usecase.MessageUsecase
 }
 
 // BroadcastMessage represents a message to be broadcasted to a room

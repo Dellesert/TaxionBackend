@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat WebSocket Tester</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .section {
+            margin-bottom: 25px;
+            padding: 15px;
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        
+        .section h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+            transition: background 0.3s;
+        }
+        
+        button:hover {
+            background: #0056b3;
+        }
+        
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .btn-success { background: #28a745; }
+        .btn-success:hover { background: #218838; }
+        
+        .btn-warning { background: #ffc107; color: #212529; }
+        .btn-warning:hover { background: #e0a800; }
+        
+        .btn-danger { background: #dc3545; }
+        .btn-danger:hover { background: #c82333; }
+        
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.connecting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .messages {
+            height: 300px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        
+        .message {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-radius: 3px;
+        }
+        
+        .message.sent {
+            background: #e3f2fd;
+            border-left: 3px solid #2196f3;
+        }
+        
+        .message.received {
+            background: #e8f5e8;
+            border-left: 3px solid #4caf50;
+        }
+        
+        .message.error {
+            background: #ffebee;
+            border-left: 3px solid #f44336;
+        }
+        
+        .message .timestamp {
+            color: #666;
+            font-size: 10px;
+        }
+        
+        .quick-tests {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔌 Chat WebSocket Tester</h1>
+        <p>Test real-time WebSocket functionality for Chat Service</p>
+    </div>
+
+    <div class="container">
+        <div class="section">
+            <h3>🔑 Connection Setup</h3>
+            <div class="form-group">
+                <label for="wsUrl">WebSocket URL:</label>
+                <input type="text" id="wsUrl" value="ws://localhost:8082/api/v1/ws">
+            </div>
+            <div class="form-group">
+                <label for="jwtToken">JWT Token:</label>
+                <textarea id="jwtToken" rows="3" placeholder="Paste your JWT token here..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="chatId">Chat ID:</label>
+                <input type="number" id="chatId" value="1" min="1">
+            </div>
+            <button id="connectBtn" onclick="connectWebSocket()" class="btn-success">🔗 Connect</button>
+            <button id="disconnectBtn" onclick="disconnectWebSocket()" class="btn-danger" disabled>❌ Disconnect</button>
+        </div>
+
+        <div id="statusDiv" class="status disconnected">
+            🔴 Disconnected
+        </div>
+
+        <div class="section">
+            <h3>📤 Send Messages</h3>
+            <div class="form-group">
+                <label for="messageType">Message Type:</label>
+                <select id="messageType">
+                    <option value="user_join">User Join</option>
+                    <option value="user_leave">User Leave</option>
+                    <option value="typing">Typing Indicator</option>
+                    <option value="new_message">New Message</option>
+                    <option value="message_read">Message Read</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="messageData">Message Data (JSON):</label>
+                <textarea id="messageData" rows="4" placeholder='{"content": "Hello World!"}'></textarea>
+            </div>
+            <button onclick="sendMessage()" class="btn-success">📤 Send Message</button>
+            
+            <div class="quick-tests">
+                <button onclick="quickTest('join')" class="btn-warning">🚪 Quick Join</button>
+                <button onclick="quickTest('typing_start')" class="btn-warning">✏️ Start Typing</button>
+                <button onclick="quickTest('typing_stop')" class="btn-warning">⏹️ Stop Typing</button>
+                <button onclick="quickTest('message')" class="btn-warning">💬 Send Test Message</button>
+                <button onclick="quickTest('read')" class="btn-warning">👁️ Mark as Read</button>
+                <button onclick="quickTest('leave')" class="btn-warning">🚪 Leave Chat</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>📨 Messages Log</h3>
+            <button onclick="clearMessages()" class="btn-warning">🗑️ Clear Log</button>
+            <div id="messagesDiv" class="messages">
+                <div class="message">Ready to test WebSocket connection...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let messageCounter = 0;
+
+        function updateStatus(status, message) {
+            const statusDiv = document.getElementById('statusDiv');
+            statusDiv.className = `status ${status}`;
+            statusDiv.innerHTML = message;
+        }
+
+        function addMessage(type, content, timestamp = new Date()) {
+            const messagesDiv = document.getElementById('messagesDiv');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            const timeStr = timestamp.toLocaleTimeString();
+            messageDiv.innerHTML = `
+                <div class="timestamp">[${timeStr}]</div>
+                <div>${content}</div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function connectWebSocket() {
+            const url = document.getElementById('wsUrl').value;
+            const token = document.getElementById('jwtToken').value.trim();
+            
+            if (!token) {
+                alert('Please enter a JWT token');
+                return;
+            }
+
+            try {
+                updateStatus('connecting', '🟡 Connecting...');
+                addMessage('sent', `Connecting to ${url}...`);
+                
+                // Add token to URL or headers
+                const wsUrl = token ? `${url}?token=${encodeURIComponent(token)}` : url;
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = function(event) {
+                    updateStatus('connected', '🟢 Connected');
+                    addMessage('received', '✅ WebSocket connected successfully!');
+                    
+                    document.getElementById('connectBtn').disabled = true;
+                    document.getElementById('disconnectBtn').disabled = false;
+                };
+
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addMessage('received', `📨 Received: ${JSON.stringify(data, null, 2)}`);
+                    } catch (e) {
+                        addMessage('received', `📨 Received: ${event.data}`);
+                    }
+                };
+
+                ws.onerror = function(error) {
+                    updateStatus('disconnected', '🔴 Error');
+                    addMessage('error', `❌ WebSocket error: ${error.message || 'Connection error'}`);
+                };
+
+                ws.onclose = function(event) {
+                    updateStatus('disconnected', '🔴 Disconnected');
+                    addMessage('error', `🔌 WebSocket closed: Code ${event.code}, Reason: ${event.reason || 'Unknown'}`);
+                    
+                    document.getElementById('connectBtn').disabled = false;
+                    document.getElementById('disconnectBtn').disabled = true;
+                };
+
+            } catch (error) {
+                updateStatus('disconnected', '🔴 Error');
+                addMessage('error', `❌ Connection failed: ${error.message}`);
+            }
+        }
+
+        function disconnectWebSocket() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function sendMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket is not connected');
+                return;
+            }
+
+            const messageType = document.getElementById('messageType').value;
+            const chatId = parseInt(document.getElementById('chatId').value);
+            const messageDataText = document.getElementById('messageData').value.trim();
+            
+            let messageData = {};
+            if (messageDataText) {
+                try {
+                    messageData = JSON.parse(messageDataText);
+                } catch (e) {
+                    alert('Invalid JSON in message data');
+                    return;
+                }
+            }
+
+            const message = {
+                type: messageType,
+                chat_id: chatId,
+                data: messageData
+            };
+
+            try {
+                ws.send(JSON.stringify(message));
+                addMessage('sent', `📤 Sent: ${JSON.stringify(message, null, 2)}`);
+            } catch (error) {
+                addMessage('error', `❌ Send failed: ${error.message}`);
+            }
+        }
+
+        function quickTest(testType) {
+            const chatId = parseInt(document.getElementById('chatId').value);
+            let message = {};
+
+            switch (testType) {
+                case 'join':
+                    message = { type: 'user_join', chat_id: chatId, data: {} };
+                    break;
+                case 'leave':
+                    message = { type: 'user_leave', chat_id: chatId, data: {} };
+                    break;
+                case 'typing_start':
+                    message = { type: 'typing', chat_id: chatId, data: { is_typing: true } };
+                    break;
+                case 'typing_stop':
+                    message = { type: 'typing', chat_id: chatId, data: { is_typing: false } };
+                    break;
+                case 'message':
+                    messageCounter++;
+                    message = { 
+                        type: 'new_message', 
+                        chat_id: chatId, 
+                        data: { 
+                            content: `Test message #${messageCounter} from WebSocket tester`,
+                            type: 'text'
+                        }
+                    };
+                    break;
+                case 'read':
+                    message = { 
+                        type: 'message_read', 
+                        chat_id: chatId, 
+                        data: { message_id: 1 }
+                    };
+                    break;
+            }
+
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                alert('WebSocket is not connected');
+                return;
+            }
+
+            try {
+                ws.send(JSON.stringify(message));
+                addMessage('sent', `📤 Quick test (${testType}): ${JSON.stringify(message, null, 2)}`);
+            } catch (error) {
+                addMessage('error', `❌ Quick test failed: ${error.message}`);
+            }
+        }
+
+        function clearMessages() {
+            const messagesDiv = document.getElementById('messagesDiv');
+            messagesDiv.innerHTML = '<div class="message">Messages cleared...</div>';
+        }
+
+        // Auto-fill sample message data based on type
+        document.getElementById('messageType').addEventListener('change', function() {
+            const messageDataTextarea = document.getElementById('messageData');
+            const type = this.value;
+            
+            const samples = {
+                'user_join': '{}',
+                'user_leave': '{}',
+                'typing': '{"is_typing": true}',
+                'new_message': '{"content": "Hello World!", "type": "text"}',
+                'message_read': '{"message_id": 1}'
+            };
+            
+            messageDataTextarea.value = samples[type] || '{}';
+        });
+
+        // Initialize with sample data
+        document.getElementById('messageData').value = '{}';
+        
+        // Add helpful instructions
+        addMessage('received', '💡 Instructions:');
+        addMessage('received', '1. Enter your JWT token from login response');
+        addMessage('received', '2. Make sure Chat Service is running on port 8082');
+        addMessage('received', '3. Create a test chat and use its ID');
+        addMessage('received', '4. Click Connect and start testing!');
+    </script>
+</body>
+</html>
