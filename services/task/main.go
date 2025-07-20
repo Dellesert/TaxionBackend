@@ -47,7 +47,7 @@ func main() {
 	defer db.Close()
 
 	// Run database migrations
-	if err := db.Migrate(&models.Task{}); err != nil {
+	if err := db.Migrate(&models.Task{}, &models.TaskComment{}); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -60,12 +60,13 @@ func main() {
 
 	// Initialize dependencies
 	taskRepo := repository.NewTaskRepository(db)
+	commentRepo := repository.NewCommentRepository(db)
 
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
 	// Initialize usecases
-	taskUsecase := usecase.NewTaskUsecase(taskRepo)
+	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo)
 
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase)
@@ -167,6 +168,14 @@ func setupRoutes(
 		// Task assignments
 		protected.POST("/tasks/:id/assign", taskHandler.AssignTask)
 		protected.DELETE("/tasks/:id/assign", taskHandler.UnassignTask)
+
+		// Task comments
+		protected.POST("/tasks/:id/comments", taskHandler.AddComment)
+		protected.GET("/tasks/:id/comments", taskHandler.GetTaskComments)
+
+		// Comment management
+		protected.PUT("/comments/:id", taskHandler.UpdateComment)
+		protected.DELETE("/comments/:id", taskHandler.DeleteComment)
 	}
 
 	return r

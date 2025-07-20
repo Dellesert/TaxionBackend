@@ -23,17 +23,25 @@ type TaskUsecase interface {
 	UpdateTaskStatus(userID, taskID uint, req *models.UpdateTaskStatusRequest) (*models.TaskResponse, error)
 	GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error)
 	GetTaskStats(userID uint) (*models.TaskStatsResponse, error)
+
+	// Comment methods
+	AddComment(userID, taskID uint, req *models.CreateTaskCommentRequest) (*models.TaskCommentResponse, error)
+	GetTaskComments(userID, taskID uint, filter *models.CommentFilterRequest) (*models.CommentListResponse, error)
+	UpdateComment(userID, commentID uint, req *models.UpdateTaskCommentRequest) (*models.TaskCommentResponse, error)
+	DeleteComment(userID, commentID uint) error
 }
 
 // taskUsecase implements TaskUsecase interface
 type taskUsecase struct {
-	taskRepo repository.TaskRepository
+	taskRepo    repository.TaskRepository
+	commentRepo repository.CommentRepository
 }
 
 // NewTaskUsecase creates a new task usecase
-func NewTaskUsecase(taskRepo repository.TaskRepository) TaskUsecase {
+func NewTaskUsecase(taskRepo repository.TaskRepository, commentRepo repository.CommentRepository) TaskUsecase {
 	return &taskUsecase{
-		taskRepo: taskRepo,
+		taskRepo:    taskRepo,
+		commentRepo: commentRepo,
 	}
 }
 

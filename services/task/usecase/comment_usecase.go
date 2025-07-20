@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"tachyon-messenger/services/task/models"
 
@@ -159,159 +158,45 @@ func (u *taskUsecase) DeleteComment(userID, commentID uint) error {
 	return nil
 }
 
-// Helper methods
+// Comment validation methods
 
-// hasTaskAccess checks if user has access to the task (creator or assignee)
-func (u *taskUsecase) hasTaskAccess(userID uint, task *models.Task) bool {
-	// User is creator
-	if task.CreatedBy == userID {
-		return true
-	}
-
-	// User is assignee
-	if task.AssignedTo != nil && *task.AssignedTo == userID {
-		return true
-	}
-
-	return false
-}
-
-// Validation methods
-
-// validateCreateTaskRequest validates task creation request
-func (u *taskUsecase) validateCreateTaskRequest(req *models.CreateTaskRequest) error {
+// validateCreateCommentRequest validates comment creation request
+func (u *taskUsecase) validateCreateCommentRequest(req *models.CreateTaskCommentRequest) error {
 	if req == nil {
 		return fmt.Errorf("request is required")
 	}
 
-	// Validate title
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		return fmt.Errorf("task title is required")
+	// Validate content
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		return fmt.Errorf("comment content is required")
 	}
-	if len(title) > 255 {
-		return fmt.Errorf("task title must be less than 255 characters")
-	}
-
-	// Validate description if provided
-	if req.Description != "" {
-		description := strings.TrimSpace(req.Description)
-		if len(description) > 2000 {
-			return fmt.Errorf("task description must be less than 2000 characters")
-		}
+	if len(content) > 1000 {
+		return fmt.Errorf("comment content must be less than 1000 characters")
 	}
 
-	// Validate priority if provided
-	if req.Priority != nil {
-		if !u.isValidPriority(*req.Priority) {
-			return fmt.Errorf("invalid priority value")
-		}
-	}
-
-	// Validate assignee if provided
-	if req.AssignedTo != nil && *req.AssignedTo == 0 {
-		return fmt.Errorf("invalid assignee ID")
-	}
-
-	// Validate due date if provided
-	if req.DueDate != nil && req.DueDate.Before(time.Now()) {
-		return fmt.Errorf("due date cannot be in the past")
+	// Validate parent ID if provided
+	if req.ParentID != nil && *req.ParentID == 0 {
+		return fmt.Errorf("invalid parent comment ID")
 	}
 
 	return nil
 }
 
-// validateUpdateTaskRequest validates task update request
-func (u *taskUsecase) validateUpdateTaskRequest(req *models.UpdateTaskRequest) error {
+// validateUpdateCommentRequest validates comment update request
+func (u *taskUsecase) validateUpdateCommentRequest(req *models.UpdateTaskCommentRequest) error {
 	if req == nil {
 		return fmt.Errorf("request is required")
 	}
 
-	// Validate title if provided
-	if req.Title != nil {
-		title := strings.TrimSpace(*req.Title)
-		if title == "" {
-			return fmt.Errorf("task title cannot be empty")
-		}
-		if len(title) > 255 {
-			return fmt.Errorf("task title must be less than 255 characters")
-		}
+	// Validate content
+	content := strings.TrimSpace(req.Content)
+	if content == "" {
+		return fmt.Errorf("comment content cannot be empty")
 	}
-
-	// Validate description if provided
-	if req.Description != nil {
-		description := strings.TrimSpace(*req.Description)
-		if len(description) > 2000 {
-			return fmt.Errorf("task description must be less than 2000 characters")
-		}
-	}
-
-	// Validate status if provided
-	if req.Status != nil {
-		if !u.isValidStatus(*req.Status) {
-			return fmt.Errorf("invalid status value")
-		}
-	}
-
-	// Validate priority if provided
-	if req.Priority != nil {
-		if !u.isValidPriority(*req.Priority) {
-			return fmt.Errorf("invalid priority value")
-		}
-	}
-
-	// Validate assignee if provided
-	if req.AssignedTo != nil && *req.AssignedTo == 0 {
-		return fmt.Errorf("invalid assignee ID")
+	if len(content) > 1000 {
+		return fmt.Errorf("comment content must be less than 1000 characters")
 	}
 
 	return nil
-}
-
-// validateUpdateTaskStatusRequest validates task status update request
-func (u *taskUsecase) validateUpdateTaskStatusRequest(req *models.UpdateTaskStatusRequest) error {
-	if req == nil {
-		return fmt.Errorf("request is required")
-	}
-
-	if !u.isValidStatus(req.Status) {
-		return fmt.Errorf("invalid status value")
-	}
-
-	return nil
-}
-
-// validateAssignTaskRequest validates task assignment request
-func (u *taskUsecase) validateAssignTaskRequest(req *models.AssignTaskRequest) error {
-	if req == nil {
-		return fmt.Errorf("request is required")
-	}
-
-	if req.AssignedTo == 0 {
-		return fmt.Errorf("assignee ID is required")
-	}
-
-	return nil
-}
-
-// isValidStatus checks if the status is valid
-func (u *taskUsecase) isValidStatus(status models.TaskStatus) bool {
-	switch status {
-	case models.TaskStatusNew, models.TaskStatusInProgress, models.TaskStatusReview,
-		models.TaskStatusDone, models.TaskStatusCancelled:
-		return true
-	default:
-		return false
-	}
-}
-
-// isValidPriority checks if the priority is valid
-func (u *taskUsecase) isValidPriority(priority models.TaskPriority) bool {
-	switch priority {
-	case models.TaskPriorityLow, models.TaskPriorityMedium,
-		models.TaskPriorityHigh, models.TaskPriorityCritical:
-		return true
-	default:
-		return false
-	}
 }
