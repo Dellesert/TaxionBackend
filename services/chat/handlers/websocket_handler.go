@@ -2,6 +2,8 @@ package handlers
 
 import (
 	"net/http"
+	"os"
+	"strings"
 
 	"tachyon-messenger/services/chat/usecase"
 	"tachyon-messenger/services/chat/websocket"
@@ -33,19 +35,54 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 	requestID := requestid.Get(c)
 
 	// Authenticate user via JWT token
-	userID, err := middleware.GetUserIDFromContext(c)
-	if err != nil {
+	// WebSocket может получать токен из query параметра или заголовка
+	var tokenString string
+
+	// Сначала пробуем получить из query параметра (для WebSocket)
+	if token := c.Query("token"); token != "" {
+		tokenString = token
+	} else {
+		// Если нет в query, пробуем Authorization header
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" {
+			tokenParts := strings.Split(authHeader, " ")
+			if len(tokenParts) == 2 && tokenParts[0] == "Bearer" {
+				tokenString = tokenParts[1]
+			}
+		}
+	}
+
+	if tokenString == "" {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
-			"error":      err.Error(),
-		}).Error("Failed to authenticate WebSocket user")
+		}).Error("No JWT token provided for WebSocket connection")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Authentication required",
+			"error":      "Authentication required - provide token in query parameter or Authorization header",
 			"request_id": requestID,
 		})
 		return
 	}
+
+	// Создаем временный JWT config для валидации
+	jwtConfig := middleware.DefaultJWTConfig(os.Getenv("JWT_SECRET"))
+
+	// Валидируем токен
+	claims, err := middleware.ValidateToken(tokenString, jwtConfig)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to validate JWT token for WebSocket")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Invalid or expired token",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	userID := claims.UserID
 
 	// Configure WebSocket upgrader
 	upgrader := gorilla_websocket.Upgrader{

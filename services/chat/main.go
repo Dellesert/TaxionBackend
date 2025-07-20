@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"tachyon-messenger/services/chat/handlers"
+	"tachyon-messenger/services/chat/migrations"
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/repository"
 	"tachyon-messenger/services/chat/usecase"
@@ -46,9 +47,21 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations
-	if err := db.Migrate(&models.Chat{}, &models.ChatMember{}, &models.Message{}); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+	// Run SQL migrations first
+	migrationManager := migrations.NewMigrationManager(db, log)
+	if err := migrationManager.RunMigrations(); err != nil {
+		log.Fatalf("Failed to run SQL migrations: %v", err)
+	}
+
+	// Run GORM migrations for model sync (ensures all indexes and constraints)
+	if err := db.Migrate(
+		&models.Chat{},
+		&models.ChatMember{},
+		&models.Message{},
+		&models.MessageReaction{},
+		&models.MessageReadReceipt{},
+	); err != nil {
+		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
 
 	log.Info("Database connected and migrations completed")
@@ -65,13 +78,13 @@ func main() {
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
-	// Initialize WebSocket hub
-	wsHub := websocket.NewHub()
-	go wsHub.Run()
-
 	// Initialize usecases
 	chatUsecase := usecase.NewChatUsecase(chatRepo, messageRepo)
 	messageUsecase := usecase.NewMessageUsecase(messageRepo, chatRepo)
+
+	// Initialize WebSocket hub С messageUsecase
+	wsHub := websocket.NewHub(messageUsecase)
+	go wsHub.Run()
 
 	// Initialize handlers
 	chatHandler := handlers.NewChatHandler(chatUsecase)
@@ -127,9 +140,12 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
-	// API v1 routes
+	// WebSocket endpoint БЕЗ JWT middleware (обрабатывает аутентификацию самостоятельно)
+	router.GET("/api/v1/ws", wsHandler.HandleWebSocket) // GET /api/v1/ws
+
+	// API v1 routes с JWT middleware
 	v1 := router.Group("/api/v1")
-	v1.Use(middleware.JWTMiddleware(jwtConfig)) // All routes require authentication
+	v1.Use(middleware.JWTMiddleware(jwtConfig)) // JWT middleware только для этих routes
 	{
 		// Chat routes
 		chats := v1.Group("/chats")
@@ -159,9 +175,6 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			// Message by chat
 			messages.GET("/chat/:chatId", messageHandler.GetMessagesByChat) // GET /api/v1/messages/chat/:chatId
 		}
-
-		// WebSocket connection
-		v1.GET("/ws", wsHandler.HandleWebSocket) // GET /api/v1/ws
 	}
 }
 
