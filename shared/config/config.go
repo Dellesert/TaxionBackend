@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 )
@@ -36,28 +37,61 @@ type ServerConfig struct {
 }
 
 // LoadConfig loads configuration from environment variables
-// LoadConfig loads configuration from environment variables
 func LoadConfig() (*Config, error) {
-	// ВРЕМЕННЫЙ DEBUG - показываем текущую директорию
+	// Определяем режим запуска (Docker или локально)
+	environment := os.Getenv("ENVIRONMENT")
+	isDocker := os.Getenv("DOCKER") == "true" || environment == "production"
+
 	pwd, _ := os.Getwd()
 	fmt.Printf("Current working directory: %s\n", pwd)
+	fmt.Printf("Environment: %s, Docker: %v\n", environment, isDocker)
 
-	// Попробуем загрузить .env файл
-	if err := godotenv.Load(); err != nil {
-		fmt.Printf("Failed to load .env from current dir: %v\n", err)
+	// Пытаемся загрузить .env файлы в порядке приоритета
+	loaded := false
 
-		// Попробуем загрузить из корня проекта
-		if err := godotenv.Load("../../.env"); err != nil {
-			fmt.Printf("Failed to load .env from ../../.env: %v\n", err)
+	// 1. Сначала пробуем .env.local (для локальной разработки)
+	if !isDocker {
+		if err := tryLoadEnvFile(".env.local"); err == nil {
+			fmt.Println("✅ Successfully loaded .env.local")
+			loaded = true
 		} else {
-			fmt.Println("Successfully loaded .env from ../../.env")
+			fmt.Printf("⚠️  .env.local not found: %v\n", err)
 		}
-	} else {
-		fmt.Println("Successfully loaded .env from current directory")
 	}
 
-	// Показываем что загрузилось
+	// 2. Если не загрузился .env.local, пробуем основной .env
+	if !loaded {
+		if err := tryLoadEnvFile(".env"); err == nil {
+			fmt.Println("✅ Successfully loaded .env")
+			loaded = true
+		} else {
+			fmt.Printf("⚠️  .env not found: %v\n", err)
+		}
+	}
+
+	// 3. Пробуем найти .env файлы в корне проекта
+	if !loaded {
+		rootPaths := []string{"../../.env.local", "../../.env", "../.env.local", "../.env"}
+		for _, path := range rootPaths {
+			if err := tryLoadEnvFile(path); err == nil {
+				fmt.Printf("✅ Successfully loaded %s\n", path)
+				loaded = true
+				break
+			}
+		}
+	}
+
+	if !loaded {
+		fmt.Println("⚠️  No .env file loaded, using only environment variables")
+	}
+
+	// Получаем переменные окружения
 	jwtSecret := os.Getenv("JWT_SECRET")
+	databaseURL := os.Getenv("DATABASE_URL")
+	redisURL := os.Getenv("REDIS_URL")
+	serverPort := os.Getenv("SERVER_PORT")
+
+	// DEBUG: показываем что загрузилось
 	if jwtSecret != "" {
 		if len(jwtSecret) > 10 {
 			fmt.Printf("JWT_SECRET loaded: %s...%s (length: %d)\n",
@@ -66,21 +100,25 @@ func LoadConfig() (*Config, error) {
 			fmt.Printf("JWT_SECRET is short: '%s' (length: %d)\n", jwtSecret, len(jwtSecret))
 		}
 	} else {
-		fmt.Println("JWT_SECRET is empty!")
+		fmt.Println("❌ JWT_SECRET is empty!")
 	}
+
+	fmt.Printf("DATABASE_URL: %s\n", maskURL(databaseURL))
+	fmt.Printf("REDIS_URL: %s\n", maskURL(redisURL))
+	fmt.Printf("SERVER_PORT: %s\n", serverPort)
 
 	config := &Config{
 		Database: DatabaseConfig{
-			URL: os.Getenv("DATABASE_URL"),
+			URL: databaseURL,
 		},
 		Redis: RedisConfig{
-			URL: os.Getenv("REDIS_URL"),
+			URL: redisURL,
 		},
 		JWT: JWTConfig{
 			Secret: jwtSecret,
 		},
 		Server: ServerConfig{
-			Port: os.Getenv("SERVER_PORT"),
+			Port: serverPort,
 		},
 	}
 
@@ -90,6 +128,21 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return config, nil
+}
+
+// tryLoadEnvFile пытается загрузить .env файл
+func tryLoadEnvFile(filename string) error {
+	// Проверяем существование файла
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		return fmt.Errorf("file %s does not exist", filename)
+	}
+
+	// Загружаем файл
+	if err := godotenv.Load(filename); err != nil {
+		return fmt.Errorf("failed to load %s: %w", filename, err)
+	}
+
+	return nil
 }
 
 // validateConfig validates that required configuration fields are present
@@ -111,4 +164,41 @@ func validateConfig(config *Config) error {
 	}
 
 	return nil
+}
+
+// maskURL masks sensitive parts of URLs for logging
+func maskURL(url string) string {
+	if url == "" {
+		return "❌ not set"
+	}
+
+	// Простое маскирование - показываем только схему и хост
+	if len(url) > 20 {
+		return url[:10] + "***" + url[len(url)-7:]
+	}
+
+	return "***"
+}
+
+// GetProjectRoot пытается найти корень проекта
+func GetProjectRoot() string {
+	// Начинаем с текущей директории
+	dir, _ := os.Getwd()
+
+	// Поднимаемся вверх, ища go.mod
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break // Достигли корня файловой системы
+		}
+		dir = parent
+	}
+
+	// Если не нашли, возвращаем текущую директорию
+	current, _ := os.Getwd()
+	return current
 }
