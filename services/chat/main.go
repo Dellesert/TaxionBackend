@@ -47,7 +47,7 @@ func main() {
 	defer db.Close()
 
 	// Run database migrations
-	if err := db.Migrate(&models.Chat{}, &models.Message{}); err != nil {
+	if err := db.Migrate(&models.Chat{}, &models.ChatMember{}, &models.Message{}); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -134,11 +134,12 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		// Chat routes
 		chats := v1.Group("/chats")
 		{
-			chats.GET("", chatHandler.GetChats)          // GET /api/v1/chats
-			chats.POST("", chatHandler.CreateChat)       // POST /api/v1/chats
-			chats.GET("/:id", chatHandler.GetChat)       // GET /api/v1/chats/:id
-			chats.PUT("/:id", chatHandler.UpdateChat)    // PUT /api/v1/chats/:id
-			chats.DELETE("/:id", chatHandler.DeleteChat) // DELETE /api/v1/chats/:id
+			chats.GET("", chatHandler.GetChats)           // GET /api/v1/chats
+			chats.POST("", chatHandler.CreateChat)        // POST /api/v1/chats
+			chats.POST("/:id/join", chatHandler.JoinChat) // POST /api/v1/chats/:id/join
+			chats.GET("/:id", chatHandler.GetChat)        // GET /api/v1/chats/:id
+			chats.PUT("/:id", chatHandler.UpdateChat)     // PUT /api/v1/chats/:id
+			chats.DELETE("/:id", chatHandler.DeleteChat)  // DELETE /api/v1/chats/:id
 
 			// Chat members
 			chats.GET("/:id/members", chatHandler.GetChatMembers)              // GET /api/v1/chats/:id/members

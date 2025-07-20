@@ -382,8 +382,14 @@ func (uc *chatUsecase) CreateChat(userID uint, req *models.CreateChatRequest) (*
 		return nil, fmt.Errorf("failed to create chat: %w", err)
 	}
 
-	// Add additional members
+	// ИСПРАВЛЕНИЕ: Исключаем создателя из списка участников
+	// AfterCreate хук уже добавляет создателя как owner
 	for _, memberID := range req.MemberIDs {
+		// Пропускаем создателя чата - он уже добавлен как owner
+		if memberID == userID {
+			continue
+		}
+
 		member := &models.ChatMember{
 			ChatID:   chat.ID,
 			UserID:   memberID,

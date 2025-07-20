@@ -36,11 +36,37 @@ type ServerConfig struct {
 }
 
 // LoadConfig loads configuration from environment variables
+// LoadConfig loads configuration from environment variables
 func LoadConfig() (*Config, error) {
-	// Load .env file if it exists
+	// ВРЕМЕННЫЙ DEBUG - показываем текущую директорию
+	pwd, _ := os.Getwd()
+	fmt.Printf("Current working directory: %s\n", pwd)
+
+	// Попробуем загрузить .env файл
 	if err := godotenv.Load(); err != nil {
-		// .env file might not exist, which is ok
-		fmt.Println("No .env file found, using system environment variables")
+		fmt.Printf("Failed to load .env from current dir: %v\n", err)
+
+		// Попробуем загрузить из корня проекта
+		if err := godotenv.Load("../../.env"); err != nil {
+			fmt.Printf("Failed to load .env from ../../.env: %v\n", err)
+		} else {
+			fmt.Println("Successfully loaded .env from ../../.env")
+		}
+	} else {
+		fmt.Println("Successfully loaded .env from current directory")
+	}
+
+	// Показываем что загрузилось
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret != "" {
+		if len(jwtSecret) > 10 {
+			fmt.Printf("JWT_SECRET loaded: %s...%s (length: %d)\n",
+				jwtSecret[:5], jwtSecret[len(jwtSecret)-5:], len(jwtSecret))
+		} else {
+			fmt.Printf("JWT_SECRET is short: '%s' (length: %d)\n", jwtSecret, len(jwtSecret))
+		}
+	} else {
+		fmt.Println("JWT_SECRET is empty!")
 	}
 
 	config := &Config{
@@ -51,7 +77,7 @@ func LoadConfig() (*Config, error) {
 			URL: os.Getenv("REDIS_URL"),
 		},
 		JWT: JWTConfig{
-			Secret: os.Getenv("JWT_SECRET"),
+			Secret: jwtSecret,
 		},
 		Server: ServerConfig{
 			Port: os.Getenv("SERVER_PORT"),

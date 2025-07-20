@@ -682,3 +682,88 @@ func (h *ChatHandler) RemoveChatMember(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// JoinChat handles joining a chat
+func (h *ChatHandler) JoinChat(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	idStr := c.Param("id")
+	chatID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.chatUsecase.JoinChat(userID, uint(chatID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Error("Failed to join chat")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to join chat"
+
+		if strings.Contains(err.Error(), "not active") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Chat is not active"
+		} else if strings.Contains(err.Error(), "already a member") {
+			statusCode = http.StatusConflict
+			errorMessage = "User is already a member of this chat"
+		} else if strings.Contains(err.Error(), "private chat") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot join private chat"
+		} else if strings.Contains(err.Error(), "maximum member limit") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Chat has reached maximum member limit"
+		} else if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Chat not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chatID,
+	}).Info("User joined chat successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Successfully joined chat",
+		"request_id": requestID,
+	})
+}
