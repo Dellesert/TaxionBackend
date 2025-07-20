@@ -6,20 +6,20 @@ services:
     image: postgres:15-alpine
     container_name: tachyon-postgres
     environment:
-      POSTGRES_DB: tachyon_messenger
-      POSTGRES_USER: tachyon_user
-      POSTGRES_PASSWORD: tachyon_password
+      POSTGRES_DB: ${POSTGRES_DB:-tachyon_messenger}
+      POSTGRES_USER: ${POSTGRES_USER:-tachyon_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tachyon_password}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     networks:
       - tachyon-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tachyon_user -d tachyon_messenger"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tachyon_user} -d ${POSTGRES_DB:-tachyon_messenger}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,11 +29,11 @@ services:
   redis:
     image: redis:7-alpine
     container_name: tachyon-redis
-    command: redis-server --appendonly yes --requirepass redis_password
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis_password}
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     networks:
       - tachyon-network
     restart: unless-stopped
@@ -51,28 +51,15 @@ services:
       dockerfile: services/user/Dockerfile
     container_name: tachyon-user-service
     ports:
-      - "8081:8081"
+      - "${USER_SERVICE_PORT:-8081}:8081"
+    env_file:
+      - .env
     environment:
-      # Database configuration
-      - DATABASE_URL=postgres://tachyon_user:tachyon_password@postgres:5432/tachyon_messenger?sslmode=disable
-      
-      # Redis configuration
-      - REDIS_URL=redis://:redis_password@redis:6379
-      
-      # JWT configuration
-      - JWT_SECRET=tachyon-super-secret-jwt-key-change-in-production-12345
-      
-      # Server configuration
-      - USER_SERVICE_PORT=8081
+      # Override specific values if needed
       - SERVER_PORT=8081
-      
-      # Environment settings
-      - ENVIRONMENT=development
-      - GIN_MODE=debug
-      
-      # Logging
-      - LOG_LEVEL=info
-      - LOG_FORMAT=json
+      - USER_SERVICE_PORT=8081
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,7 +75,6 @@ services:
       start_period: 40s
       retries: 3
     volumes:
-      # Mount logs directory for development
       - ./logs:/app/logs
     labels:
       - "com.tachyon.service=user-service"
@@ -102,28 +88,15 @@ services:
       dockerfile: services/chat/Dockerfile
     container_name: tachyon-chat-service
     ports:
-      - "8082:8082"
+      - "${CHAT_SERVICE_PORT:-8082}:8082"
+    env_file:
+      - .env
     environment:
-      # Database configuration
-      - DATABASE_URL=postgres://tachyon_user:tachyon_password@postgres:5432/tachyon_messenger?sslmode=disable
-      
-      # Redis configuration
-      - REDIS_URL=redis://:redis_password@redis:6379
-      
-      # JWT configuration (ДОЛЖЕН БЫТЬ ОДИНАКОВЫМ с User Service!)
-      - JWT_SECRET=tachyon-super-secret-jwt-key-change-in-production-12345
-      
-      # Server configuration
-      - CHAT_SERVICE_PORT=8082
+      # Override specific values if needed
       - SERVER_PORT=8082
-      
-      # Environment settings
-      - ENVIRONMENT=development
-      - GIN_MODE=debug
-      
-      # Logging
-      - LOG_LEVEL=info
-      - LOG_FORMAT=json
+      - CHAT_SERVICE_PORT=8082
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,7 +114,6 @@ services:
       start_period: 40s
       retries: 3
     volumes:
-      # Mount logs directory for development
       - ./logs:/app/logs
     labels:
       - "com.tachyon.service=chat-service"
@@ -155,22 +127,19 @@ services:
       dockerfile: services/gateway/Dockerfile
     container_name: tachyon-gateway
     ports:
-      - "8080:8080"
+      - "${GATEWAY_PORT:-8080}:8080"
+    env_file:
+      - .env
     environment:
-      # Service URLs
+      # Service URLs - используем внутренние Docker имена сервисов
       - USER_SERVICE_URL=http://user-service:8081
       - CHAT_SERVICE_URL=http://chat-service:8082
       
-      # Server configuration
+      # Override specific values if needed
       - SERVER_PORT=8080
-      
-      # Environment settings
-      - ENVIRONMENT=development
-      - GIN_MODE=debug
-      
-      # Logging
-      - LOG_LEVEL=info
-      - LOG_FORMAT=json
+      - GATEWAY_PORT=8080
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
     depends_on:
       user-service:
         condition: service_healthy
