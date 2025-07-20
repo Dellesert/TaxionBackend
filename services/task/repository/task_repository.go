@@ -53,13 +53,6 @@ func NewTaskRepository(db *database.DB) TaskRepository {
 	}
 }
 
-// NewTaskCommentRepository creates a new task comment repository
-func NewTaskCommentRepository(db *database.DB) TaskCommentRepository {
-	return &taskCommentRepository{
-		db: db,
-	}
-}
-
 // Task Repository Methods
 
 // Create creates a new task
@@ -409,75 +402,4 @@ func (r *taskRepository) loadCommentCounts(tasks []*models.Task) {
 	for _, task := range tasks {
 		task.CommentCount = countMap[task.ID]
 	}
-}
-
-// Task Comment Repository Methods
-
-// Create creates a new task comment
-func (r *taskCommentRepository) Create(comment *models.TaskComment) error {
-	if err := r.db.Create(comment).Error; err != nil {
-		return fmt.Errorf("failed to create task comment: %w", err)
-	}
-	return nil
-}
-
-// GetByID retrieves a task comment by ID
-func (r *taskCommentRepository) GetByID(id uint) (*models.TaskComment, error) {
-	var comment models.TaskComment
-	err := r.db.First(&comment, id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("task comment not found")
-		}
-		return nil, fmt.Errorf("failed to get task comment: %w", err)
-	}
-	return &comment, nil
-}
-
-// GetByTaskID retrieves all comments for a task
-func (r *taskCommentRepository) GetByTaskID(taskID uint) ([]*models.TaskComment, error) {
-	var comments []*models.TaskComment
-	err := r.db.Where("task_id = ?", taskID).Order("created_at ASC").Find(&comments).Error
-	if err != nil {
-		return nil, fmt.Errorf("failed to get task comments: %w", err)
-	}
-	return comments, nil
-}
-
-// Update updates an existing task comment
-func (r *taskCommentRepository) Update(comment *models.TaskComment) error {
-	result := r.db.Save(comment)
-	if result.Error != nil {
-		return fmt.Errorf("failed to update task comment: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("task comment not found")
-	}
-	return nil
-}
-
-// Delete soft deletes a task comment by ID
-func (r *taskCommentRepository) Delete(id uint) error {
-	result := r.db.Delete(&models.TaskComment{}, id)
-	if result.Error != nil {
-		return fmt.Errorf("failed to delete task comment: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return fmt.Errorf("task comment not found")
-	}
-	return nil
-}
-
-// GetCommentsWithReplies retrieves all comments for a task with their replies
-func (r *taskCommentRepository) GetCommentsWithReplies(taskID uint) ([]*models.TaskComment, error) {
-	var comments []*models.TaskComment
-	err := r.db.Preload("Replies", func(db *gorm.DB) *gorm.DB {
-		return db.Order("created_at ASC")
-	}).Where("task_id = ? AND parent_id IS NULL", taskID).
-		Order("created_at ASC").Find(&comments).Error
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get task comments with replies: %w", err)
-	}
-	return comments, nil
 }

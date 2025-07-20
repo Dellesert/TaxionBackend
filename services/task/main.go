@@ -69,10 +69,9 @@ func main() {
 
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase)
-	healthHandler := handlers.NewHealthHandler()
 
 	// Setup routes
-	r := setupRoutes(taskHandler, healthHandler, jwtConfig)
+	r := setupRoutes(taskHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -114,7 +113,6 @@ func main() {
 
 func setupRoutes(
 	taskHandler *handlers.TaskHandler,
-	healthHandler *handlers.HealthHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -125,17 +123,35 @@ func setupRoutes(
 	r.Use(requestid.New())
 
 	// CORS middleware
-	r.Use(middleware.CORS())
+	r.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
 
 	// Health endpoint (no auth required)
-	r.GET("/health", healthHandler.Health)
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "healthy",
+			"service":   "task-service",
+			"timestamp": time.Now().UTC(),
+			"version":   "1.0.0",
+		})
+	})
 
 	// API routes
 	api := r.Group("/api/v1")
 
 	// Protected routes (require JWT)
 	protected := api.Group("")
-	protected.Use(middleware.JWTAuth(jwtConfig))
+	protected.Use(middleware.JWTMiddleware(jwtConfig))
 	{
 		// Task endpoints
 		protected.GET("/tasks", taskHandler.GetTasks)
