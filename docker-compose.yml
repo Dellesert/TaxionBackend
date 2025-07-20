@@ -193,6 +193,43 @@ services:
       - "com.tachyon.service=calendar-service"
       - "com.tachyon.version=1.0.0"
       - "com.tachyon.description=Tachyon Calendar Service"
+  
+   # Poll Service
+  poll-service:
+    build:
+      context: .
+      dockerfile: services/poll/Dockerfile
+    container_name: tachyon-poll-service
+    ports:
+      - "${POLL_SERVICE_PORT:-8085}:8085"
+    env_file:
+      - .env
+    environment:
+      # Override specific values if needed
+      - SERVER_PORT=8085
+      - POLL_SERVICE_PORT=8085
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tachyon-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    volumes:
+      - ./logs:/app/logs
+    labels:
+      - "com.tachyon.service=poll-service"
+      - "com.tachyon.version=1.0.0"
+      - "com.tachyon.description=Tachyon Poll Service"
 
   # Gateway Service (Reverse Proxy)
   gateway:
