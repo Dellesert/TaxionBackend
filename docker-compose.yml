@@ -120,6 +120,43 @@ services:
       - "com.tachyon.version=1.0.0"
       - "com.tachyon.description=Tachyon Chat Service with WebSocket"
 
+  # Task Service
+  task-service:
+    build:
+      context: .
+      dockerfile: services/task/Dockerfile
+    container_name: tachyon-task-service
+    ports:
+      - "${TASK_SERVICE_PORT:-8083}:8083"
+    env_file:
+      - .env
+    environment:
+      # Override specific values if needed
+      - SERVER_PORT=8083
+      - TASK_SERVICE_PORT=8083
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tachyon-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    volumes:
+      - ./logs:/app/logs
+    labels:
+      - "com.tachyon.service=task-service"
+      - "com.tachyon.version=1.0.0"
+      - "com.tachyon.description=Tachyon Task Management Service"
+
   # Gateway Service (Reverse Proxy)
   gateway:
     build:
