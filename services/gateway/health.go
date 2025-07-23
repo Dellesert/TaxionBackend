@@ -1,3 +1,4 @@
+// File: services/gateway/health.go
 package main
 
 import (
@@ -53,14 +54,14 @@ func servicesHealthHandler(c *gin.Context) {
 	// List of services to check
 	services := []ServiceConfig{
 		proxyConfig.UserService,
-		// Add other services here when they're implemented
-		{Name: "chat-service", URL: getEnvOrDefault("CHAT_SERVICE_URL", "http://localhost:8082")},
-		{Name: "task-service", URL: getEnvOrDefault("TASK_SERVICE_URL", "http://localhost:8083")},
-		{Name: "calendar-service", URL: getEnvOrDefault("CALENDAR_SERVICE_URL", "http://localhost:8084")},
-		{Name: "poll-service", URL: getEnvOrDefault("POLL_SERVICE_URL", "http://localhost:8085")},
-		{Name: "analytics-service", URL: getEnvOrDefault("ANALYTICS_SERVICE_URL", "http://localhost:8086")},
-		{Name: "notification-service", URL: getEnvOrDefault("NOTIFICATION_SERVICE_URL", "http://localhost:8087")},
-		{Name: "file-service", URL: getEnvOrDefault("FILE_SERVICE_URL", "http://localhost:8088")},
+		proxyConfig.ChatService,
+		proxyConfig.TaskService,
+		proxyConfig.CalendarService,
+		proxyConfig.PollService,
+		proxyConfig.NotificationService,
+		// Add file and analytics services when they're implemented
+		// proxyConfig.FileService,
+		// proxyConfig.AnalyticsService,
 	}
 
 	// Check health of each service
@@ -110,52 +111,44 @@ func servicesHealthHandler(c *gin.Context) {
 		"overall_status": overallStatus,
 		"healthy_count":  healthyCount,
 		"total_services": len(services),
-	}).Info("Services health check completed")
+	}).Info("Service health check completed")
 
 	c.JSON(httpStatus, health)
 }
 
-// checkServiceHealth performs health check for a single service
+// checkServiceHealth checks the health of a specific service
 func checkServiceHealth(service ServiceConfig) ServiceHealth {
 	startTime := time.Now()
-
 	health := ServiceHealth{
 		Name:      service.Name,
+		Status:    "unknown",
 		URL:       service.URL,
 		Timestamp: time.Now().UTC(),
 	}
 
 	// Create health check URL
-	healthURL := fmt.Sprintf("%s/health", service.URL)
+	healthURL := service.URL + "/health"
 
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	// Create context with timeout
+	// Create request with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Create request
 	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
 	if err != nil {
 		health.Status = "unhealthy"
 		health.Error = fmt.Sprintf("Failed to create request: %v", err)
-		health.Latency = time.Since(startTime).String()
 		return health
 	}
 
-	// Add headers
-	req.Header.Set("User-Agent", "gateway-health-checker/1.0")
-	req.Header.Set("Accept", "application/json")
-
 	// Make the request
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		health.Status = "unhealthy"
 		health.Error = fmt.Sprintf("Request failed: %v", err)
-		health.Latency = time.Since(startTime).String()
 
 		logger.WithFields(map[string]interface{}{
 			"service": service.Name,
@@ -196,7 +189,6 @@ func checkServiceHealth(service ServiceConfig) ServiceHealth {
 
 // readinessHandler checks if gateway is ready to serve traffic
 func readinessHandler(c *gin.Context) {
-	// For now, just check if we can reach our configuration
 	proxyConfig := getProxyConfig()
 
 	ready := true
@@ -206,6 +198,11 @@ func readinessHandler(c *gin.Context) {
 	if proxyConfig.UserService.URL == "" {
 		ready = false
 		issues = append(issues, "user-service URL not configured")
+	}
+
+	if proxyConfig.ChatService.URL == "" {
+		ready = false
+		issues = append(issues, "chat-service URL not configured")
 	}
 
 	response := gin.H{

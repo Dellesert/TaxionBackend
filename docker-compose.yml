@@ -1,7 +1,11 @@
 version: '3.8'
 
 services:
-  # Database
+  # ==============================================
+  # Infrastructure Services
+  # ==============================================
+  
+  # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
     container_name: tachyon-postgres
@@ -24,8 +28,12 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    labels:
+      - "com.tachyon.service=postgres"
+      - "com.tachyon.version=15"
+      - "com.tachyon.description=PostgreSQL Database"
 
-  # Redis Cache
+  # Redis Cache & Session Store
   redis:
     image: redis:7-alpine
     container_name: tachyon-redis
@@ -43,8 +51,16 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    labels:
+      - "com.tachyon.service=redis"
+      - "com.tachyon.version=7"
+      - "com.tachyon.description=Redis Cache and Session Store"
 
-  # User Service
+  # ==============================================
+  # Core Application Services
+  # ==============================================
+
+  # User Management Service
   user-service:
     build:
       context: .
@@ -55,7 +71,6 @@ services:
     env_file:
       - .env
     environment:
-      # Override specific values if needed
       - SERVER_PORT=8081
       - USER_SERVICE_PORT=8081
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -81,7 +96,7 @@ services:
       - "com.tachyon.version=1.0.0"
       - "com.tachyon.description=Tachyon User Management Service"
 
-  # Chat Service
+  # Chat & Messaging Service
   chat-service:
     build:
       context: .
@@ -92,7 +107,6 @@ services:
     env_file:
       - .env
     environment:
-      # Override specific values if needed
       - SERVER_PORT=8082
       - CHAT_SERVICE_PORT=8082
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -118,9 +132,9 @@ services:
     labels:
       - "com.tachyon.service=chat-service"
       - "com.tachyon.version=1.0.0"
-      - "com.tachyon.description=Tachyon Chat Service with WebSocket"
+      - "com.tachyon.description=Tachyon Chat Service with WebSocket Support"
 
-  # Task Service
+  # Task Management Service
   task-service:
     build:
       context: .
@@ -131,7 +145,6 @@ services:
     env_file:
       - .env
     environment:
-      # Override specific values if needed
       - SERVER_PORT=8083
       - TASK_SERVICE_PORT=8083
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -140,6 +153,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      user-service:
         condition: service_healthy
     networks:
       - tachyon-network
@@ -157,7 +172,7 @@ services:
       - "com.tachyon.version=1.0.0"
       - "com.tachyon.description=Tachyon Task Management Service"
   
-  # Calendar Service
+  # Calendar & Events Service
   calendar-service:
     build:
       context: .
@@ -168,7 +183,6 @@ services:
     env_file:
       - .env
     environment:
-      # Override specific values if needed
       - SERVER_PORT=8084
       - CALENDAR_SERVICE_PORT=8084
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -177,6 +191,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      user-service:
         condition: service_healthy
     networks:
       - tachyon-network
@@ -192,9 +208,9 @@ services:
     labels:
       - "com.tachyon.service=calendar-service"
       - "com.tachyon.version=1.0.0"
-      - "com.tachyon.description=Tachyon Calendar Service"
+      - "com.tachyon.description=Tachyon Calendar and Events Service"
   
-   # Poll Service
+  # Polls & Surveys Service
   poll-service:
     build:
       context: .
@@ -205,7 +221,6 @@ services:
     env_file:
       - .env
     environment:
-      # Override specific values if needed
       - SERVER_PORT=8085
       - POLL_SERVICE_PORT=8085
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -214,6 +229,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      user-service:
         condition: service_healthy
     networks:
       - tachyon-network
@@ -229,9 +246,9 @@ services:
     labels:
       - "com.tachyon.service=poll-service"
       - "com.tachyon.version=1.0.0"
-      - "com.tachyon.description=Tachyon Poll Service"
+      - "com.tachyon.description=Tachyon Polls and Surveys Service"
 
-# Notification Service
+  # Notification Service
   notification-service:
     build:
       context: .
@@ -242,15 +259,27 @@ services:
     env_file:
       - .env
     environment:
-      # Override specific values if needed
       - SERVER_PORT=8087
       - NOTIFICATION_SERVICE_PORT=8087
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - GIN_MODE=${GIN_MODE:-debug}
+      # Email configuration
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME:-Tachyon Messenger}
+      # Notification worker configuration
+      - NOTIFICATION_CONCURRENT_WORKERS=${NOTIFICATION_CONCURRENT_WORKERS:-5}
+      - NOTIFICATION_QUEUE_SIZE=${NOTIFICATION_QUEUE_SIZE:-1000}
+      - NOTIFICATION_RETRY_ATTEMPTS=${NOTIFICATION_RETRY_ATTEMPTS:-3}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      user-service:
         condition: service_healthy
     networks:
       - tachyon-network
@@ -266,9 +295,12 @@ services:
     labels:
       - "com.tachyon.service=notification-service"
       - "com.tachyon.version=1.0.0"
-      - "com.tachyon.description=Tachyon Notification Service"
+      - "com.tachyon.description=Tachyon Notification Service with Email Support"
 
-  # Gateway Service (Reverse Proxy)
+  # ==============================================
+  # API Gateway (Reverse Proxy)
+  # ==============================================
+
   gateway:
     build:
       context: .
@@ -282,16 +314,32 @@ services:
       # Service URLs - используем внутренние Docker имена сервисов
       - USER_SERVICE_URL=http://user-service:8081
       - CHAT_SERVICE_URL=http://chat-service:8082
+      - TASK_SERVICE_URL=http://task-service:8083
+      - CALENDAR_SERVICE_URL=http://calendar-service:8084
+      - POLL_SERVICE_URL=http://poll-service:8085
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8087
       
-      # Override specific values if needed
+      # Gateway configuration
       - SERVER_PORT=8080
       - GATEWAY_PORT=8080
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - GIN_MODE=${GIN_MODE:-debug}
+      
+      # CORS settings
+      - ENABLE_CORS=${ENABLE_CORS:-true}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
     depends_on:
       user-service:
         condition: service_healthy
       chat-service:
+        condition: service_healthy
+      task-service:
+        condition: service_healthy
+      calendar-service:
+        condition: service_healthy
+      poll-service:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
     networks:
       - tachyon-network
@@ -300,20 +348,35 @@ services:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
-      start_period: 30s
+      start_period: 45s
       retries: 3
+    volumes:
+      - ./logs:/app/logs
     labels:
       - "com.tachyon.service=gateway"
       - "com.tachyon.version=1.0.0"
-      - "com.tachyon.description=Tachyon API Gateway"
+      - "com.tachyon.description=Tachyon API Gateway and Reverse Proxy"
+
+# ==============================================
+# Volumes
+# ==============================================
 
 volumes:
   postgres_data:
     driver: local
     name: tachyon_postgres_data
+    labels:
+      - "com.tachyon.volume=database"
+      
   redis_data:
     driver: local
     name: tachyon_redis_data
+    labels:
+      - "com.tachyon.volume=cache"
+
+# ==============================================
+# Networks
+# ==============================================
 
 networks:
   tachyon-network:
@@ -323,3 +386,7 @@ networks:
       driver: default
       config:
         - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+    labels:
+      - "com.tachyon.network=main"
+      - "com.tachyon.description=Main network for Tachyon Messenger services"

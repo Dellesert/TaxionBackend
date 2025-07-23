@@ -1,3 +1,4 @@
+// File: services/gateway/proxy.go
 package main
 
 import (
@@ -24,8 +25,14 @@ type ServiceConfig struct {
 
 // ProxyConfig holds all service configurations
 type ProxyConfig struct {
-	UserService ServiceConfig
-	// Add other services here as needed
+	UserService         ServiceConfig
+	ChatService         ServiceConfig
+	TaskService         ServiceConfig
+	CalendarService     ServiceConfig
+	PollService         ServiceConfig
+	NotificationService ServiceConfig
+	FileService         ServiceConfig
+	AnalyticsService    ServiceConfig
 }
 
 // getProxyConfig returns service URLs configuration
@@ -35,7 +42,34 @@ func getProxyConfig() *ProxyConfig {
 			Name: "user-service",
 			URL:  getEnvOrDefault("USER_SERVICE_URL", "http://localhost:8081"),
 		},
-		// Add other services here
+		ChatService: ServiceConfig{
+			Name: "chat-service",
+			URL:  getEnvOrDefault("CHAT_SERVICE_URL", "http://localhost:8082"),
+		},
+		TaskService: ServiceConfig{
+			Name: "task-service",
+			URL:  getEnvOrDefault("TASK_SERVICE_URL", "http://localhost:8083"),
+		},
+		CalendarService: ServiceConfig{
+			Name: "calendar-service",
+			URL:  getEnvOrDefault("CALENDAR_SERVICE_URL", "http://localhost:8084"),
+		},
+		PollService: ServiceConfig{
+			Name: "poll-service",
+			URL:  getEnvOrDefault("POLL_SERVICE_URL", "http://localhost:8085"),
+		},
+		NotificationService: ServiceConfig{
+			Name: "notification-service",
+			URL:  getEnvOrDefault("NOTIFICATION_SERVICE_URL", "http://localhost:8087"),
+		},
+		FileService: ServiceConfig{
+			Name: "file-service",
+			URL:  getEnvOrDefault("FILE_SERVICE_URL", "http://localhost:8088"),
+		},
+		AnalyticsService: ServiceConfig{
+			Name: "analytics-service",
+			URL:  getEnvOrDefault("ANALYTICS_SERVICE_URL", "http://localhost:8086"),
+		},
 	}
 }
 

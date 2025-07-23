@@ -138,7 +138,7 @@ func main() {
 // setupRoutes configures all routes for the chat service
 func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageHandler *handlers.MessageHandler, wsHandler *handlers.WebSocketHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
-	router.GET("/health", healthHandler)
+	router.Any("/health", healthHandler)
 
 	// WebSocket endpoint БЕЗ JWT middleware (обрабатывает аутентификацию самостоятельно)
 	router.GET("/api/v1/ws", wsHandler.HandleWebSocket) // GET /api/v1/ws

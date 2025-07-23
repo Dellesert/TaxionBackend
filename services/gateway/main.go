@@ -1,3 +1,4 @@
+// File: services/gateway/main.go
 package main
 
 import (
@@ -83,8 +84,11 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 	// Get proxy configuration
 	proxyConfig := getProxyConfig()
 
-	// Health check endpoint
+	// Health check endpoints
 	router.GET("/health", healthHandler)
+	router.GET("/health/services", servicesHealthHandler)
+	router.GET("/health/ready", readinessHandler)
+	router.GET("/health/live", livenessHandler)
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")
@@ -104,47 +108,37 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			users.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
-		// Chat routes (placeholder for now)
+		// Chat routes - proxy to chat service
 		chats := v1.Group("/chats")
 		{
-			chats.GET("", placeholderHandler("get chats"))
-			chats.POST("", placeholderHandler("create chat"))
-			chats.GET("/:id", placeholderHandler("get chat"))
-			chats.PUT("/:id", placeholderHandler("update chat"))
-			chats.DELETE("/:id", placeholderHandler("delete chat"))
+			chats.Any("/*path", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 		}
 
-		// Task routes (placeholder for now)
+		// Task routes - proxy to task service
 		tasks := v1.Group("/tasks")
 		{
-			tasks.GET("", placeholderHandler("get tasks"))
-			tasks.POST("", placeholderHandler("create task"))
-			tasks.GET("/:id", placeholderHandler("get task"))
-			tasks.PUT("/:id", placeholderHandler("update task"))
-			tasks.DELETE("/:id", placeholderHandler("delete task"))
+			tasks.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
 		}
 
-		// Calendar routes (placeholder for now)
+		// Calendar routes - proxy to calendar service
 		calendar := v1.Group("/calendar")
 		{
-			calendar.GET("/events", placeholderHandler("get events"))
-			calendar.POST("/events", placeholderHandler("create event"))
-			calendar.GET("/events/:id", placeholderHandler("get event"))
-			calendar.PUT("/events/:id", placeholderHandler("update event"))
-			calendar.DELETE("/events/:id", placeholderHandler("delete event"))
+			calendar.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
 		}
 
-		// Poll routes (placeholder for now)
+		// Poll routes - proxy to poll service
 		polls := v1.Group("/polls")
 		{
-			polls.GET("", placeholderHandler("get polls"))
-			polls.POST("", placeholderHandler("create poll"))
-			polls.GET("/:id", placeholderHandler("get poll"))
-			polls.PUT("/:id", placeholderHandler("update poll"))
-			polls.DELETE("/:id", placeholderHandler("delete poll"))
+			polls.Any("/*path", proxyRequest(proxyConfig.PollService.URL, proxyConfig.PollService.Name))
 		}
 
-		// File routes (placeholder for now)
+		// Notification routes - proxy to notification service
+		notifications := v1.Group("/notifications")
+		{
+			notifications.Any("/*path", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
+		}
+
+		// File routes - proxy to file service (placeholder for now)
 		files := v1.Group("/files")
 		{
 			files.POST("/upload", placeholderHandler("upload file"))
@@ -152,7 +146,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			files.DELETE("/:id", placeholderHandler("delete file"))
 		}
 
-		// Analytics routes (placeholder for now)
+		// Analytics routes - proxy to analytics service (placeholder for now)
 		analytics := v1.Group("/analytics")
 		{
 			analytics.GET("/dashboard", placeholderHandler("get dashboard"))
@@ -160,8 +154,8 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		}
 	}
 
-	// WebSocket endpoint placeholder
-	router.GET("/ws", placeholderHandler("websocket"))
+	// WebSocket endpoint - proxy to chat service for real-time communication
+	router.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 }
 
 // placeholderHandler creates a placeholder handler for development
