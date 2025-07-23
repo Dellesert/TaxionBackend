@@ -375,8 +375,8 @@ func getServerPort() string {
 		return port
 	}
 
-	// По умолчанию используем 8086 для notification service
-	return "8086"
+	// По умолчанию используем 8087 для notification service
+	return "8087"
 }
 
 func getLogLevel() string {
