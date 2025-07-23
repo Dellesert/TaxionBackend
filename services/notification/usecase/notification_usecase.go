@@ -710,8 +710,22 @@ func (u *notificationUsecase) RetryFailedDeliveries() error {
 
 	retriedCount := 0
 	for _, delivery := range deliveries {
+		// Get the notification for this delivery
+		notification, err := u.notificationRepo.GetNotificationByID(delivery.NotificationID)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"delivery_id":     delivery.ID,
+				"notification_id": delivery.NotificationID,
+				"error":           err.Error(),
+			}).Error("Failed to get notification for retry")
+
+			// Update delivery status to failed
+			u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, err.Error())
+			continue
+		}
+
 		// Retry sending through the specific channel
-		if err := u.sendThroughChannel(delivery.Notification, delivery.Channel); err != nil {
+		if err := u.sendThroughChannel(notification, delivery.Channel); err != nil {
 			// Update delivery status
 			u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, err.Error())
 			continue

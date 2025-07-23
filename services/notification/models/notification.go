@@ -340,12 +340,12 @@ type NotificationDeliveryResponse struct {
 
 // NotificationStatsResponse represents notification statistics
 type NotificationStatsResponse struct {
-	TotalNotifications   int `json:"total_notifications"`
-	UnreadNotifications  int `json:"unread_notifications"`
-	PendingNotifications int `json:"pending_notifications"`
-	FailedNotifications  int `json:"failed_notifications"`
-	TodayNotifications   int `json:"today_notifications"`
-	WeekNotifications    int `json:"week_notifications"`
+	TotalNotifications   int64 `json:"total_notifications"`
+	UnreadNotifications  int64 `json:"unread_notifications"`
+	PendingNotifications int64 `json:"pending_notifications"`
+	FailedNotifications  int64 `json:"failed_notifications"`
+	TodayNotifications   int64 `json:"today_notifications"`
+	WeekNotifications    int64 `json:"week_notifications"`
 }
 
 // ToResponse converts Notification model to NotificationResponse

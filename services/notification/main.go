@@ -130,7 +130,7 @@ func main() {
 	setupCommonMiddleware(router)
 
 	// Setup routes
-	setupRoutes(router, notificationHandler, jwtConfig, notificationWorker, redisClient, workerConfig)
+	setupRoutes(router, notificationHandler, jwtConfig, notificationWorker, redisClient, workerConfig, notificationUC)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -224,6 +224,7 @@ func setupRoutes(
 	notificationWorker *worker.Worker,
 	redisClient *redis.Client,
 	workerConfig *worker.WorkerConfig,
+	notificationUC usecase.NotificationUsecase,
 ) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
@@ -299,16 +300,17 @@ func healthHandler(c *gin.Context) {
 
 // startBackgroundTasks starts background maintenance tasks
 func startBackgroundTasks(notificationUC usecase.NotificationUsecase, notificationWorker *worker.Worker) {
+	// Initialize logger for background tasks
+	log := logger.New(&logger.Config{
+		Level:       getLogLevel(),
+		Format:      getLogFormat(),
+		Environment: os.Getenv("ENVIRONMENT"),
+	})
+
 	// Start scheduled notification processor
 	go func() {
 		ticker := time.NewTicker(1 * time.Minute) // Check every minute
 		defer ticker.Stop()
-
-		log := logger.New(&logger.Config{
-			Level:       getLogLevel(),
-			Format:      getLogFormat(),
-			Environment: os.Getenv("ENVIRONMENT"),
-		})
 
 		for {
 			select {
@@ -325,12 +327,6 @@ func startBackgroundTasks(notificationUC usecase.NotificationUsecase, notificati
 		ticker := time.NewTicker(5 * time.Minute) // Check every 5 minutes
 		defer ticker.Stop()
 
-		log := logger.New(&logger.Config{
-			Level:       getLogLevel(),
-			Format:      getLogFormat(),
-			Environment: os.Getenv("ENVIRONMENT"),
-		})
-
 		for {
 			select {
 			case <-ticker.C:
@@ -345,12 +341,6 @@ func startBackgroundTasks(notificationUC usecase.NotificationUsecase, notificati
 	go func() {
 		ticker := time.NewTicker(24 * time.Hour) // Run daily
 		defer ticker.Stop()
-
-		log := logger.New(&logger.Config{
-			Level:       getLogLevel(),
-			Format:      getLogFormat(),
-			Environment: os.Getenv("ENVIRONMENT"),
-		})
 
 		for {
 			select {
@@ -373,14 +363,20 @@ func startBackgroundTasks(notificationUC usecase.NotificationUsecase, notificati
 // Configuration helper functions
 
 func getServerPort() string {
-	port := os.Getenv("SERVER_PORT")
-	if port == "" {
-		port = os.Getenv("NOTIFICATION_SERVICE_PORT")
+	// Сначала проверяем специфичную переменную для notification service
+	port := os.Getenv("NOTIFICATION_SERVICE_PORT")
+	if port != "" {
+		return port
 	}
-	if port == "" {
-		port = "8086" // Default port for notification service
+
+	// Затем общую переменную SERVER_PORT
+	port = os.Getenv("SERVER_PORT")
+	if port != "" {
+		return port
 	}
-	return port
+
+	// По умолчанию используем 8086 для notification service
+	return "8086"
 }
 
 func getLogLevel() string {
@@ -442,7 +438,13 @@ func createSendNotificationHandler(w *worker.Worker) gin.HandlerFunc {
 			return
 		}
 
-		task := worker.CreateSingleNotificationTask(&req, req.Priority)
+		// Handle priority - if nil, use medium as default
+		priority := models.NotificationPriorityMedium
+		if req.Priority != nil {
+			priority = *req.Priority
+		}
+
+		task := worker.CreateSingleNotificationTask(&req, priority)
 		if err := w.AddTask(task); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error":   "Failed to queue notification",
