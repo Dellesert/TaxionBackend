@@ -96,10 +96,8 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// Authentication routes (placeholder for now)
 		auth := v1.Group("/auth")
 		{
-			auth.POST("/login", placeholderHandler("login"))
-			auth.POST("/register", placeholderHandler("register"))
-			auth.POST("/refresh", placeholderHandler("refresh"))
-			auth.POST("/logout", placeholderHandler("logout"))
+			auth.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+
 		}
 
 		// User routes - proxy to user service

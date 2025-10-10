@@ -141,6 +141,14 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		v1.POST("/register", authHandler.Register)
 		v1.POST("/login", authHandler.Login)
 
+		v1Auth := v1.Group("/auth")
+		{
+			v1Auth.POST("/register", authHandler.Register)
+			v1Auth.POST("/login", authHandler.Login)
+			v1Auth.POST("/logout", authHandler.Logout)
+			v1Auth.POST("/refresh", authHandler.RefreshToken)
+		}
+
 		// Protected user routes (require JWT authentication)
 		users := v1.Group("/users")
 		users.Use(middleware.JWTMiddleware(jwtConfig)) // Apply JWT middleware to all user routes
