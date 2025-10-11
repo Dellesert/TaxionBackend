@@ -327,7 +327,7 @@ services:
       
       # CORS settings
       - ENABLE_CORS=${ENABLE_CORS:-true}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:8080,http://localhost:8093}
     depends_on:
       user-service:
         condition: service_healthy

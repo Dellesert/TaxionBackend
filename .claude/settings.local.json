@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker logs:*)",
+      "Bash(docker-compose up:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker exec:*)",
+      "Bash(findstr:*)",
+      "Bash(set)",
+      "Bash($env:CORS_ORIGINS=\"http://localhost:3000,http://localhost:8080,http://localhost:8093\")",
+      "Bash(export CORS_ORIGINS=\"http://localhost:3000,http://localhost:8080,http://localhost:8093\")",
+      "Bash(curl:*)",
+      "Read(//d/Documents/GitHub/**)",
+      "Bash(netstat:*)",
+      "Bash(docker-compose build:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

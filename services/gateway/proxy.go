@@ -250,6 +250,13 @@ func shouldSkipHeader(header string) bool {
 		"Trailers",
 		"Transfer-Encoding",
 		"Upgrade",
+		// Skip CORS headers from backend services - gateway handles CORS
+		"Access-Control-Allow-Origin",
+		"Access-Control-Allow-Methods",
+		"Access-Control-Allow-Headers",
+		"Access-Control-Allow-Credentials",
+		"Access-Control-Expose-Headers",
+		"Access-Control-Max-Age",
 	}
 
 	headerLower := strings.ToLower(header)

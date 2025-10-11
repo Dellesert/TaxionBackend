@@ -1,35 +1,62 @@
 package middleware
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"tachyon-messenger/shared/logger"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
 )
 
-// CORSMiddleware returns CORS middleware with default configuration
+// CORSMiddleware returns custom CORS middleware to avoid duplicate headers
 func CORSMiddleware() gin.HandlerFunc {
-	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"*"} // Configure this properly in production
-	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"}
-	config.AllowHeaders = []string{
-		"Origin",
-		"Content-Type",
-		"Content-Length",
-		"Accept-Encoding",
-		"X-CSRF-Token",
-		"Authorization",
-		"X-Request-ID",
-		"X-Requested-With",
-	}
-	config.ExposeHeaders = []string{"X-Request-ID"}
-	config.AllowCredentials = true
-	config.MaxAge = 12 * time.Hour
+	// Read CORS origins from environment variable
+	corsOrigins := os.Getenv("CORS_ORIGINS")
+	var allowedOrigins []string
 
-	return cors.New(config)
+	if corsOrigins != "" {
+		// Split by comma and trim spaces
+		origins := strings.Split(corsOrigins, ",")
+		for _, origin := range origins {
+			allowedOrigins = append(allowedOrigins, strings.TrimSpace(origin))
+		}
+		logger.WithField("origins", allowedOrigins).Info("CORS configured from environment variable")
+	} else {
+		// Fallback to default origins
+		allowedOrigins = []string{"http://localhost:8093", "http://localhost:3000"}
+		logger.Warn("CORS_ORIGINS not set, using default origins")
+	}
+
+	// Create a map for fast origin lookup
+	allowedOriginsMap := make(map[string]bool)
+	for _, origin := range allowedOrigins {
+		allowedOriginsMap[origin] = true
+	}
+
+	return func(c *gin.Context) {
+		origin := c.Request.Header.Get("Origin")
+
+		// Check if origin is allowed
+		if origin != "" && allowedOriginsMap[origin] {
+			c.Header("Access-Control-Allow-Origin", origin)
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Request-ID, X-Requested-With")
+			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+			c.Header("Access-Control-Expose-Headers", "X-Request-ID")
+			c.Header("Access-Control-Max-Age", "43200")
+		}
+
+		// Handle preflight requests
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
 }
 
 // RequestIDMiddleware generates and adds request ID to context
