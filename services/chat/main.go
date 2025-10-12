@@ -94,8 +94,8 @@ func main() {
 	// Create Gin router
 	router := gin.New()
 
-	// Setup common middleware
-	middleware.SetupCommonMiddleware(router)
+	// Setup common middleware (without CORS - Gateway handles it)
+	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
 	setupRoutes(router, chatHandler, messageHandler, wsHandler, jwtConfig)

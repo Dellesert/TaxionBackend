@@ -163,6 +163,7 @@ func LoggerMiddlewareWithRequestID() gin.HandlerFunc {
 }
 
 // SetupCommonMiddleware sets up all common middleware in the correct order
+// This version includes CORS - use for Gateway only
 func SetupCommonMiddleware(r *gin.Engine) {
 	// Recovery should be first to catch any panics
 	r.Use(RecoveryMiddleware())
@@ -170,8 +171,21 @@ func SetupCommonMiddleware(r *gin.Engine) {
 	// Request ID for tracking
 	r.Use(RequestIDMiddleware())
 
-	// CORS for cross-origin requests
+	// CORS for cross-origin requests (Gateway only)
 	r.Use(CORSMiddleware())
+
+	// Request logging
+	r.Use(LoggerMiddlewareWithRequestID())
+}
+
+// SetupCommonMiddlewareWithoutCORS sets up common middleware without CORS
+// Use this for microservices - Gateway handles CORS
+func SetupCommonMiddlewareWithoutCORS(r *gin.Engine) {
+	// Recovery should be first to catch any panics
+	r.Use(RecoveryMiddleware())
+
+	// Request ID for tracking
+	r.Use(RequestIDMiddleware())
 
 	// Request logging
 	r.Use(LoggerMiddlewareWithRequestID())

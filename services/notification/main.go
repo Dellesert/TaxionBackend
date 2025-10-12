@@ -185,26 +185,7 @@ func setupCommonMiddleware(router *gin.Engine) {
 	// Request ID middleware
 	router.Use(requestid.New())
 
-	// CORS middleware
-	router.Use(func(c *gin.Context) {
-		origin := c.GetHeader("Origin")
-		if origin == "" {
-			origin = "*"
-		}
-
-		c.Header("Access-Control-Allow-Origin", origin)
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization, X-Requested-With")
-		c.Header("Access-Control-Allow-Credentials", "true")
-		c.Header("Access-Control-Max-Age", "86400")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
+	// CORS is handled by Gateway - no need for CORS middleware here
 
 	// Security headers
 	router.Use(func(c *gin.Context) {

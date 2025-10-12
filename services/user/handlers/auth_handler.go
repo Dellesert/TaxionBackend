@@ -230,13 +230,44 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 	logger.WithField("request_id", requestID).Info("Refresh token endpoint called")
 
-	// TODO: Implement token refresh logic
-	// - Validate refresh token
-	// - Generate new access token
-	// - Optionally rotate refresh token
+	var req struct {
+		RefreshToken string `json:"refresh_token" binding:"required"`
+	}
 
-	c.JSON(http.StatusNotImplemented, gin.H{
-		"error":      "Token refresh not implemented yet",
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for token refresh")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Call usecase to refresh token
+	tokens, err := h.authUsecase.RefreshToken(req.RefreshToken)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Token refresh failed")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithField("request_id", requestID).Info("Token refreshed successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Token refreshed successfully",
 		"request_id": requestID,
+		"tokens":     tokens,
 	})
 }

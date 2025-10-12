@@ -19,6 +19,7 @@ import (
 type AuthUsecase interface {
 	Register(req *models.CreateUserRequest) (*models.UserResponse, error)
 	Login(email, password string) (*sharedmodels.LoginResponse, error)
+	RefreshToken(refreshToken string) (*sharedmodels.TokenPair, error)
 	ValidateEmail(email string) error
 	ValidatePassword(password string) error
 }
@@ -174,6 +175,37 @@ func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse
 	}
 
 	return response, nil
+}
+
+// RefreshToken validates refresh token and generates new token pair
+func (a *authUsecase) RefreshToken(refreshToken string) (*sharedmodels.TokenPair, error) {
+	if refreshToken == "" {
+		return nil, fmt.Errorf("refresh token is required")
+	}
+
+	// Parse and validate refresh token
+	claims, err := middleware.ValidateToken(refreshToken, a.jwtConfig)
+	if err != nil {
+		return nil, fmt.Errorf("invalid or expired refresh token")
+	}
+
+	// Get user to verify they still exist and are active
+	user, err := a.userRepo.GetByID(uint(claims.UserID))
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	if !user.IsActive {
+		return nil, fmt.Errorf("user account is deactivated")
+	}
+
+	// Generate new token pair
+	tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	return tokens, nil
 }
 
 // updateUserLoginStatus updates user status and last active time on login

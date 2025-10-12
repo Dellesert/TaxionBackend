@@ -12,7 +12,15 @@
       "Bash(curl:*)",
       "Read(//d/Documents/GitHub/**)",
       "Bash(netstat:*)",
-      "Bash(docker-compose build:*)"
+      "Bash(docker-compose build:*)",
+      "Bash(for service in user chat task calendar poll notification)",
+      "Bash(do echo \"=== $service ===\")",
+      "Bash(done)",
+      "Bash(python3:*)",
+      "Bash(REFRESH_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJlbWFpbCI6InJlZnJlc2h0ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6ImVtcGxveWVlIiwiaXNzIjoidGFjaHlvbi1tZXNzZW5nZXIiLCJzdWIiOiI2IiwiZXhwIjoxNzYwNzgwMjk1LCJuYmYiOjE3NjAxNzU0OTUsImlhdCI6MTc2MDE3NTQ5NX0.FftWrILivQtliwbdKul1EBEmrwm40zn9sjdGEqnrA0Q\")",
+      "Bash(REFRESH_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJlbWFpbCI6InJlZnJlc2h0ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6ImVtcGxveWVlIiwiaXNzIjoidGFjaHlvbi1tZXNzZW5nZXIiLCJzdWIiOiI2IiwiZXhwIjoxNzYwNzgwMzA1LCJuYmYiOjE3NjAxNzU1MDUsImlhdCI6MTc2MDE3NTUwNX0.-DNGwduhfnc5dgqoxrBPcyLZcAit1bh9a9YYdfOhGrM\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJlbWFpbCI6InJlZnJlc2h0ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6ImVtcGxveWVlIiwiaXNzIjoidGFjaHlvbi1tZXNzZW5nZXIiLCJzdWIiOiI2IiwiZXhwIjoxNzYwMjYwNTkwLCJuYmYiOjE3NjAyNTk2OTAsImlhdCI6MTc2MDI1OTY5MH0.IKoYAVXxuMn9DuVz_4ekNYM4jhaEMdxTH6ptNhgxTyc\")",
+      "Bash(REFRESH_TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjo2LCJlbWFpbCI6InJlZnJlc2h0ZXN0QGV4YW1wbGUuY29tIiwicm9sZSI6ImVtcGxveWVlIiwiaXNzIjoidGFjaHlvbi1tZXNzZW5nZXIiLCJzdWIiOiI2IiwiZXhwIjoxNzYwODY0NzEzLCJuYmYiOjE3NjAyNTk5MTMsImlhdCI6MTc2MDI1OTkxM30.wwrU1l3ZofCUSJVh0f1JTfGJ_uUAhzoMKesmDRnEbeU\")"
     ],
     "deny": [],
     "ask": []

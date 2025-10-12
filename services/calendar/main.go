@@ -124,19 +124,7 @@ func setupRoutes(
 	r.Use(gin.Recovery())
 	r.Use(requestid.New())
 
-	// CORS middleware
-	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
+	// CORS is handled by Gateway - no need for CORS middleware here
 
 	// Health endpoint (no auth required)
 	r.GET("/health", func(c *gin.Context) {

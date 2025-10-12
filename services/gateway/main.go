@@ -112,6 +112,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			chats.Any("/*path", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 		}
 
+		// Message routes - proxy to chat service
+		messages := v1.Group("/messages")
+		{
+			messages.Any("/*path", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
+		}
+
 		// Task routes - proxy to task service
 		tasks := v1.Group("/tasks")
 		{
@@ -150,9 +156,11 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			analytics.GET("/dashboard", placeholderHandler("get dashboard"))
 			analytics.GET("/reports", placeholderHandler("get reports"))
 		}
+		// WebSocket endpoint - proxy to chat service for real-time communication
+		v1.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 	}
 
-	// WebSocket endpoint - proxy to chat service for real-time communication
+	// Legacy WebSocket endpoint for backward compatibility
 	router.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 }
 
