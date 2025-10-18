@@ -84,6 +84,9 @@ func (r *messageRepository) GetByChatID(chatID uint, limit, offset int) ([]*mode
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
 		Limit(limit).
 		Offset(offset).

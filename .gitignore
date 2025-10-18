@@ -53,3 +53,5 @@ bin/
 # Temporary files
 tmp/
 temp/
+NUL
+.claude/settings.local.json

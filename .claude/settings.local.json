@@ -24,7 +24,9 @@
       "Bash(go build:*)",
       "Bash(docker restart:*)",
       "Bash(docker-compose ps:*)",
-      "Bash(docker-compose restart:*)"
+      "Bash(docker-compose restart:*)",
+      "Bash(docker-compose stop:*)",
+      "Bash(docker-compose rm:*)"
     ],
     "deny": [],
     "ask": []

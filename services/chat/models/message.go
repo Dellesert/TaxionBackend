@@ -185,8 +185,8 @@ type MessageResponse struct {
 	Latitude     *float64                     `json:"latitude,omitempty"`
 	Longitude    *float64                     `json:"longitude,omitempty"`
 	SystemData   string                       `json:"system_data,omitempty"`
-	Reactions    []MessageReactionResponse    `json:"reactions,omitempty"`
-	ReadReceipts []MessageReadReceiptResponse `json:"read_receipts,omitempty"`
+	Reactions    []MessageReactionResponse    `json:"reactions"`
+	ReadReceipts []MessageReadReceiptResponse `json:"read_receipts"`
 	ReplyTo      *MessageResponse             `json:"reply_to,omitempty"`
 	CreatedAt    time.Time                    `json:"created_at"`
 	UpdatedAt    time.Time                    `json:"updated_at"`
@@ -232,6 +232,9 @@ func (m *Message) ToResponse() *MessageResponse {
 		SystemData:   m.SystemData,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
+		// Initialize arrays to prevent undefined in JSON
+		Reactions:    []MessageReactionResponse{},
+		ReadReceipts: []MessageReadReceiptResponse{},
 	}
 
 	// Include reply-to message if loaded
