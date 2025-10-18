@@ -12,6 +12,12 @@ import (
 	"gorm.io/gorm"
 )
 
+// WebSocketHub interface to avoid circular dependency
+type WebSocketHub interface {
+	BroadcastToChat(chatID uint, data interface{}, msgType models.WSMessageType, senderID uint)
+	BroadcastToChatExcludeSender(chatID uint, data interface{}, msgType models.WSMessageType, senderID uint)
+}
+
 type MessageUsecase interface {
 	SendMessage(userID uint, req *models.SendMessageRequest) (*models.MessageResponse, error)
 	GetMessages(userID uint, req *models.GetMessagesRequest) (*models.MessageListResponse, error)
@@ -21,13 +27,16 @@ type MessageUsecase interface {
 	AddReaction(userID, messageID uint, req *models.AddReactionRequest) error
 	RemoveReaction(userID, messageID uint, emoji string) error
 	MarkAsRead(userID, messageID uint) error
+	MarkChatAsRead(userID, chatID uint) error
 	GetMessagesByChat(userID, chatID uint, limit, offset int) (*models.MessageListResponse, error)
+	SetWebSocketHub(hub WebSocketHub)
 }
 
 // messageUsecase implements MessageUsecase interface
 type messageUsecase struct {
 	messageRepo repository.MessageRepository
 	chatRepo    repository.ChatRepository
+	wsHub       WebSocketHub
 }
 
 // NewMessageUsecase creates a new message usecase
@@ -35,7 +44,14 @@ func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo reposi
 	return &messageUsecase{
 		messageRepo: messageRepo,
 		chatRepo:    chatRepo,
+		wsHub:       nil, // Will be set later to avoid circular dependency
 	}
+}
+
+// SetWebSocketHub sets the WebSocket hub
+func (uc *messageUsecase) SetWebSocketHub(hub WebSocketHub) {
+	uc.wsHub = hub
+	fmt.Println("✅ WebSocket hub set in MessageUsecase")
 }
 
 // Message Usecase Methods
@@ -99,7 +115,21 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		return message.ToResponse(), nil // Return what we have
 	}
 
-	return createdMessage.ToResponse(), nil
+	response := createdMessage.ToResponse()
+
+	// Debug: Check wsHub status before broadcast
+	fmt.Printf("🔍 About to check wsHub - wsHub is nil: %v\n", uc.wsHub == nil)
+
+	// Broadcast message to WebSocket clients
+	if uc.wsHub != nil {
+		fmt.Printf("📢 Broadcasting message ID %d to chat %d from user %d\n", response.ID, req.ChatID, userID)
+		uc.wsHub.BroadcastToChat(req.ChatID, response, models.WSMessageTypeNewMessage, userID)
+		fmt.Printf("✅ BroadcastToChat call completed for message %d\n", response.ID)
+	} else {
+		fmt.Println("❌ wsHub is nil - cannot broadcast!")
+	}
+
+	return response, nil
 }
 
 // GetMessages retrieves messages with filters
@@ -330,6 +360,25 @@ func (uc *messageUsecase) MarkAsRead(userID, messageID uint) error {
 
 	if err := uc.messageRepo.MarkAsRead(receipt); err != nil {
 		return fmt.Errorf("failed to mark message as read: %w", err)
+	}
+
+	return nil
+}
+
+// MarkChatAsRead marks all messages in a chat as read
+func (uc *messageUsecase) MarkChatAsRead(userID, chatID uint) error {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Mark all messages as read
+	if err := uc.messageRepo.MarkAllAsRead(chatID, userID); err != nil {
+		return fmt.Errorf("failed to mark all messages as read: %w", err)
 	}
 
 	return nil

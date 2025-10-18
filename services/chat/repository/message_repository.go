@@ -25,6 +25,7 @@ type MessageRepository interface {
 	GetMessagesAfter(chatID uint, after uint, limit int) ([]*models.Message, error)
 	GetMessagesBefore(chatID uint, before uint, limit int) ([]*models.Message, error)
 	GetMessagesByTimeRange(chatID uint, startTime, endTime time.Time, limit, offset int) ([]*models.Message, error)
+	GetLatestMessage(chatID uint) (*models.Message, error)
 
 	// Message reaction operations
 	AddReaction(reaction *models.MessageReaction) error
@@ -35,6 +36,7 @@ type MessageRepository interface {
 	MarkAsRead(receipt *models.MessageReadReceipt) error
 	GetReadReceipts(messageID uint) ([]*models.MessageReadReceipt, error)
 	GetUnreadCount(chatID, userID uint) (int64, error)
+	MarkAllAsRead(chatID, userID uint) error
 
 	// Search and filtering
 	SearchMessages(chatID uint, query string, limit, offset int) ([]*models.Message, error)

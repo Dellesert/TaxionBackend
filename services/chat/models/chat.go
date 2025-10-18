@@ -127,6 +127,8 @@ type ChatResponse struct {
 	Avatar        string               `json:"avatar,omitempty"`
 	IsActive      bool                 `json:"is_active"`
 	LastMessageAt *time.Time           `json:"last_message_at,omitempty"`
+	LastMessage   *MessageResponse     `json:"last_message,omitempty"`
+	UnreadCount   int64                `json:"unread_count"`
 	MemberCount   int                  `json:"member_count"`
 	Members       []ChatMemberResponse `json:"members,omitempty"`
 	CreatedAt     time.Time            `json:"created_at"`
@@ -174,6 +176,11 @@ func (c *Chat) ToResponse() *ChatResponse {
 				IsActive: member.IsActive,
 			}
 		}
+	}
+
+	// Include last message if loaded
+	if len(c.Messages) > 0 {
+		response.LastMessage = c.Messages[0].ToResponse()
 	}
 
 	return response

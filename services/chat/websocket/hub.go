@@ -245,6 +245,15 @@ func (h *Hub) JoinChatRoom(userID, chatID uint) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
+	// Check if user is already in the chat room
+	if users, exists := h.chatRooms[chatID]; exists {
+		if users[userID] {
+			// User already in room, skip
+			log.Printf("User %d already in chat room %d, skipping join", userID, chatID)
+			return
+		}
+	}
+
 	// Add user to chat room
 	if _, exists := h.chatRooms[chatID]; !exists {
 		h.chatRooms[chatID] = make(map[uint]bool)

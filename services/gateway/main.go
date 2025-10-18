@@ -115,6 +115,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// Message routes - proxy to chat service
 		messages := v1.Group("/messages")
 		{
+			messages.Any("", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 			messages.Any("/*path", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 		}
 
