@@ -597,7 +597,8 @@ func (uc *chatUsecase) RemoveMember(userID, chatID, targetUserID uint) error {
 	}
 
 	// Permission checks
-	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+	// Allow user to remove themselves (leave chat), otherwise require owner/admin role
+	if userID != targetUserID && role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
 		return fmt.Errorf("insufficient permissions to remove members")
 	}
 
