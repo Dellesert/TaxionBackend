@@ -26,7 +26,9 @@
       "Bash(docker-compose ps:*)",
       "Bash(docker-compose restart:*)",
       "Bash(docker-compose stop:*)",
-      "Bash(docker-compose rm:*)"
+      "Bash(docker-compose rm:*)",
+      "Bash(timeout 30 docker logs:*)",
+      "Bash(timeout 45 docker logs:*)"
     ],
     "deny": [],
     "ask": []

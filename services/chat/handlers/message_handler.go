@@ -468,24 +468,21 @@ func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 		return
 	}
 
-	// Parse pagination parameters
-	limitStr := c.DefaultQuery("limit", "50")
-	offsetStr := c.DefaultQuery("offset", "0")
+	// Parse pagination parameters including before/after for cursor-based pagination
+	var req models.GetMessagesRequest
+	req.ChatID = uint(chatID)
 
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 0 {
-		limit = 50
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	offset, err := strconv.Atoi(offsetStr)
-	if err != nil || offset < 0 {
-		offset = 0
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Warn("Invalid query parameters")
 	}
 
-	messages, err := h.messageUsecase.GetMessagesByChat(userID, uint(chatID), limit, offset)
+	// Use GetMessages which supports before/after for pagination
+	messages, err := h.messageUsecase.GetMessages(userID, &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

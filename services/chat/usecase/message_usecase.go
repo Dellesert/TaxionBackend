@@ -142,6 +142,9 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 		req.Limit = 100
 	}
 
+	fmt.Printf("📚 GetMessages request: ChatID=%d, Before=%d, After=%d, Limit=%d, Offset=%d\n",
+		req.ChatID, req.Before, req.After, req.Limit, req.Offset)
+
 	var messages []*models.Message
 	var total int64
 
@@ -157,15 +160,23 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 
 		// Get messages based on filters
 		if req.After > 0 {
+			fmt.Printf("📖 Loading messages AFTER ID %d\n", req.After)
 			messages, err = uc.messageRepo.GetMessagesAfter(req.ChatID, req.After, req.Limit)
 		} else if req.Before > 0 {
+			fmt.Printf("📖 Loading messages BEFORE ID %d\n", req.Before)
 			messages, err = uc.messageRepo.GetMessagesBefore(req.ChatID, req.Before, req.Limit)
 		} else {
+			fmt.Printf("📖 Loading latest messages (no before/after)\n")
 			messages, err = uc.messageRepo.GetByChatID(req.ChatID, req.Limit, req.Offset)
 		}
 
 		if err != nil {
 			return nil, fmt.Errorf("failed to get messages: %w", err)
+		}
+
+		fmt.Printf("✅ Retrieved %d messages\n", len(messages))
+		if len(messages) > 0 {
+			fmt.Printf("   First message ID: %d, Last message ID: %d\n", messages[0].ID, messages[len(messages)-1].ID)
 		}
 
 		// Get total count for pagination
@@ -184,6 +195,8 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 	}
 
 	hasMore := len(messages) == req.Limit
+
+	fmt.Printf("📦 Returning %d messages, hasMore=%v\n", len(messageResponses), hasMore)
 
 	return &models.MessageListResponse{
 		Messages: messageResponses,

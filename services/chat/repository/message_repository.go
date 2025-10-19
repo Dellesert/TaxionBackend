@@ -231,6 +231,9 @@ func (r *messageRepository) GetMessagesBefore(chatID uint, before uint, limit in
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
 		Where("chat_id = ? AND id < ? AND is_deleted = ?", chatID, before, false).
 		Limit(limit).
 		Order("created_at DESC").
