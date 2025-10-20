@@ -1,13 +1,17 @@
 package websocket
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/usecase"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"github.com/gorilla/websocket"
 )
@@ -122,6 +126,44 @@ func (h *Hub) unregisterClient(client *Client) {
 	defer h.mutex.Unlock()
 
 	if storedClient, exists := h.clients[client.userID]; exists && storedClient == client {
+		// Notify about user going offline BEFORE removing from clients map
+		userID := client.userID
+
+		// Update status in user-service directly (client will be removed)
+		go updateUserStatus(userID, "offline")
+
+		// Broadcast offline presence to all chat rooms
+		presence := &UserPresence{
+			UserID:   userID,
+			Status:   "offline",
+			LastSeen: time.Now(),
+		}
+
+		// Get user's chat rooms before removing
+		chatRooms := make([]uint, 0, len(client.chatRooms))
+		for chatID := range client.chatRooms {
+			chatRooms = append(chatRooms, chatID)
+		}
+		presence.ChatRooms = chatRooms
+
+		// Broadcast to all chat rooms user was in
+		for _, chatID := range chatRooms {
+			broadcastMsg := &BroadcastMessage{
+				Type:        models.WSMessageType("user_presence"),
+				ChatID:      chatID,
+				UserID:      userID,
+				Data:        presence,
+				ExcludeUser: userID,
+			}
+
+			select {
+			case h.broadcast <- broadcastMsg:
+			default:
+				log.Println("Broadcast channel full, dropping presence message")
+			}
+		}
+
+		// Now remove client
 		delete(h.clients, client.userID)
 		close(client.send)
 
@@ -136,9 +178,6 @@ func (h *Hub) unregisterClient(client *Client) {
 		}
 
 		log.Printf("Client unregistered: user %d (remaining clients: %d)", client.userID, len(h.clients))
-
-		// Notify about user going offline
-		h.broadcastUserPresence(client.userID, "offline")
 	}
 }
 
@@ -222,6 +261,9 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 	}
 	presence.ChatRooms = chatRooms
 
+	// Update status in user-service
+	go updateUserStatus(userID, status)
+
 	// Broadcast to all chat rooms user is in
 	for chatID := range client.chatRooms {
 		broadcastMsg := &BroadcastMessage{
@@ -238,6 +280,59 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 			log.Println("Broadcast channel full, dropping presence message")
 		}
 	}
+}
+
+// updateUserStatus updates user status in user-service via HTTP
+func updateUserStatus(userID uint, status string) {
+	userServiceURL := os.Getenv("USER_SERVICE_URL")
+	if userServiceURL == "" {
+		userServiceURL = "http://user-service:8081"
+	}
+
+	// Map status string to UserStatus type
+	var userStatus sharedmodels.UserStatus
+	switch status {
+	case "online":
+		userStatus = sharedmodels.StatusOnline
+	case "offline":
+		userStatus = sharedmodels.StatusOffline
+	default:
+		userStatus = sharedmodels.StatusOffline
+	}
+
+	payload := map[string]interface{}{
+		"status": userStatus,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Failed to marshal status update for user %d: %v", userID, err)
+		return
+	}
+
+	url := fmt.Sprintf("%s/internal/users/%d/status", userServiceURL, userID)
+	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("Failed to create status update request for user %d: %v", userID, err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to update status for user %d in user-service: %v", userID, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("User service returned non-OK status %d for user %d status update", resp.StatusCode, userID)
+		return
+	}
+
+	log.Printf("✅ Updated user %d status to %s in user-service", userID, status)
 }
 
 // JoinChatRoom adds a user to a chat room

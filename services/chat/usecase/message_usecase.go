@@ -247,6 +247,11 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 		return nil, fmt.Errorf("cannot edit deleted message")
 	}
 
+	// Check if message is forwarded (starts with forwarding prefix)
+	if strings.HasPrefix(message.Content, "📩 Переслано от ") {
+		return nil, fmt.Errorf("cannot edit forwarded message")
+	}
+
 	// Update message
 	message.Content = strings.TrimSpace(req.Content)
 	message.IsEdited = true

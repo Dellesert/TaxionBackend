@@ -49,7 +49,8 @@ type ChatMember struct {
 	IsActive bool           `gorm:"not null;default:true" json:"is_active"`
 
 	// Associations
-	Chat *Chat `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
+	Chat *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
+	User *models.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // TableName returns the table name for ChatMember model

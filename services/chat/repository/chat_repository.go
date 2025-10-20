@@ -124,6 +124,7 @@ func (r *chatRepository) Count() (int64, error) {
 func (r *chatRepository) GetWithMembers(id uint) (*models.Chat, error) {
 	var chat models.Chat
 	err := r.db.
+		Preload("Members.User"). // Загружаем User для каждого Member
 		Preload("Members", func(db *gorm.DB) *gorm.DB {
 			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
 		}).
@@ -156,6 +157,7 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int) ([]*models
 
 	// Get chats with members, sorted by last activity
 	err = r.db.
+		Preload("Members.User"). // Загружаем User для каждого Member
 		Preload("Members", func(db *gorm.DB) *gorm.DB {
 			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
 		}).

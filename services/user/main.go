@@ -134,6 +134,13 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		auth.POST("/refresh", authHandler.RefreshToken) // TODO: Add refresh token validation
 	}
 
+	// Internal routes (for inter-service communication, no auth required)
+	internal := router.Group("/internal")
+	{
+		// Status update endpoint for chat-service
+		internal.PUT("/users/:id/status", userHandler.UpdateUser)
+	}
+
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
