@@ -24,6 +24,11 @@ type MessageUsecase interface {
 	GetMessage(userID, messageID uint) (*models.MessageResponse, error)
 	UpdateMessage(userID, messageID uint, req *models.UpdateMessageRequest) (*models.MessageResponse, error)
 	DeleteMessage(userID, messageID uint) error
+	DeleteMessageForUser(userID, messageID uint, deleteFor string) error
+	ClearChatHistory(userID, chatID uint) error
+	RestoreMessage(userID, messageID uint) error
+	PinMessage(userID, messageID uint) (*models.MessageResponse, error)
+	UnpinMessage(userID, messageID uint) (*models.MessageResponse, error)
 	AddReaction(userID, messageID uint, req *models.AddReactionRequest) error
 	RemoveReaction(userID, messageID uint, emoji string) error
 	MarkAsRead(userID, messageID uint) error
@@ -162,27 +167,37 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 		if req.After > 0 {
 			fmt.Printf("📖 Loading messages AFTER ID %d\n", req.After)
 			messages, err = uc.messageRepo.GetMessagesAfter(req.ChatID, req.After, req.Limit)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get messages: %w", err)
+			}
+			// Get total count for pagination
+			total, err = uc.messageRepo.CountByChatID(req.ChatID)
+			if err != nil {
+				total = 0 // Don't fail on count error
+			}
 		} else if req.Before > 0 {
 			fmt.Printf("📖 Loading messages BEFORE ID %d\n", req.Before)
 			messages, err = uc.messageRepo.GetMessagesBefore(req.ChatID, req.Before, req.Limit)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get messages: %w", err)
+			}
+			// Get total count for pagination
+			total, err = uc.messageRepo.CountByChatID(req.ChatID)
+			if err != nil {
+				total = 0 // Don't fail on count error
+			}
 		} else {
-			fmt.Printf("📖 Loading latest messages (no before/after)\n")
-			messages, err = uc.messageRepo.GetByChatID(req.ChatID, req.Limit, req.Offset)
-		}
-
-		if err != nil {
-			return nil, fmt.Errorf("failed to get messages: %w", err)
+			fmt.Printf("📖 Loading latest messages (no before/after) for user %d\n", userID)
+			// Use the new method that excludes personally deleted messages
+			messages, total, err = uc.messageRepo.GetByChatIDWithPaginationForUser(req.ChatID, userID, req.Limit, req.Offset)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get messages: %w", err)
+			}
 		}
 
 		fmt.Printf("✅ Retrieved %d messages\n", len(messages))
 		if len(messages) > 0 {
 			fmt.Printf("   First message ID: %d, Last message ID: %d\n", messages[0].ID, messages[len(messages)-1].ID)
-		}
-
-		// Get total count for pagination
-		total, err = uc.messageRepo.CountByChatID(req.ChatID)
-		if err != nil {
-			total = 0 // Don't fail on count error
 		}
 	} else {
 		return nil, fmt.Errorf("chat_id is required")
@@ -297,6 +312,227 @@ func (uc *messageUsecase) DeleteMessage(userID, messageID uint) error {
 	return nil
 }
 
+// DeleteMessageForUser deletes a message with "delete_for" parameter
+func (uc *messageUsecase) DeleteMessageForUser(userID, messageID uint, deleteFor string) error {
+	// Get message
+	message, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to get message: %w", err)
+	}
+
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(message.ChatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	if deleteFor == "everyone" {
+		// Delete for everyone (soft delete) - only sender or admin/owner can do this
+		if message.SenderID != userID {
+			role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+			if err != nil {
+				return fmt.Errorf("failed to get user role: %w", err)
+			}
+			if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+				return fmt.Errorf("insufficient permissions to delete message for everyone")
+			}
+		}
+
+		// Soft delete the message
+		if err := uc.messageRepo.Delete(messageID); err != nil {
+			return fmt.Errorf("failed to delete message: %w", err)
+		}
+
+		// Broadcast deletion to WebSocket clients
+		if uc.wsHub != nil {
+			uc.wsHub.BroadcastToChat(message.ChatID, map[string]interface{}{
+				"message_id": messageID,
+			}, models.WSMessageTypeMessageDelete, userID)
+		}
+	} else if deleteFor == "me" {
+		// Delete for this user only (personal deletion)
+		if err := uc.messageRepo.AddMessageDeletion(messageID, userID); err != nil {
+			return fmt.Errorf("failed to delete message for user: %w", err)
+		}
+	} else {
+		return fmt.Errorf("invalid delete_for value: must be 'everyone' or 'me'")
+	}
+
+	return nil
+}
+
+// ClearChatHistory deletes all messages in a chat for the current user
+func (uc *messageUsecase) ClearChatHistory(userID, chatID uint) error {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Clear all messages for this user
+	if err := uc.messageRepo.ClearChatHistoryForUser(chatID, userID); err != nil {
+		return fmt.Errorf("failed to clear chat history: %w", err)
+	}
+
+	return nil
+}
+
+// RestoreMessage restores a deleted message (admin only)
+func (uc *messageUsecase) RestoreMessage(userID, messageID uint) error {
+	// Get message
+	message, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to get message: %w", err)
+	}
+
+	// Check if user is admin or owner of the chat
+	role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user role: %w", err)
+	}
+	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+		return fmt.Errorf("only administrators can restore messages")
+	}
+
+	// Check if message is actually deleted
+	if !message.IsDeleted {
+		return fmt.Errorf("message is not deleted")
+	}
+
+	// Restore the message
+	message.IsDeleted = false
+	if err := uc.messageRepo.Update(message); err != nil {
+		return fmt.Errorf("failed to restore message: %w", err)
+	}
+
+	// Broadcast restore to WebSocket clients as message edit
+	if uc.wsHub != nil {
+		response := message.ToResponse()
+		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
+	}
+
+	return nil
+}
+
+// PinMessage pins a message in chat
+func (uc *messageUsecase) PinMessage(userID, messageID uint) (*models.MessageResponse, error) {
+	// Get message
+	message, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message: %w", err)
+	}
+
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(message.ChatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Check if user has permission to pin (owner or admin)
+	role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user role: %w", err)
+	}
+	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+		return nil, fmt.Errorf("only administrators can pin messages")
+	}
+
+	// Check if message is deleted
+	if message.IsDeleted {
+		return nil, fmt.Errorf("cannot pin deleted message")
+	}
+
+	// Check if already pinned
+	if message.IsPinned {
+		return nil, fmt.Errorf("message is already pinned")
+	}
+
+	// Pin the message
+	message.IsPinned = true
+	if err := uc.messageRepo.Update(message); err != nil {
+		return nil, fmt.Errorf("failed to pin message: %w", err)
+	}
+
+	// Get updated message with relations
+	pinnedMessage, err := uc.messageRepo.GetWithReactions(messageID)
+	if err != nil {
+		return message.ToResponse(), nil // Return what we have
+	}
+
+	response := pinnedMessage.ToResponse()
+
+	// Broadcast pin to WebSocket clients
+	if uc.wsHub != nil {
+		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
+	}
+
+	fmt.Printf("📌 Message %d pinned in chat %d by user %d\n", messageID, message.ChatID, userID)
+	return response, nil
+}
+
+// UnpinMessage unpins a message in chat
+func (uc *messageUsecase) UnpinMessage(userID, messageID uint) (*models.MessageResponse, error) {
+	// Get message
+	message, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message: %w", err)
+	}
+
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(message.ChatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Check if user has permission to unpin (owner or admin)
+	role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user role: %w", err)
+	}
+	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+		return nil, fmt.Errorf("only administrators can unpin messages")
+	}
+
+	// Check if already unpinned
+	if !message.IsPinned {
+		return nil, fmt.Errorf("message is not pinned")
+	}
+
+	// Unpin the message
+	message.IsPinned = false
+	if err := uc.messageRepo.Update(message); err != nil {
+		return nil, fmt.Errorf("failed to unpin message: %w", err)
+	}
+
+	// Get updated message with relations
+	unpinnedMessage, err := uc.messageRepo.GetWithReactions(messageID)
+	if err != nil {
+		return message.ToResponse(), nil // Return what we have
+	}
+
+	response := unpinnedMessage.ToResponse()
+
+	// Broadcast unpin to WebSocket clients
+	if uc.wsHub != nil {
+		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
+	}
+
+	fmt.Printf("📌 Message %d unpinned in chat %d by user %d\n", messageID, message.ChatID, userID)
+	return response, nil
+}
+
 // AddReaction adds a reaction to a message
 func (uc *messageUsecase) AddReaction(userID, messageID uint, req *models.AddReactionRequest) error {
 	// Get message
@@ -380,6 +616,14 @@ func (uc *messageUsecase) MarkAsRead(userID, messageID uint) error {
 		return fmt.Errorf("failed to mark message as read: %w", err)
 	}
 
+	// Broadcast read event to WebSocket clients
+	if uc.wsHub != nil {
+		uc.wsHub.BroadcastToChat(message.ChatID, map[string]interface{}{
+			"message_id": messageID,
+		}, models.WSMessageTypeRead, userID)
+		fmt.Printf("📬 Message %d marked as read by user %d, broadcast sent\n", messageID, userID)
+	}
+
 	return nil
 }
 
@@ -394,9 +638,20 @@ func (uc *messageUsecase) MarkChatAsRead(userID, chatID uint) error {
 		return fmt.Errorf("user is not a member of this chat")
 	}
 
-	// Mark all messages as read
-	if err := uc.messageRepo.MarkAllAsRead(chatID, userID); err != nil {
+	// Mark all messages as read and get the list of marked message IDs
+	messageIDs, err := uc.messageRepo.MarkAllAsRead(chatID, userID)
+	if err != nil {
 		return fmt.Errorf("failed to mark all messages as read: %w", err)
+	}
+
+	// Broadcast read events to WebSocket clients for each message
+	if uc.wsHub != nil && len(messageIDs) > 0 {
+		for _, messageID := range messageIDs {
+			uc.wsHub.BroadcastToChat(chatID, map[string]interface{}{
+				"message_id": messageID,
+			}, models.WSMessageTypeRead, userID)
+		}
+		fmt.Printf("📬 Chat %d: %d messages marked as read by user %d, broadcasts sent\n", chatID, len(messageIDs), userID)
 	}
 
 	return nil
@@ -421,15 +676,10 @@ func (uc *messageUsecase) GetMessagesByChat(userID, chatID uint, limit, offset i
 		limit = 100
 	}
 
-	messages, err := uc.messageRepo.GetByChatID(chatID, limit, offset)
+	// Use the new method that excludes personally deleted messages
+	messages, total, err := uc.messageRepo.GetByChatIDWithPaginationForUser(chatID, userID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages: %w", err)
-	}
-
-	// Get total count
-	total, err := uc.messageRepo.CountByChatID(chatID)
-	if err != nil {
-		total = 0 // Don't fail on count error
 	}
 
 	// Convert to response format

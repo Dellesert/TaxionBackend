@@ -9,6 +9,7 @@ import (
 	"tachyon-messenger/shared/database"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // MessageRepository defines the interface for message data operations
@@ -17,6 +18,7 @@ type MessageRepository interface {
 	GetByID(id uint) (*models.Message, error)
 	GetByChatID(chatID uint, limit, offset int) ([]*models.Message, error)
 	GetByChatIDWithPagination(chatID uint, limit, offset int) ([]*models.Message, int64, error)
+	GetByChatIDWithPaginationForUser(chatID, userID uint, limit, offset int) ([]*models.Message, int64, error)
 	Update(message *models.Message) error
 	Delete(id uint) error
 	Count() (int64, error)
@@ -36,11 +38,18 @@ type MessageRepository interface {
 	MarkAsRead(receipt *models.MessageReadReceipt) error
 	GetReadReceipts(messageID uint) ([]*models.MessageReadReceipt, error)
 	GetUnreadCount(chatID, userID uint) (int64, error)
-	MarkAllAsRead(chatID, userID uint) error
+	MarkAllAsRead(chatID, userID uint) ([]uint, error)
 
 	// Search and filtering
 	SearchMessages(chatID uint, query string, limit, offset int) ([]*models.Message, error)
 	GetMessagesByType(chatID uint, messageType models.MessageType, limit, offset int) ([]*models.Message, error)
+
+	// Personal message deletion operations ("delete for me")
+	AddMessageDeletion(messageID, userID uint) error
+	RemoveMessageDeletion(messageID, userID uint) error
+	GetUserDeletedMessages(chatID, userID uint) ([]uint, error)
+	IsMessageDeletedForUser(messageID, userID uint) (bool, error)
+	ClearChatHistoryForUser(chatID, userID uint) error
 }
 
 // messageRepository implements MessageRepository interface
@@ -123,6 +132,51 @@ func (r *messageRepository) GetByChatIDWithPagination(chatID uint, limit, offset
 			return db.Order("read_at DESC")
 		}).
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
+		Limit(limit).
+		Offset(offset).
+		Order("created_at DESC").
+		Find(&messages).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get messages: %w", err)
+	}
+
+	return messages, total, nil
+}
+
+// GetByChatIDWithPaginationForUser retrieves messages with total count, excluding personally deleted messages
+func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint, limit, offset int) ([]*models.Message, int64, error) {
+	var messages []*models.Message
+	var total int64
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Get total count (excluding personally deleted)
+	// ВАЖНО: НЕ фильтруем is_deleted, чтобы админы могли видеть удалённые сообщения
+	err := r.db.Model(&models.Message{}).
+		Where("chat_id = ?", chatID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Count(&total).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count messages: %w", err)
+	}
+
+	// Get messages with preloaded data, sorted by time (newest first)
+	// ВАЖНО: НЕ фильтруем is_deleted, чтобы админы могли видеть удалённые сообщения
+	err = r.db.
+		Preload("ReplyTo").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Where("chat_id = ?", chatID).
+		Where("id NOT IN (?)", deletedSubquery).
 		Limit(limit).
 		Offset(offset).
 		Order("created_at DESC").
@@ -476,7 +530,8 @@ func (r *messageRepository) GetMessagesSince(chatID uint, since time.Time, limit
 }
 
 // MarkAllAsRead marks all messages in a chat as read by a user
-func (r *messageRepository) MarkAllAsRead(chatID, userID uint) error {
+// Returns the list of message IDs that were marked as read
+func (r *messageRepository) MarkAllAsRead(chatID, userID uint) ([]uint, error) {
 	// Get all unread message IDs
 	var messageIDs []uint
 	err := r.db.Model(&models.Message{}).
@@ -490,11 +545,11 @@ func (r *messageRepository) MarkAllAsRead(chatID, userID uint) error {
 		Pluck("id", &messageIDs).Error
 
 	if err != nil {
-		return fmt.Errorf("failed to get unread message IDs: %w", err)
+		return nil, fmt.Errorf("failed to get unread message IDs: %w", err)
 	}
 
 	if len(messageIDs) == 0 {
-		return nil // No unread messages
+		return []uint{}, nil // No unread messages
 	}
 
 	// Create read receipts for all unread messages
@@ -509,10 +564,10 @@ func (r *messageRepository) MarkAllAsRead(chatID, userID uint) error {
 	}
 
 	if err := r.db.CreateInBatches(receipts, 100).Error; err != nil {
-		return fmt.Errorf("failed to create read receipts: %w", err)
+		return nil, fmt.Errorf("failed to create read receipts: %w", err)
 	}
 
-	return nil
+	return messageIDs, nil
 }
 
 // GetThreadMessages retrieves messages in a thread (replies to a specific message)
@@ -602,4 +657,119 @@ func (r *messageRepository) CleanupOldMessages(olderThan time.Time) (int64, erro
 	}
 
 	return result.RowsAffected, nil
+}
+
+// Personal message deletion operations ("delete for me")
+
+// AddMessageDeletion adds a personal deletion record for a user
+func (r *messageRepository) AddMessageDeletion(messageID, userID uint) error {
+	// Check if deletion already exists
+	var existing models.MessageDeletion
+	err := r.db.Where("message_id = ? AND user_id = ?", messageID, userID).
+		First(&existing).Error
+
+	if err == nil {
+		// Already deleted for this user
+		return nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("failed to check existing deletion: %w", err)
+	}
+
+	// Create new deletion record
+	deletion := &models.MessageDeletion{
+		MessageID: messageID,
+		UserID:    userID,
+		DeletedAt: time.Now(),
+	}
+
+	if err := r.db.Create(deletion).Error; err != nil {
+		return fmt.Errorf("failed to add message deletion: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveMessageDeletion removes a personal deletion record (for restore functionality)
+func (r *messageRepository) RemoveMessageDeletion(messageID, userID uint) error {
+	result := r.db.Where("message_id = ? AND user_id = ?", messageID, userID).
+		Delete(&models.MessageDeletion{})
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to remove message deletion: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("deletion record not found")
+	}
+
+	return nil
+}
+
+// GetUserDeletedMessages returns list of message IDs that user has deleted for themselves
+func (r *messageRepository) GetUserDeletedMessages(chatID, userID uint) ([]uint, error) {
+	var messageIDs []uint
+
+	err := r.db.Model(&models.MessageDeletion{}).
+		Select("message_deletions.message_id").
+		Joins("JOIN messages ON messages.id = message_deletions.message_id").
+		Where("messages.chat_id = ? AND message_deletions.user_id = ?", chatID, userID).
+		Pluck("message_id", &messageIDs).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user deleted messages: %w", err)
+	}
+
+	return messageIDs, nil
+}
+
+// IsMessageDeletedForUser checks if a specific message is deleted for a user
+func (r *messageRepository) IsMessageDeletedForUser(messageID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.MessageDeletion{}).
+		Where("message_id = ? AND user_id = ?", messageID, userID).
+		Count(&count).Error
+
+	if err != nil {
+		return false, fmt.Errorf("failed to check message deletion: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+// ClearChatHistoryForUser deletes all messages in a chat for a specific user
+func (r *messageRepository) ClearChatHistoryForUser(chatID, userID uint) error {
+	// Get all message IDs in the chat
+	var messageIDs []uint
+	err := r.db.Model(&models.Message{}).
+		Select("id").
+		Where("chat_id = ?", chatID).
+		Pluck("id", &messageIDs).Error
+
+	if err != nil {
+		return fmt.Errorf("failed to get chat message IDs: %w", err)
+	}
+
+	if len(messageIDs) == 0 {
+		return nil // No messages to delete
+	}
+
+	// Create deletion records for all messages (ignore duplicates)
+	var deletions []models.MessageDeletion
+	now := time.Now()
+	for _, messageID := range messageIDs {
+		deletions = append(deletions, models.MessageDeletion{
+			MessageID: messageID,
+			UserID:    userID,
+			DeletedAt: now,
+		})
+	}
+
+	// Use ON CONFLICT DO NOTHING to handle duplicates
+	if err := r.db.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(deletions, 100).Error; err != nil {
+		return fmt.Errorf("failed to clear chat history: %w", err)
+	}
+
+	return nil
 }

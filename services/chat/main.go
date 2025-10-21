@@ -154,12 +154,14 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		// Chat routes
 		chats := v1.Group("/chats")
 		{
-			chats.GET("", chatHandler.GetChats)           // GET /api/v1/chats
-			chats.POST("", chatHandler.CreateChat)        // POST /api/v1/chats
-			chats.POST("/:id/join", chatHandler.JoinChat) // POST /api/v1/chats/:id/join
-			chats.GET("/:id", chatHandler.GetChat)        // GET /api/v1/chats/:id
-			chats.PUT("/:id", chatHandler.UpdateChat)     // PUT /api/v1/chats/:id
-			chats.DELETE("/:id", chatHandler.DeleteChat)  // DELETE /api/v1/chats/:id
+			chats.GET("", chatHandler.GetChats)                      // GET /api/v1/chats
+			chats.POST("", chatHandler.CreateChat)                   // POST /api/v1/chats
+			chats.POST("/:id/join", chatHandler.JoinChat)            // POST /api/v1/chats/:id/join
+			chats.PUT("/:id/favorite", chatHandler.ToggleFavorite)   // PUT /api/v1/chats/:id/favorite
+			chats.PUT("/:id/pinned", chatHandler.TogglePinned)       // PUT /api/v1/chats/:id/pinned
+			chats.GET("/:id", chatHandler.GetChat)                   // GET /api/v1/chats/:id
+			chats.PUT("/:id", chatHandler.UpdateChat)                // PUT /api/v1/chats/:id
+			chats.DELETE("/:id", chatHandler.DeleteChat)             // DELETE /api/v1/chats/:id
 
 			// Chat members
 			chats.GET("/:id/members", chatHandler.GetChatMembers)              // GET /api/v1/chats/:id/members
@@ -175,12 +177,18 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			messages.GET("/:id", messageHandler.GetMessage)       // GET /api/v1/messages/:id
 			messages.PUT("/:id", messageHandler.UpdateMessage)    // PUT /api/v1/messages/:id
 			messages.DELETE("/:id", messageHandler.DeleteMessage) // DELETE /api/v1/messages/:id
+			messages.POST("/:id/restore", messageHandler.RestoreMessage) // POST /api/v1/messages/:id/restore
+			messages.POST("/:id/pin", messageHandler.PinMessage)         // POST /api/v1/messages/:id/pin
+			messages.POST("/:id/unpin", messageHandler.UnpinMessage)     // POST /api/v1/messages/:id/unpin
 
 			// Message by chat
 			messages.GET("/chat/:chatId", messageHandler.GetMessagesByChat)         // GET /api/v1/messages/chat/:chatId
 			messages.POST("/chat/:chatId/read", messageHandler.MarkChatAsRead)      // POST /api/v1/messages/chat/:chatId/read
 			messages.POST("/:id/read", messageHandler.MarkAsRead)                   // POST /api/v1/messages/:id/read
 		}
+
+		// Chat-specific routes
+		chats.POST("/:id/clear-history", messageHandler.ClearChatHistory) // POST /api/v1/chats/:id/clear-history
 	}
 }
 

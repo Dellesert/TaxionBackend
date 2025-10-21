@@ -17,6 +17,7 @@ type UserUsecase interface {
 	CreateUser(req *models.CreateUserRequest) (*models.UserResponse, error)
 	GetUser(id uint) (*models.UserResponse, error)
 	GetUsers(limit, offset int) ([]*models.UserResponse, int64, error)
+	GetUsersByIDs(ids []uint) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteUser(id uint) error
 }
@@ -175,4 +176,24 @@ func (u *userUsecase) DeleteUser(id uint) error {
 	}
 
 	return nil
+}
+
+// GetUsersByIDs retrieves multiple users by their IDs
+func (u *userUsecase) GetUsersByIDs(ids []uint) ([]*models.UserResponse, error) {
+	if len(ids) == 0 {
+		return []*models.UserResponse{}, nil
+	}
+
+	users, err := u.userRepo.GetByIDs(ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users by IDs: %w", err)
+	}
+
+	// Convert to response format
+	responses := make([]*models.UserResponse, len(users))
+	for i, user := range users {
+		responses[i] = user.ToResponse()
+	}
+
+	return responses, nil
 }

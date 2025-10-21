@@ -39,7 +39,12 @@
       "Bash(timeout 200 docker logs:*)",
       "Bash(docker inspect:*)",
       "Bash(docker images:*)",
-      "Bash(timeout 300 docker logs:*)"
+      "Bash(timeout 300 docker logs:*)",
+      "Bash(pkill:*)",
+      "Bash(jobs:*)",
+      "Bash(xargs:*)",
+      "Bash(git checkout:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

@@ -392,12 +392,28 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		return
 	}
 
-	err = h.messageUsecase.DeleteMessage(userID, uint(messageID))
+	// Parse request body to get delete_for parameter
+	var req struct {
+		DeleteFor string `json:"delete_for"` // "everyone" or "me"
+	}
+
+	// Try to bind JSON, but don't fail if body is empty (default to old behavior)
+	_ = c.ShouldBindJSON(&req)
+
+	// Default to "everyone" if not specified (for backward compatibility)
+	deleteFor := req.DeleteFor
+	if deleteFor == "" {
+		deleteFor = "everyone"
+	}
+
+	// Use new DeleteMessageForUser method
+	err = h.messageUsecase.DeleteMessageForUser(userID, uint(messageID), deleteFor)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
 			"user_id":    userID,
 			"message_id": messageID,
+			"delete_for": deleteFor,
 			"error":      err.Error(),
 		}).Error("Failed to delete message")
 
@@ -410,6 +426,9 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
 			errorMessage = "Insufficient permissions"
+		} else if strings.Contains(err.Error(), "invalid delete_for") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -423,10 +442,12 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		"request_id": requestID,
 		"user_id":    userID,
 		"message_id": messageID,
+		"delete_for": deleteFor,
 	}).Info("Message deleted successfully")
 
-	c.JSON(http.StatusNoContent, gin.H{
+	c.JSON(http.StatusOK, gin.H{
 		"message":    "Message deleted successfully",
+		"delete_for": deleteFor,
 		"request_id": requestID,
 	})
 }
@@ -857,6 +878,319 @@ func (h *MessageHandler) MarkChatAsRead(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Chat messages marked as read successfully",
+		"request_id": requestID,
+	})
+}
+
+// ClearChatHistory handles clearing chat history for the current user
+func (h *MessageHandler) ClearChatHistory(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.messageUsecase.ClearChatHistory(userID, uint(chatID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Error("Failed to clear chat history")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to clear chat history"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chatID,
+	}).Info("Chat history cleared successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Chat history cleared successfully",
+		"request_id": requestID,
+	})
+}
+
+// RestoreMessage handles restoring a deleted message (admin only)
+func (h *MessageHandler) RestoreMessage(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	idStr := c.Param("id")
+	messageID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.messageUsecase.RestoreMessage(userID, uint(messageID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to restore message")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to restore message"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Message not found"
+		} else if strings.Contains(err.Error(), "only administrators") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Only administrators can restore messages"
+		} else if strings.Contains(err.Error(), "not deleted") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Message is not deleted"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"message_id": messageID,
+	}).Info("Message restored successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Message restored successfully",
+		"request_id": requestID,
+	})
+}
+
+// PinMessage handles pinning a message in chat
+func (h *MessageHandler) PinMessage(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	idStr := c.Param("id")
+	messageID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	message, err := h.messageUsecase.PinMessage(userID, uint(messageID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to pin message")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to pin message"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Message not found"
+		} else if strings.Contains(err.Error(), "only administrators") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Only administrators can pin messages"
+		} else if strings.Contains(err.Error(), "already pinned") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Message is already pinned"
+		} else if strings.Contains(err.Error(), "deleted message") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Cannot pin deleted message"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"message_id": messageID,
+	}).Info("Message pinned successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    message,
+		"request_id": requestID,
+	})
+}
+
+// UnpinMessage handles unpinning a message in chat
+func (h *MessageHandler) UnpinMessage(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	idStr := c.Param("id")
+	messageID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	message, err := h.messageUsecase.UnpinMessage(userID, uint(messageID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to unpin message")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to unpin message"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Message not found"
+		} else if strings.Contains(err.Error(), "only administrators") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Only administrators can unpin messages"
+		} else if strings.Contains(err.Error(), "not pinned") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Message is not pinned"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"message_id": messageID,
+	}).Info("Message unpinned successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    message,
 		"request_id": requestID,
 	})
 }

@@ -139,6 +139,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 	{
 		// Status update endpoint for chat-service
 		internal.PUT("/users/:id/status", userHandler.UpdateUser)
+		// Get multiple users by IDs for task-service
+		internal.GET("/users", userHandler.GetUsersByIDs)
 	}
 
 	// API v1 routes

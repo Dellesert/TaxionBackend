@@ -131,9 +131,12 @@ func (r *commentRepository) GetCommentsWithReplies(taskID uint, filter *models.C
 	query = query.Limit(limit).Offset(offset)
 
 	var comments []*models.TaskComment
-	err := query.Preload("Replies", func(db *gorm.DB) *gorm.DB {
-		return db.Order("created_at ASC")
-	}).Order("created_at ASC").Find(&comments).Error
+	err := query.
+		Preload("Replies", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")  // Replies in chronological order within each comment
+		}).
+		Order("created_at DESC").  // Main comments from newest to oldest
+		Find(&comments).Error
 
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get task comments with replies: %w", err)

@@ -15,6 +15,7 @@ type UserRepository interface {
 	Create(user *models.User) error
 	GetByID(id uint) (*models.User, error)
 	GetByEmail(email string) (*models.User, error)
+	GetByIDs(ids []uint) ([]*models.User, error)
 	GetAll(limit, offset int) ([]*models.User, error)
 	Update(user *models.User) error
 	Delete(id uint) error
@@ -94,6 +95,16 @@ func (r *userRepository) GetByEmail(email string) (*models.User, error) {
 		return nil, fmt.Errorf("failed to get user by email: %w", err)
 	}
 	return &user, nil
+}
+
+// GetByIDs retrieves multiple users by their IDs
+func (r *userRepository) GetByIDs(ids []uint) ([]*models.User, error) {
+	var users []*models.User
+	err := r.db.Where("id IN ?", ids).Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users by IDs: %w", err)
+	}
+	return users, nil
 }
 
 // GetAll retrieves all users with pagination

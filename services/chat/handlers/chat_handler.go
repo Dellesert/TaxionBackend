@@ -767,3 +767,201 @@ func (h *ChatHandler) JoinChat(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// ToggleFavorite handles toggling favorite status for a chat
+func (h *ChatHandler) ToggleFavorite(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	idStr := c.Param("id")
+	chatID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		IsFavorite bool `json:"is_favorite"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for toggle favorite")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.chatUsecase.ToggleFavorite(userID, uint(chatID), req.IsFavorite)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"is_favorite": req.IsFavorite,
+			"error":      err.Error(),
+		}).Error("Failed to toggle favorite status")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to update favorite status"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "User is not a member of this chat"
+		} else if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Chat not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chatID,
+		"is_favorite": req.IsFavorite,
+	}).Info("Chat favorite status updated successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Favorite status updated successfully",
+		"is_favorite": req.IsFavorite,
+		"request_id": requestID,
+	})
+}
+
+// TogglePinned handles toggling pinned status for a chat
+func (h *ChatHandler) TogglePinned(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	idStr := c.Param("id")
+	chatID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		IsPinned bool `json:"is_pinned"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for toggle pinned")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.chatUsecase.TogglePinned(userID, uint(chatID), req.IsPinned)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"is_pinned":  req.IsPinned,
+			"error":      err.Error(),
+		}).Error("Failed to toggle pinned status")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to update pinned status"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "User is not a member of this chat"
+		} else if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Chat not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chatID,
+		"is_pinned":  req.IsPinned,
+	}).Info("Chat pinned status updated successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":   "Pinned status updated successfully",
+		"is_pinned": req.IsPinned,
+		"request_id": requestID,
+	})
+}

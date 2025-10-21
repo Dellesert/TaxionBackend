@@ -27,6 +27,8 @@ type ChatRepository interface {
 	GetChatMembers(chatID uint) ([]*models.ChatMember, error)
 	IsMember(chatID, userID uint) (bool, error)
 	GetMemberRole(chatID, userID uint) (models.ChatMemberRole, error)
+	UpdateFavoriteStatus(chatID, userID uint, isFavorite bool) error
+	UpdatePinnedStatus(chatID, userID uint, isPinned bool) error
 
 	// Access control methods
 	HasReadAccess(chatID, userID uint) (bool, error)
@@ -263,6 +265,36 @@ func (r *chatRepository) GetMemberRole(chatID, userID uint) (models.ChatMemberRo
 		return "", fmt.Errorf("failed to get member role: %w", err)
 	}
 	return member.Role, nil
+}
+
+// UpdateFavoriteStatus updates the favorite status of a chat for a user
+func (r *chatRepository) UpdateFavoriteStatus(chatID, userID uint, isFavorite bool) error {
+	result := r.db.Model(&models.ChatMember{}).
+		Where("chat_id = ? AND user_id = ? AND is_active = ?", chatID, userID, true).
+		Update("is_favorite", isFavorite)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update favorite status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("chat member not found")
+	}
+	return nil
+}
+
+// UpdatePinnedStatus updates the pinned status of a chat for a user
+func (r *chatRepository) UpdatePinnedStatus(chatID, userID uint, isPinned bool) error {
+	result := r.db.Model(&models.ChatMember{}).
+		Where("chat_id = ? AND user_id = ? AND is_active = ?", chatID, userID, true).
+		Update("is_pinned", isPinned)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update pinned status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("chat member not found")
+	}
+	return nil
 }
 
 // Access control methods

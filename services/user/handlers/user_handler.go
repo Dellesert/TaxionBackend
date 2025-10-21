@@ -272,3 +272,100 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// GetUsersByIDs handles getting multiple users by their IDs (internal endpoint)
+func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Parse IDs from query parameter (comma-separated)
+	idsStr := c.Query("ids")
+	if idsStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "IDs parameter is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse comma-separated IDs
+	var ids []uint
+	for _, idStr := range splitAndTrim(idsStr, ",") {
+		id, err := strconv.ParseUint(idStr, 10, 32)
+		if err != nil {
+			continue // Skip invalid IDs
+		}
+		ids = append(ids, uint(id))
+	}
+
+	if len(ids) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No valid IDs provided",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	users, err := h.userUsecase.GetUsersByIDs(ids)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"ids":        ids,
+			"error":      err.Error(),
+		}).Error("Failed to get users by IDs")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get users",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":      users,
+		"request_id": requestID,
+	})
+}
+
+// splitAndTrim splits a string by separator and trims whitespace
+func splitAndTrim(s, sep string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := []string{}
+	for _, part := range splitString(s, sep) {
+		trimmed := trimString(part)
+		if trimmed != "" {
+			parts = append(parts, trimmed)
+		}
+	}
+	return parts
+}
+
+func splitString(s, sep string) []string {
+	result := []string{}
+	current := ""
+	for _, ch := range s {
+		if string(ch) == sep {
+			result = append(result, current)
+			current = ""
+		} else {
+			current += string(ch)
+		}
+	}
+	if current != "" {
+		result = append(result, current)
+	}
+	return result
+}
+
+func trimString(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
+		start++
+	}
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
+		end--
+	}
+	return s[start:end]
+}

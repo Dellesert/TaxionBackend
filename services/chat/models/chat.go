@@ -41,12 +41,14 @@ func (Chat) TableName() string {
 // ChatMember represents a member of a chat
 type ChatMember struct {
 	models.BaseModel
-	ChatID   uint           `gorm:"not null;index" json:"chat_id" validate:"required"`
-	UserID   uint           `gorm:"not null;index" json:"user_id" validate:"required"`
-	Role     ChatMemberRole `gorm:"not null;default:'member';size:20" json:"role" validate:"oneof=owner admin member"`
-	JoinedAt time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"joined_at"`
-	LeftAt   *time.Time     `json:"left_at,omitempty"`
-	IsActive bool           `gorm:"not null;default:true" json:"is_active"`
+	ChatID     uint           `gorm:"not null;index" json:"chat_id" validate:"required"`
+	UserID     uint           `gorm:"not null;index" json:"user_id" validate:"required"`
+	Role       ChatMemberRole `gorm:"not null;default:'member';size:20" json:"role" validate:"oneof=owner admin member"`
+	JoinedAt   time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"joined_at"`
+	LeftAt     *time.Time     `json:"left_at,omitempty"`
+	IsActive   bool           `gorm:"not null;default:true" json:"is_active"`
+	IsFavorite bool           `gorm:"not null;default:false" json:"is_favorite"`
+	IsPinned   bool           `gorm:"not null;default:false" json:"is_pinned"`
 
 	// Associations
 	Chat *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
@@ -127,6 +129,8 @@ type ChatResponse struct {
 	CreatorID     uint                 `json:"creator_id"`
 	Avatar        string               `json:"avatar,omitempty"`
 	IsActive      bool                 `json:"is_active"`
+	IsFavorite    bool                 `json:"is_favorite"`
+	IsPinned      bool                 `json:"is_pinned"`
 	LastMessageAt *time.Time           `json:"last_message_at,omitempty"`
 	LastMessage   *MessageResponse     `json:"last_message,omitempty"`
 	UnreadCount   int64                `json:"unread_count"`
@@ -138,13 +142,15 @@ type ChatResponse struct {
 
 // ChatMemberResponse represents chat member response
 type ChatMemberResponse struct {
-	ID       uint           `json:"id"`
-	ChatID   uint           `json:"chat_id"`
-	UserID   uint           `json:"user_id"`
-	Role     ChatMemberRole `json:"role"`
-	JoinedAt time.Time      `json:"joined_at"`
-	LeftAt   *time.Time     `json:"left_at,omitempty"`
-	IsActive bool           `json:"is_active"`
+	ID         uint           `json:"id"`
+	ChatID     uint           `json:"chat_id"`
+	UserID     uint           `json:"user_id"`
+	Role       ChatMemberRole `json:"role"`
+	JoinedAt   time.Time      `json:"joined_at"`
+	LeftAt     *time.Time     `json:"left_at,omitempty"`
+	IsActive   bool           `json:"is_active"`
+	IsFavorite bool           `json:"is_favorite"`
+	IsPinned   bool           `json:"is_pinned"`
 }
 
 // ToResponse converts Chat to ChatResponse
@@ -190,13 +196,15 @@ func (c *Chat) ToResponse() *ChatResponse {
 // ToResponse converts ChatMember to ChatMemberResponse
 func (cm *ChatMember) ToResponse() *ChatMemberResponse {
 	return &ChatMemberResponse{
-		ID:       cm.ID,
-		ChatID:   cm.ChatID,
-		UserID:   cm.UserID,
-		Role:     cm.Role,
-		JoinedAt: cm.JoinedAt,
-		LeftAt:   cm.LeftAt,
-		IsActive: cm.IsActive,
+		ID:         cm.ID,
+		ChatID:     cm.ChatID,
+		UserID:     cm.UserID,
+		Role:       cm.Role,
+		JoinedAt:   cm.JoinedAt,
+		LeftAt:     cm.LeftAt,
+		IsActive:   cm.IsActive,
+		IsFavorite: cm.IsFavorite,
+		IsPinned:   cm.IsPinned,
 	}
 }
 

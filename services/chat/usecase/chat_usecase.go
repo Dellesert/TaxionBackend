@@ -26,6 +26,8 @@ type ChatUsecase interface {
 	CreatePersonalChat(userID, targetUserID uint) (*models.ChatResponse, error)
 	CreateGroupChat(userID uint, req *models.CreateGroupChatRequest) (*models.ChatResponse, error)
 	JoinChat(userID, chatID uint) error
+	ToggleFavorite(userID, chatID uint, isFavorite bool) error
+	TogglePinned(userID, chatID uint, isPinned bool) error
 }
 
 // chatUsecase implements ChatUsecase interface
@@ -426,7 +428,7 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int) (*models.Cha
 		return nil, fmt.Errorf("failed to get user chats: %w", err)
 	}
 
-	// Convert to response format and load last message + unread count for each chat
+	// Convert to response format and load last message + unread count + favorite status for each chat
 	chatResponses := make([]models.ChatResponse, len(chats))
 	for i, chat := range chats {
 		// Get last message for this chat
@@ -445,6 +447,17 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int) (*models.Cha
 			response.UnreadCount = unreadCount
 		} else {
 			response.UnreadCount = 0
+		}
+
+		// Get favorite and pinned status for current user
+		response.IsFavorite = false
+		response.IsPinned = false
+		for _, member := range chat.Members {
+			if member.UserID == userID {
+				response.IsFavorite = member.IsFavorite
+				response.IsPinned = member.IsPinned
+				break
+			}
 		}
 
 		chatResponses[i] = *response
@@ -642,6 +655,44 @@ func (uc *chatUsecase) GetChatMembers(userID, chatID uint) ([]models.ChatMemberR
 	}
 
 	return memberResponses, nil
+}
+
+// ToggleFavorite toggles favorite status for a chat
+func (uc *chatUsecase) ToggleFavorite(userID, chatID uint, isFavorite bool) error {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Update favorite status
+	if err := uc.chatRepo.UpdateFavoriteStatus(chatID, userID, isFavorite); err != nil {
+		return fmt.Errorf("failed to update favorite status: %w", err)
+	}
+
+	return nil
+}
+
+// TogglePinned toggles pinned status for a chat
+func (uc *chatUsecase) TogglePinned(userID, chatID uint, isPinned bool) error {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Update pinned status
+	if err := uc.chatRepo.UpdatePinnedStatus(chatID, userID, isPinned); err != nil {
+		return fmt.Errorf("failed to update pinned status: %w", err)
+	}
+
+	return nil
 }
 
 // validateCreateChatRequest validates chat creation request

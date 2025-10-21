@@ -43,6 +43,7 @@ type Message struct {
 	EditedAt  *time.Time    `json:"edited_at,omitempty"`
 	IsEdited  bool          `gorm:"not null;default:false" json:"is_edited"`
 	IsDeleted bool          `gorm:"not null;default:false" json:"is_deleted"`
+	IsPinned  bool          `gorm:"not null;default:false;index" json:"is_pinned"`
 
 	// File-related fields for non-text messages
 	FileName     string `gorm:"size:255" json:"file_name,omitempty"`
@@ -102,6 +103,22 @@ type MessageReadReceipt struct {
 // TableName returns the table name for MessageReadReceipt model
 func (MessageReadReceipt) TableName() string {
 	return "message_read_receipts"
+}
+
+// MessageDeletion represents a personal message deletion ("delete for me")
+type MessageDeletion struct {
+	models.BaseModel
+	MessageID uint      `gorm:"not null;index" json:"message_id" validate:"required"`
+	UserID    uint      `gorm:"not null;index" json:"user_id" validate:"required"`
+	DeletedAt time.Time `gorm:"not null;default:CURRENT_TIMESTAMP" json:"deleted_at"`
+
+	// Associations
+	Message *Message `gorm:"foreignKey:MessageID" json:"message,omitempty"`
+}
+
+// TableName returns the table name for MessageDeletion model
+func (MessageDeletion) TableName() string {
+	return "message_deletions"
 }
 
 // BeforeCreate hook is called before creating a message
@@ -177,6 +194,7 @@ type MessageResponse struct {
 	EditedAt     *time.Time                   `json:"edited_at,omitempty"`
 	IsEdited     bool                         `json:"is_edited"`
 	IsDeleted    bool                         `json:"is_deleted"`
+	IsPinned     bool                         `json:"is_pinned"`
 	FileName     string                       `json:"file_name,omitempty"`
 	FileSize     int64                        `json:"file_size,omitempty"`
 	FileURL      string                       `json:"file_url,omitempty"`
@@ -222,6 +240,7 @@ func (m *Message) ToResponse() *MessageResponse {
 		EditedAt:     m.EditedAt,
 		IsEdited:     m.IsEdited,
 		IsDeleted:    m.IsDeleted,
+		IsPinned:     m.IsPinned,
 		FileName:     m.FileName,
 		FileSize:     m.FileSize,
 		FileURL:      m.FileURL,
