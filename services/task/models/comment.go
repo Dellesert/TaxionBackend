@@ -54,11 +54,21 @@ type UpdateTaskCommentRequest struct {
 
 // Response Models for Comments
 
+// UserInfo represents basic user information in comments
+type UserInfo struct {
+	ID       uint   `json:"id"`
+	Name     string `json:"name"`
+	Email    string `json:"email"`
+	Avatar   string `json:"avatar,omitempty"`
+	Position string `json:"position,omitempty"`
+}
+
 // TaskCommentResponse represents a task comment in API responses
 type TaskCommentResponse struct {
 	ID        uint                   `json:"id"`
 	TaskID    uint                   `json:"task_id"`
 	UserID    uint                   `json:"user_id"`
+	User      *UserInfo              `json:"user,omitempty"`
 	Content   string                 `json:"content"`
 	ParentID  *uint                  `json:"parent_id,omitempty"`
 	Replies   []*TaskCommentResponse `json:"replies,omitempty"`

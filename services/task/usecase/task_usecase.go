@@ -6,18 +6,20 @@ import (
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/task/clients"
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/repository"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
 
 // TaskUsecase defines the interface for task business logic
 type TaskUsecase interface {
-	CreateTask(userID uint, req *models.CreateTaskRequest) (*models.TaskResponse, error)
+	CreateTask(userID uint, userRole sharedmodels.Role, userDepartment string, req *models.CreateTaskRequest) (*models.TaskResponse, error)
 	GetTaskByID(userID, taskID uint) (*models.TaskResponse, error)
 	UpdateTask(userID, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error)
-	DeleteTask(userID, taskID uint) error
+	DeleteTask(userID uint, userRole sharedmodels.Role, taskID uint) error
 	AssignTask(userID, taskID uint, req *models.AssignTaskRequest) (*models.TaskResponse, error)
 	UnassignTask(userID, taskID uint) (*models.TaskResponse, error)
 	UpdateTaskStatus(userID, taskID uint, req *models.UpdateTaskStatusRequest) (*models.TaskResponse, error)
@@ -35,6 +37,7 @@ type TaskUsecase interface {
 type taskUsecase struct {
 	taskRepo    repository.TaskRepository
 	commentRepo repository.CommentRepository
+	userClient  *clients.UserClient
 }
 
 // NewTaskUsecase creates a new task usecase
@@ -42,22 +45,29 @@ func NewTaskUsecase(taskRepo repository.TaskRepository, commentRepo repository.C
 	return &taskUsecase{
 		taskRepo:    taskRepo,
 		commentRepo: commentRepo,
+		userClient:  clients.NewUserClient(),
 	}
 }
 
 // CreateTask creates a new task
-func (u *taskUsecase) CreateTask(userID uint, req *models.CreateTaskRequest) (*models.TaskResponse, error) {
+func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDepartment string, req *models.CreateTaskRequest) (*models.TaskResponse, error) {
 	// Validate request
 	if err := u.validateCreateTaskRequest(req); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
+	// Check permission to assign tasks
+	if err := u.validateTaskAssignmentPermissions(userID, userRole, userDepartment, req); err != nil {
+		return nil, err
+	}
+
 	// Create task model
 	task := &models.Task{
-		Title:       strings.TrimSpace(req.Title),
-		Description: strings.TrimSpace(req.Description),
-		CreatedBy:   userID,
-		DueDate:     req.DueDate,
+		Title:                strings.TrimSpace(req.Title),
+		Description:          strings.TrimSpace(req.Description),
+		CreatedBy:            userID,
+		DueDate:              req.DueDate,
+		AssignedToDepartment: req.AssignedToDepartment,
 	}
 
 	// Set priority (default to medium if not provided)
@@ -67,7 +77,7 @@ func (u *taskUsecase) CreateTask(userID uint, req *models.CreateTaskRequest) (*m
 		task.Priority = models.TaskPriorityMedium
 	}
 
-	// Set assigned user if provided
+	// Backward compatibility: Set assigned user if provided
 	if req.AssignedTo != nil {
 		task.AssignedTo = req.AssignedTo
 	}
@@ -77,7 +87,135 @@ func (u *taskUsecase) CreateTask(userID uint, req *models.CreateTaskRequest) (*m
 		return nil, fmt.Errorf("failed to create task: %w", err)
 	}
 
-	return task.ToResponse(), nil
+	// Create task assignees
+	// If no assignees specified and no department assignment, assign to creator (self)
+	assigneeIDs := req.AssigneeIDs
+	if len(assigneeIDs) == 0 && req.AssignedToDepartment == nil {
+		assigneeIDs = []uint{userID} // Assign to self
+	}
+
+	if len(assigneeIDs) > 0 {
+		for _, assigneeID := range assigneeIDs {
+			assignee := &models.TaskAssignee{
+				TaskID: task.ID,
+				UserID: assigneeID,
+			}
+			if err := u.taskRepo.CreateAssignee(assignee); err != nil {
+				return nil, fmt.Errorf("failed to create task assignee: %w", err)
+			}
+			task.Assignees = append(task.Assignees, *assignee)
+		}
+	}
+
+	response := task.ToResponse()
+
+	// Enrich with user info
+	if err := u.enrichTaskWithUserInfo(response); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich task with user info: %v\n", err)
+	}
+
+	return response, nil
+}
+
+// enrichTaskWithUserInfo enriches task response with user information
+func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) error {
+	// Collect all user IDs we need to fetch
+	userIDs := make([]uint, 0)
+
+	// Add creator ID
+	userIDs = append(userIDs, response.CreatedBy)
+
+	// Add assignee IDs
+	userIDs = append(userIDs, response.AssigneeIDs...)
+
+	// Remove duplicates
+	uniqueIDs := make(map[uint]bool)
+	for _, id := range userIDs {
+		uniqueIDs[id] = true
+	}
+
+	finalIDs := make([]uint, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		finalIDs = append(finalIDs, id)
+	}
+
+	if len(finalIDs) == 0 {
+		return nil
+	}
+
+	// Fetch users from user-service
+	users, err := u.userClient.GetUsersByIDs(finalIDs)
+	if err != nil {
+		return fmt.Errorf("failed to fetch users: %w", err)
+	}
+
+	// Set creator info
+	if creator, exists := users[response.CreatedBy]; exists {
+		response.Creator = &models.UserInfo{
+			ID:       creator.ID,
+			Name:     creator.Name,
+			Email:    creator.Email,
+			Position: creator.Position,
+		}
+	}
+
+	// Set assignees info
+	response.Assignees = make([]models.UserInfo, 0, len(response.AssigneeIDs))
+	for _, assigneeID := range response.AssigneeIDs {
+		if assignee, exists := users[assigneeID]; exists {
+			response.Assignees = append(response.Assignees, models.UserInfo{
+				ID:       assignee.ID,
+				Name:     assignee.Name,
+				Email:    assignee.Email,
+				Position: assignee.Position,
+			})
+		}
+	}
+
+	return nil
+}
+
+// validateTaskAssignmentPermissions validates if user has permission to assign tasks
+func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sharedmodels.Role, userDepartment string, req *models.CreateTaskRequest) error {
+	// Admin and super_admin can assign to anyone
+	if userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin {
+		return nil
+	}
+
+	// If no assignees and no department specified, task is for self - allowed
+	if len(req.AssigneeIDs) == 0 && req.AssignedToDepartment == nil && req.AssignedTo == nil {
+		return nil
+	}
+
+	// If assigning to self only - allowed
+	if len(req.AssigneeIDs) == 1 && req.AssigneeIDs[0] == userID && req.AssignedToDepartment == nil {
+		return nil
+	}
+
+	// If using deprecated AssignedTo field for self - allowed
+	if req.AssignedTo != nil && *req.AssignedTo == userID && len(req.AssigneeIDs) == 0 && req.AssignedToDepartment == nil {
+		return nil
+	}
+
+	// Manager can assign to their department members
+	if userRole == sharedmodels.RoleManager {
+		// Can assign to department
+		if req.AssignedToDepartment != nil && *req.AssignedToDepartment == userDepartment {
+			return nil
+		}
+
+		// TODO: Check if all assignees are from manager's department
+		// For now, allow managers to assign to specific users (will need user-service client to validate)
+		if len(req.AssigneeIDs) > 0 {
+			return nil // Temporary: trust manager's assignment
+		}
+
+		return nil // Allow managers to assign
+	}
+
+	// Employee can only create tasks for themselves
+	return fmt.Errorf("access denied: employees can only create tasks for themselves")
 }
 
 // GetTaskByID retrieves a task by ID with access control
@@ -95,7 +233,15 @@ func (u *taskUsecase) GetTaskByID(userID, taskID uint) (*models.TaskResponse, er
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
-	return task.ToResponse(), nil
+	response := task.ToResponse()
+
+	// Enrich with user info
+	if err := u.enrichTaskWithUserInfo(response); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich task with user info: %v\n", err)
+	}
+
+	return response, nil
 }
 
 // UpdateTask updates an existing task
@@ -148,7 +294,7 @@ func (u *taskUsecase) UpdateTask(userID, taskID uint, req *models.UpdateTaskRequ
 }
 
 // DeleteTask deletes a task
-func (u *taskUsecase) DeleteTask(userID, taskID uint) error {
+func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID uint) error {
 	// Get existing task
 	task, err := u.taskRepo.GetByID(taskID)
 	if err != nil {
@@ -158,9 +304,12 @@ func (u *taskUsecase) DeleteTask(userID, taskID uint) error {
 		return fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check permissions: only creator can delete
-	if task.CreatedBy != userID {
-		return fmt.Errorf("access denied: only task creator can delete the task")
+	// Check permissions: only creator or admin/super_admin can delete
+	isCreator := task.CreatedBy == userID
+	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+
+	if !isCreator && !isAdmin {
+		return fmt.Errorf("access denied: only task creator or administrator can delete the task")
 	}
 
 	// Delete task
@@ -291,7 +440,73 @@ func (u *taskUsecase) GetUserTasks(userID uint, filter *models.TaskFilterRequest
 		responses[i] = task.ToResponse()
 	}
 
+	// Enrich all tasks with user info in a single batch
+	if err := u.enrichTasksWithUserInfo(responses); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich tasks with user info: %v\n", err)
+	}
+
 	return responses, total, nil
+}
+
+// enrichTasksWithUserInfo enriches multiple tasks with user information in a single batch
+func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) error {
+	if len(responses) == 0 {
+		return nil
+	}
+
+	// Collect all unique user IDs from all tasks
+	uniqueIDs := make(map[uint]bool)
+	for _, response := range responses {
+		uniqueIDs[response.CreatedBy] = true
+		for _, assigneeID := range response.AssigneeIDs {
+			uniqueIDs[assigneeID] = true
+		}
+	}
+
+	if len(uniqueIDs) == 0 {
+		return nil
+	}
+
+	// Convert to slice
+	finalIDs := make([]uint, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		finalIDs = append(finalIDs, id)
+	}
+
+	// Fetch users from user-service (single batch request)
+	users, err := u.userClient.GetUsersByIDs(finalIDs)
+	if err != nil {
+		return fmt.Errorf("failed to fetch users: %w", err)
+	}
+
+	// Enrich each task
+	for _, response := range responses {
+		// Set creator info
+		if creator, exists := users[response.CreatedBy]; exists {
+			response.Creator = &models.UserInfo{
+				ID:       creator.ID,
+				Name:     creator.Name,
+				Email:    creator.Email,
+				Position: creator.Position,
+			}
+		}
+
+		// Set assignees info
+		response.Assignees = make([]models.UserInfo, 0, len(response.AssigneeIDs))
+		for _, assigneeID := range response.AssigneeIDs {
+			if assignee, exists := users[assigneeID]; exists {
+				response.Assignees = append(response.Assignees, models.UserInfo{
+					ID:       assignee.ID,
+					Name:     assignee.Name,
+					Email:    assignee.Email,
+					Position: assignee.Position,
+				})
+			}
+		}
+	}
+
+	return nil
 }
 
 // GetTaskStats retrieves task statistics for a user
@@ -313,9 +528,16 @@ func (u *taskUsecase) hasTaskAccess(userID uint, task *models.Task) bool {
 		return true
 	}
 
-	// User is assignee
+	// User is assignee (old field for backward compatibility)
 	if task.AssignedTo != nil && *task.AssignedTo == userID {
 		return true
+	}
+
+	// User is in task_assignees (new many-to-many relationship)
+	for _, assignee := range task.Assignees {
+		if assignee.UserID == userID {
+			return true
+		}
 	}
 
 	return false

@@ -56,7 +56,15 @@ func (u *taskUsecase) AddComment(userID, taskID uint, req *models.CreateTaskComm
 		return nil, fmt.Errorf("failed to create comment: %w", err)
 	}
 
-	return comment.ToResponse(), nil
+	response := comment.ToResponse()
+
+	// Enrich with user information
+	responses := []*models.TaskCommentResponse{response}
+	if err := u.enrichCommentsWithUsers(responses); err != nil {
+		fmt.Printf("Warning: failed to enrich comment with user info: %v\n", err)
+	}
+
+	return response, nil
 }
 
 // GetTaskComments retrieves comments for a task
@@ -95,12 +103,75 @@ func (u *taskUsecase) GetTaskComments(userID, taskID uint, filter *models.Commen
 		responses[i] = comment.ToResponse()
 	}
 
+	// Enrich comments with user information
+	if err := u.enrichCommentsWithUsers(responses); err != nil {
+		// Log error but don't fail the request
+		// Comments will be returned without user info
+		fmt.Printf("Warning: failed to enrich comments with user info: %v\n", err)
+	}
+
 	return &models.CommentListResponse{
 		Comments: responses,
 		Total:    total,
 		Limit:    filter.Limit,
 		Offset:   filter.Offset,
 	}, nil
+}
+
+// enrichCommentsWithUsers enriches comment responses with user information from user-service
+func (u *taskUsecase) enrichCommentsWithUsers(comments []*models.TaskCommentResponse) error {
+	if len(comments) == 0 {
+		return nil
+	}
+
+	// Collect unique user IDs
+	userIDsMap := make(map[uint]bool)
+	var collectUserIDs func([]*models.TaskCommentResponse)
+	collectUserIDs = func(cmts []*models.TaskCommentResponse) {
+		for _, comment := range cmts {
+			userIDsMap[comment.UserID] = true
+			// Recursively collect from replies
+			if len(comment.Replies) > 0 {
+				collectUserIDs(comment.Replies)
+			}
+		}
+	}
+	collectUserIDs(comments)
+
+	// Convert map to slice
+	userIDs := make([]uint, 0, len(userIDsMap))
+	for userID := range userIDsMap {
+		userIDs = append(userIDs, userID)
+	}
+
+	// Fetch user info from user-service
+	userInfoMap, err := u.userClient.GetUsersByIDs(userIDs)
+	if err != nil {
+		return fmt.Errorf("failed to get users from user-service: %w", err)
+	}
+
+	// Enrich comments with user info
+	var enrichComments func([]*models.TaskCommentResponse)
+	enrichComments = func(cmts []*models.TaskCommentResponse) {
+		for _, comment := range cmts {
+			if clientUserInfo, ok := userInfoMap[comment.UserID]; ok {
+				comment.User = &models.UserInfo{
+					ID:       clientUserInfo.ID,
+					Name:     clientUserInfo.Name,
+					Email:    clientUserInfo.Email,
+					Avatar:   clientUserInfo.Avatar,
+					Position: clientUserInfo.Position,
+				}
+			}
+			// Recursively enrich replies
+			if len(comment.Replies) > 0 {
+				enrichComments(comment.Replies)
+			}
+		}
+	}
+	enrichComments(comments)
+
+	return nil
 }
 
 // UpdateComment updates a task comment

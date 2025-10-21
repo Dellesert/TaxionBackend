@@ -47,7 +47,7 @@ func main() {
 	defer db.Close()
 
 	// Run database migrations
-	if err := db.Migrate(&models.Task{}, &models.TaskComment{}); err != nil {
+	if err := db.Migrate(&models.Task{}, &models.TaskComment{}, &models.TaskAssignee{}); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 

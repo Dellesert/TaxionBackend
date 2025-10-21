@@ -44,7 +44,8 @@
       "Bash(jobs:*)",
       "Bash(xargs:*)",
       "Bash(git checkout:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

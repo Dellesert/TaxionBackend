@@ -45,6 +45,24 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// TODO: Get user department from user-service
+	// For now, use empty string (managers will need to specify department explicitly)
+	userDepartment := ""
+
 	var req models.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -61,7 +79,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	task, err := h.taskUsecase.CreateTask(userID, &req)
+	task, err := h.taskUsecase.CreateTask(userID, userRole, userDepartment, &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -73,6 +91,8 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		statusCode := http.StatusInternalServerError
 		if containsValidationError(err.Error()) {
 			statusCode = http.StatusBadRequest
+		} else if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -615,6 +635,21 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse task ID from URL parameter
 	idStr := c.Param("id")
 	taskID, err := strconv.ParseUint(idStr, 10, 32)
@@ -633,7 +668,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		return
 	}
 
-	err = h.taskUsecase.DeleteTask(userID, uint(taskID))
+	err = h.taskUsecase.DeleteTask(userID, userRole, uint(taskID))
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

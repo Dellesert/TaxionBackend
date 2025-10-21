@@ -14,6 +14,7 @@ import (
 // TaskRepository defines the interface for task data operations
 type TaskRepository interface {
 	Create(task *models.Task) error
+	CreateAssignee(assignee *models.TaskAssignee) error
 	GetByID(id uint) (*models.Task, error)
 	Update(task *models.Task) error
 	Delete(id uint) error
@@ -63,10 +64,18 @@ func (r *taskRepository) Create(task *models.Task) error {
 	return nil
 }
 
+// CreateAssignee creates a new task assignee relationship
+func (r *taskRepository) CreateAssignee(assignee *models.TaskAssignee) error {
+	if err := r.db.Create(assignee).Error; err != nil {
+		return fmt.Errorf("failed to create task assignee: %w", err)
+	}
+	return nil
+}
+
 // GetByID retrieves a task by ID
 func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 	var task models.Task
-	err := r.db.First(&task, id).Error
+	err := r.db.Preload("Assignees").First(&task, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("task not found")
@@ -108,7 +117,14 @@ func (r *taskRepository) Delete(id uint) error {
 
 // GetUserTasks retrieves tasks for a user (either assigned to or created by)
 func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
-	query := r.db.Model(&models.Task{}).Where("assigned_to = ? OR created_by = ?", userID, userID)
+	// Query to find tasks where user is either:
+	// 1. Creator (created_by)
+	// 2. Assigned via old field (assigned_to)
+	// 3. Assigned via task_assignees table
+	query := r.db.Model(&models.Task{}).Where(
+		"created_by = ? OR assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)",
+		userID, userID, userID,
+	)
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -123,7 +139,7 @@ func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequ
 	query = r.applySortingAndPagination(query, filter)
 
 	var tasks []*models.Task
-	if err := query.Find(&tasks).Error; err != nil {
+	if err := query.Preload("Assignees").Find(&tasks).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)
 	}
 
@@ -314,7 +330,11 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 	}
 
 	if filter.AssignedTo != nil {
-		query = query.Where("assigned_to = ?", *filter.AssignedTo)
+		// Filter by assignee: check both old field (assigned_to) and new table (task_assignees)
+		query = query.Where(
+			"assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)",
+			*filter.AssignedTo, *filter.AssignedTo,
+		)
 	}
 
 	if filter.CreatedBy != nil {

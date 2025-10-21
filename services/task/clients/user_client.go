@@ -15,7 +15,7 @@ import (
 // UserInfo represents basic user information from user-service
 type UserInfo struct {
 	ID       uint   `json:"id"`
-	FullName string `json:"full_name"`
+	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Avatar   string `json:"avatar,omitempty"`
 	Position string `json:"position,omitempty"`
