@@ -39,6 +39,7 @@ type Task struct {
 	AssignedTo           *uint        `gorm:"index" json:"assigned_to,omitempty" validate:"omitempty,min=1"` // Deprecated: use Assignees instead
 	AssignedToDepartment *string      `gorm:"size:100" json:"assigned_to_department,omitempty"`
 	CreatedBy            uint         `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
+	LastStatusChangedBy  *uint        `gorm:"index" json:"last_status_changed_by,omitempty"`
 	DueDate              *time.Time   `json:"due_date,omitempty"`
 
 	// Associations
@@ -126,6 +127,8 @@ type TaskResponse struct {
 	AssignedToDepartment *string      `json:"assigned_to_department,omitempty"`
 	CreatedBy            uint         `json:"created_by"`
 	Creator              *UserInfo    `json:"creator,omitempty"`             // User info for creator
+	LastStatusChangedBy  *uint        `json:"last_status_changed_by,omitempty"`
+	LastStatusChanger    *UserInfo    `json:"last_status_changer,omitempty"` // User info for last status changer
 	DueDate              *time.Time   `json:"due_date,omitempty"`
 	CommentCount         int          `json:"comment_count"`
 	CreatedAt            time.Time    `json:"created_at"`
@@ -150,6 +153,7 @@ func (t *Task) ToResponse() *TaskResponse {
 		AssigneeIDs:          assigneeIDs,
 		AssignedToDepartment: t.AssignedToDepartment,
 		CreatedBy:            t.CreatedBy,
+		LastStatusChangedBy:  t.LastStatusChangedBy,
 		DueDate:              t.DueDate,
 		CommentCount:         t.CommentCount,
 		CreatedAt:            t.CreatedAt,

@@ -129,6 +129,11 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 	// Add assignee IDs
 	userIDs = append(userIDs, response.AssigneeIDs...)
 
+	// Add last status changer ID
+	if response.LastStatusChangedBy != nil {
+		userIDs = append(userIDs, *response.LastStatusChangedBy)
+	}
+
 	// Remove duplicates
 	uniqueIDs := make(map[uint]bool)
 	for _, id := range userIDs {
@@ -170,6 +175,18 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 				Email:    assignee.Email,
 				Position: assignee.Position,
 			})
+		}
+	}
+
+	// Set last status changer info
+	if response.LastStatusChangedBy != nil {
+		if statusChanger, exists := users[*response.LastStatusChangedBy]; exists {
+			response.LastStatusChanger = &models.UserInfo{
+				ID:       statusChanger.ID,
+				Name:     statusChanger.Name,
+				Email:    statusChanger.Email,
+				Position: statusChanger.Position,
+			}
 		}
 	}
 
@@ -274,6 +291,7 @@ func (u *taskUsecase) UpdateTask(userID, taskID uint, req *models.UpdateTaskRequ
 	}
 	if req.Status != nil {
 		task.Status = *req.Status
+		task.LastStatusChangedBy = &userID
 	}
 	if req.Priority != nil {
 		task.Priority = *req.Priority
@@ -402,13 +420,22 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 
 	// Update status
 	task.Status = req.Status
+	task.LastStatusChangedBy = &userID
 
 	// Save updated task
 	if err := u.taskRepo.Update(task); err != nil {
 		return nil, fmt.Errorf("failed to update task status: %w", err)
 	}
 
-	return task.ToResponse(), nil
+	response := task.ToResponse()
+
+	// Enrich with user info
+	if err := u.enrichTaskWithUserInfo(response); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich task with user info: %v\n", err)
+	}
+
+	return response, nil
 }
 
 // GetUserTasks retrieves tasks for a user with filtering
@@ -462,6 +489,9 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 		for _, assigneeID := range response.AssigneeIDs {
 			uniqueIDs[assigneeID] = true
 		}
+		if response.LastStatusChangedBy != nil {
+			uniqueIDs[*response.LastStatusChangedBy] = true
+		}
 	}
 
 	if len(uniqueIDs) == 0 {
@@ -502,6 +532,18 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 					Email:    assignee.Email,
 					Position: assignee.Position,
 				})
+			}
+		}
+
+		// Set last status changer info
+		if response.LastStatusChangedBy != nil {
+			if statusChanger, exists := users[*response.LastStatusChangedBy]; exists {
+				response.LastStatusChanger = &models.UserInfo{
+					ID:       statusChanger.ID,
+					Name:     statusChanger.Name,
+					Email:    statusChanger.Email,
+					Position: statusChanger.Position,
+				}
 			}
 		}
 	}
