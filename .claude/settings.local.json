@@ -45,7 +45,17 @@
       "Bash(xargs:*)",
       "Bash(git checkout:*)",
       "Bash(python:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(git add:*)",
+      "Bash(docker builder prune:*)",
+      "Bash(docker rmi:*)",
+      "Bash(docker system prune:*)",
+      "Bash(docker rm:*)",
+      "Bash(awk:*)",
+      "Bash(npm install:*)",
+      "Bash(docker cp:*)",
+      "Bash(powershell -Command:*)"
     ],
     "deny": [],
     "ask": []

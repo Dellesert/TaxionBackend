@@ -70,9 +70,10 @@ func main() {
 
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase)
+	internalHandler := handlers.NewInternalHandler(taskUsecase)
 
 	// Setup routes
-	r := setupRoutes(taskHandler, jwtConfig)
+	r := setupRoutes(taskHandler, internalHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -114,6 +115,7 @@ func main() {
 
 func setupRoutes(
 	taskHandler *handlers.TaskHandler,
+	internalHandler *handlers.InternalHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -137,6 +139,12 @@ func setupRoutes(
 
 	// API routes
 	api := r.Group("/api/v1")
+
+	// Internal routes (no auth required - for inter-service communication)
+	internal := api.Group("/internal")
+	{
+		internal.GET("/tasks/:id", internalHandler.GetTaskForChat)
+	}
 
 	// Protected routes (require JWT)
 	protected := api.Group("")

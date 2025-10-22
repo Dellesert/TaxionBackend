@@ -38,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -a -installsuffix cgo \
     -ldflags='-w -s -extldflags "-static"' \
     -o chat-service \
-    main.go
+    .
 
 # Runtime stage
 FROM alpine:3.19

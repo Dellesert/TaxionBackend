@@ -18,6 +18,7 @@ import (
 type TaskUsecase interface {
 	CreateTask(userID uint, userRole sharedmodels.Role, userDepartment string, req *models.CreateTaskRequest) (*models.TaskResponse, error)
 	GetTaskByID(userID, taskID uint) (*models.TaskResponse, error)
+	GetTaskByIDInternal(taskID uint) (*models.Task, error) // Internal method without access control
 	UpdateTask(userID, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error)
 	DeleteTask(userID uint, userRole sharedmodels.Role, taskID uint) error
 	AssignTask(userID, taskID uint, req *models.AssignTaskRequest) (*models.TaskResponse, error)
@@ -259,6 +260,19 @@ func (u *taskUsecase) GetTaskByID(userID, taskID uint) (*models.TaskResponse, er
 	}
 
 	return response, nil
+}
+
+// GetTaskByIDInternal retrieves a task by ID WITHOUT access control
+// This is for internal use only (e.g., inter-service communication)
+func (u *taskUsecase) GetTaskByIDInternal(taskID uint) (*models.Task, error) {
+	task, err := u.taskRepo.GetByID(taskID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("task not found")
+		}
+		return nil, fmt.Errorf("failed to get task: %w", err)
+	}
+	return task, nil
 }
 
 // UpdateTask updates an existing task

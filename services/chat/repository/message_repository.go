@@ -50,6 +50,9 @@ type MessageRepository interface {
 	GetUserDeletedMessages(chatID, userID uint) ([]uint, error)
 	IsMessageDeletedForUser(messageID, userID uint) (bool, error)
 	ClearChatHistoryForUser(chatID, userID uint) error
+
+	// Attachment operations
+	CreateAttachment(attachment *models.MessageAttachment) error
 }
 
 // messageRepository implements MessageRepository interface
@@ -175,6 +178,7 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
+		Preload("Attachments").
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Limit(limit).
@@ -247,6 +251,7 @@ func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
+		Preload("Attachments").
 		First(&message, id).Error
 
 	if err != nil {
@@ -771,5 +776,15 @@ func (r *messageRepository) ClearChatHistoryForUser(chatID, userID uint) error {
 		return fmt.Errorf("failed to clear chat history: %w", err)
 	}
 
+	return nil
+}
+
+// Attachment operations
+
+// CreateAttachment creates a new message attachment record
+func (r *messageRepository) CreateAttachment(attachment *models.MessageAttachment) error {
+	if err := r.db.Create(attachment).Error; err != nil {
+		return fmt.Errorf("failed to create attachment: %w", err)
+	}
 	return nil
 }

@@ -106,6 +106,19 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			users.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
+		// Profile routes - proxy to user service
+		profile := v1.Group("/profile")
+		{
+			profile.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			profile.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
+		// Department routes - proxy to user service
+		departments := v1.Group("/departments")
+		{
+			departments.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Chat routes - proxy to chat service
 		chats := v1.Group("/chats")
 		{
@@ -143,12 +156,10 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			notifications.Any("/*path", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
 		}
 
-		// File routes - proxy to file service (placeholder for now)
+		// File routes - proxy to file service
 		files := v1.Group("/files")
 		{
-			files.POST("/upload", placeholderHandler("upload file"))
-			files.GET("/:id", placeholderHandler("get file"))
-			files.DELETE("/:id", placeholderHandler("delete file"))
+			files.Any("/*path", proxyRequest(proxyConfig.FileService.URL, proxyConfig.FileService.Name))
 		}
 
 		// Analytics routes - proxy to analytics service (placeholder for now)

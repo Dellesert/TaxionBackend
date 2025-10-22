@@ -66,6 +66,7 @@ type Message struct {
 	// Message reactions and read receipts
 	Reactions    []MessageReaction    `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
 	ReadReceipts []MessageReadReceipt `gorm:"foreignKey:MessageID" json:"read_receipts,omitempty"`
+	Attachments  []MessageAttachment  `gorm:"foreignKey:MessageID" json:"attachments,omitempty"`
 }
 
 // TableName returns the table name for Message model
@@ -147,16 +148,19 @@ func (m *Message) AfterCreate(tx *gorm.DB) error {
 // SendMessageRequest represents request for sending a message
 type SendMessageRequest struct {
 	ChatID    uint        `json:"chat_id" binding:"required,min=1" validate:"required,min=1"`
-	Content   string      `json:"content" binding:"required,max=10000" validate:"required,max=10000"`
+	Content   string      `json:"content" binding:"omitempty,max=10000" validate:"omitempty,max=10000"`
 	Type      MessageType `json:"type,omitempty" binding:"omitempty,oneof=text image file video audio location system" validate:"omitempty,oneof=text image file video audio location system"`
 	ReplyToID *uint       `json:"reply_to_id,omitempty" validate:"omitempty,min=1"`
 
-	// File-related fields
+	// File-related fields (deprecated - use Attachments instead)
 	FileName     string `json:"file_name,omitempty" validate:"omitempty,max=255"`
 	FileSize     int64  `json:"file_size,omitempty" validate:"omitempty,min=0"`
 	FileURL      string `json:"file_url,omitempty" validate:"omitempty,url,max=500"`
 	ThumbnailURL string `json:"thumbnail_url,omitempty" validate:"omitempty,url,max=500"`
 	MimeType     string `json:"mime_type,omitempty" validate:"omitempty,max=100"`
+
+	// New attachments field - IDs of uploaded files from file-service
+	FileIDs []uint `json:"file_ids,omitempty" validate:"omitempty,dive,min=1"`
 
 	// Location-related fields
 	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,min=-90,max=90"`
@@ -184,30 +188,31 @@ type GetMessagesRequest struct {
 
 // MessageResponse represents message response
 type MessageResponse struct {
-	ID           uint                         `json:"id"`
-	ChatID       uint                         `json:"chat_id"`
-	SenderID     uint                         `json:"sender_id"`
-	Content      string                       `json:"content"`
-	Type         MessageType                  `json:"type"`
-	Status       MessageStatus                `json:"status"`
-	ReplyToID    *uint                        `json:"reply_to_id,omitempty"`
-	EditedAt     *time.Time                   `json:"edited_at,omitempty"`
-	IsEdited     bool                         `json:"is_edited"`
-	IsDeleted    bool                         `json:"is_deleted"`
-	IsPinned     bool                         `json:"is_pinned"`
-	FileName     string                       `json:"file_name,omitempty"`
-	FileSize     int64                        `json:"file_size,omitempty"`
-	FileURL      string                       `json:"file_url,omitempty"`
-	ThumbnailURL string                       `json:"thumbnail_url,omitempty"`
-	MimeType     string                       `json:"mime_type,omitempty"`
-	Latitude     *float64                     `json:"latitude,omitempty"`
-	Longitude    *float64                     `json:"longitude,omitempty"`
-	SystemData   string                       `json:"system_data,omitempty"`
-	Reactions    []MessageReactionResponse    `json:"reactions"`
-	ReadReceipts []MessageReadReceiptResponse `json:"read_receipts"`
-	ReplyTo      *MessageResponse             `json:"reply_to,omitempty"`
-	CreatedAt    time.Time                    `json:"created_at"`
-	UpdatedAt    time.Time                    `json:"updated_at"`
+	ID           uint                           `json:"id"`
+	ChatID       uint                           `json:"chat_id"`
+	SenderID     uint                           `json:"sender_id"`
+	Content      string                         `json:"content"`
+	Type         MessageType                    `json:"type"`
+	Status       MessageStatus                  `json:"status"`
+	ReplyToID    *uint                          `json:"reply_to_id,omitempty"`
+	EditedAt     *time.Time                     `json:"edited_at,omitempty"`
+	IsEdited     bool                           `json:"is_edited"`
+	IsDeleted    bool                           `json:"is_deleted"`
+	IsPinned     bool                           `json:"is_pinned"`
+	FileName     string                         `json:"file_name,omitempty"`
+	FileSize     int64                          `json:"file_size,omitempty"`
+	FileURL      string                         `json:"file_url,omitempty"`
+	ThumbnailURL string                         `json:"thumbnail_url,omitempty"`
+	MimeType     string                         `json:"mime_type,omitempty"`
+	Latitude     *float64                       `json:"latitude,omitempty"`
+	Longitude    *float64                       `json:"longitude,omitempty"`
+	SystemData   string                         `json:"system_data,omitempty"`
+	Reactions    []MessageReactionResponse      `json:"reactions"`
+	ReadReceipts []MessageReadReceiptResponse   `json:"read_receipts"`
+	Attachments  []MessageAttachmentResponse    `json:"attachments"`
+	ReplyTo      *MessageResponse               `json:"reply_to,omitempty"`
+	CreatedAt    time.Time                      `json:"created_at"`
+	UpdatedAt    time.Time                      `json:"updated_at"`
 }
 
 // MessageReactionResponse represents message reaction response
@@ -285,6 +290,15 @@ func (m *Message) ToResponse() *MessageResponse {
 				UserID:    receipt.UserID,
 				ReadAt:    receipt.ReadAt,
 			}
+		}
+	}
+
+	// Include attachments if loaded
+	response.Attachments = make([]MessageAttachmentResponse, 0)
+	if len(m.Attachments) > 0 {
+		response.Attachments = make([]MessageAttachmentResponse, len(m.Attachments))
+		for i, attachment := range m.Attachments {
+			response.Attachments[i] = *attachment.ToResponse()
 		}
 	}
 

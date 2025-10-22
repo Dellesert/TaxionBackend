@@ -28,6 +28,8 @@ type ChatUsecase interface {
 	JoinChat(userID, chatID uint) error
 	ToggleFavorite(userID, chatID uint, isFavorite bool) error
 	TogglePinned(userID, chatID uint, isPinned bool) error
+	GetOrCreateDirectChat(userID, targetUserID uint) (*models.ChatResponse, error)
+	GetOrCreateTaskChat(userID, taskID uint) (*models.ChatResponse, error)
 }
 
 // chatUsecase implements ChatUsecase interface

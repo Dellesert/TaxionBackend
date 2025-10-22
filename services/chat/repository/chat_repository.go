@@ -20,6 +20,8 @@ type ChatRepository interface {
 	Count() (int64, error)
 	GetWithMembers(id uint) (*models.Chat, error)
 	GetUserChats(userID uint, limit, offset int) ([]*models.Chat, int64, error)
+	GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error)
+	GetChatByTaskID(taskID uint) (*models.Chat, error)
 
 	// Chat member operations
 	AddMember(member *models.ChatMember) error
@@ -399,4 +401,63 @@ func (r *chatRepository) CanRemoveMembers(chatID, userID, targetUserID uint) (bo
 // CanPromoteMembers checks if user can change member roles
 func (r *chatRepository) CanPromoteMembers(chatID, userID uint) (bool, error) {
 	return r.HasOwnerAccess(chatID, userID)
+}
+
+// GetDirectChatBetweenUsers finds an existing private chat between two users
+func (r *chatRepository) GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error) {
+	var chat models.Chat
+
+	// Find a private chat where both users are members
+	err := r.db.
+		Joins("JOIN chat_members cm1 ON chats.id = cm1.chat_id AND cm1.user_id = ? AND cm1.is_active = ?", user1ID, true).
+		Joins("JOIN chat_members cm2 ON chats.id = cm2.chat_id AND cm2.user_id = ? AND cm2.is_active = ?", user2ID, true).
+		Where("chats.type = ? AND chats.is_active = ? AND chats.task_id IS NULL", models.ChatTypePrivate, true).
+		Preload("Members.User").
+		Preload("Members", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
+		}).
+		First(&chat).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // No existing chat found
+		}
+		return nil, fmt.Errorf("failed to find direct chat: %w", err)
+	}
+
+	return &chat, nil
+}
+
+// GetChatByTaskID finds a chat linked to a specific task
+func (r *chatRepository) GetChatByTaskID(taskID uint) (*models.Chat, error) {
+	var chats []models.Chat
+
+	err := r.db.
+		Where("task_id = ? AND is_active = ?", taskID, true).
+		Limit(1).
+		Find(&chats).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find chat by task ID: %w", err)
+	}
+
+	// If no chat found, return nil, nil (not an error)
+	if len(chats) == 0 {
+		return nil, nil
+	}
+
+	chat := &chats[0]
+
+	// Load members separately if chat found
+	err = r.db.
+		Preload("User").
+		Where("chat_id = ? AND is_active = ?", chat.ID, true).
+		Order("role ASC, joined_at ASC").
+		Find(&chat.Members).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chat members: %w", err)
+	}
+
+	return chat, nil
 }

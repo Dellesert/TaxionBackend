@@ -27,6 +27,7 @@ type Chat struct {
 	Avatar        string     `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
 	IsActive      bool       `gorm:"not null;default:true" json:"is_active"`
 	LastMessageAt *time.Time `json:"last_message_at,omitempty"`
+	TaskID        *uint      `gorm:"index" json:"task_id,omitempty"` // Link to task for task-related chats
 
 	// Associations
 	Members  []ChatMember `gorm:"foreignKey:ChatID" json:"members,omitempty"`
@@ -136,6 +137,7 @@ type ChatResponse struct {
 	UnreadCount   int64                `json:"unread_count"`
 	MemberCount   int                  `json:"member_count"`
 	Members       []ChatMemberResponse `json:"members,omitempty"`
+	TaskID        *uint                `json:"task_id,omitempty"`
 	CreatedAt     time.Time            `json:"created_at"`
 	UpdatedAt     time.Time            `json:"updated_at"`
 }
@@ -164,6 +166,7 @@ func (c *Chat) ToResponse() *ChatResponse {
 		Avatar:        c.Avatar,
 		IsActive:      c.IsActive,
 		LastMessageAt: c.LastMessageAt,
+		TaskID:        c.TaskID,
 		MemberCount:   len(c.Members),
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     c.UpdatedAt,

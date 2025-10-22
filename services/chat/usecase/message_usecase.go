@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/chat/client"
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/repository"
 
@@ -42,6 +43,7 @@ type messageUsecase struct {
 	messageRepo repository.MessageRepository
 	chatRepo    repository.ChatRepository
 	wsHub       WebSocketHub
+	fileClient  *client.FileClient
 }
 
 // NewMessageUsecase creates a new message usecase
@@ -50,6 +52,7 @@ func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo reposi
 		messageRepo: messageRepo,
 		chatRepo:    chatRepo,
 		wsHub:       nil, // Will be set later to avoid circular dependency
+		fileClient:  client.NewFileClient(),
 	}
 }
 
@@ -63,6 +66,10 @@ func (uc *messageUsecase) SetWebSocketHub(hub WebSocketHub) {
 
 // SendMessage sends a new message
 func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageRequest) (*models.MessageResponse, error) {
+	// Debug: log request details
+	fmt.Printf("📥 SendMessage request: ChatID=%d, Content='%s', FileIDs=%v (len=%d)\n",
+		req.ChatID, req.Content, req.FileIDs, len(req.FileIDs))
+
 	// Validate request
 	if err := uc.validateSendMessageRequest(req); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
@@ -112,6 +119,38 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 
 	if err := uc.messageRepo.Create(message); err != nil {
 		return nil, fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Process file attachments if FileIDs are provided
+	if len(req.FileIDs) > 0 {
+		fmt.Printf("📎 Processing %d file attachments for message %d\n", len(req.FileIDs), message.ID)
+
+		// Fetch file information from file-service
+		fileInfos, err := uc.fileClient.GetMultipleFiles(req.FileIDs, userID)
+		if err != nil {
+			fmt.Printf("⚠️ Error fetching file info: %v\n", err)
+		}
+
+		// Create attachment records
+		for _, fileInfo := range fileInfos {
+			attachment := &models.MessageAttachment{
+				MessageID:    message.ID,
+				FileID:       fileInfo.ID,
+				FileName:     fileInfo.OriginalName,
+				FileSize:     fileInfo.FileSize,
+				FileURL:      fileInfo.FileURL,
+				ThumbnailURL: fileInfo.ThumbnailURL,
+				MimeType:     fileInfo.MimeType,
+				FileType:     fileInfo.FileType,
+			}
+
+			if err := uc.messageRepo.CreateAttachment(attachment); err != nil {
+				fmt.Printf("⚠️ Failed to create attachment record for file %d: %v\n", fileInfo.ID, err)
+				continue
+			}
+
+			fmt.Printf("✅ Created attachment record: file_id=%d, message_id=%d\n", fileInfo.ID, message.ID)
+		}
 	}
 
 	// Get message with relations for response
@@ -709,8 +748,9 @@ func (uc *messageUsecase) validateSendMessageRequest(req *models.SendMessageRequ
 		return fmt.Errorf("chat_id is required")
 	}
 
-	if strings.TrimSpace(req.Content) == "" {
-		return fmt.Errorf("content is required")
+	// Content is required unless files are attached
+	if strings.TrimSpace(req.Content) == "" && len(req.FileIDs) == 0 {
+		return fmt.Errorf("content or file attachments are required")
 	}
 
 	// Validate message type
