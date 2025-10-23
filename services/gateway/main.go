@@ -147,6 +147,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// Poll routes - proxy to poll service
 		polls := v1.Group("/polls")
 		{
+			polls.Any("", proxyRequest(proxyConfig.PollService.URL, proxyConfig.PollService.Name))
 			polls.Any("/*path", proxyRequest(proxyConfig.PollService.URL, proxyConfig.PollService.Name))
 		}
 

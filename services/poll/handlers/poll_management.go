@@ -540,6 +540,22 @@ func (h *PollHandler) UpdatePollStatus(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse poll ID from URL parameter
 	idStr := c.Param("id")
 	pollID, err := strconv.ParseUint(idStr, 10, 32)
@@ -578,7 +594,7 @@ func (h *PollHandler) UpdatePollStatus(c *gin.Context) {
 		return
 	}
 
-	err = h.pollUsecase.UpdatePollStatus(userID, uint(pollID), req.Status)
+	err = h.pollUsecase.UpdatePollStatus(userID, uint(pollID), req.Status, userRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

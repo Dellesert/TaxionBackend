@@ -3,6 +3,8 @@ package models
 
 import (
 	"time"
+
+	sharedModels "tachyon-messenger/shared/models"
 )
 
 // CreatePollRequest represents request for creating a poll
@@ -122,6 +124,7 @@ type PollResponse struct {
 	Visibility  PollVisibility `json:"visibility"`
 	Category    string         `json:"category,omitempty"`
 	CreatedBy   uint           `json:"created_by"`
+	Creator     *sharedModels.User `json:"creator,omitempty"`
 
 	// Timing
 	StartTime *time.Time `json:"start_time,omitempty"`
@@ -196,6 +199,25 @@ type PollParticipantResponse struct {
 	NotifiedAt *time.Time `json:"notified_at,omitempty"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
+}
+
+// PollVoterResponse represents a voter with their details
+type PollVoterResponse struct {
+	UserID      uint      `json:"user_id"`
+	UserName    string    `json:"user_name"`
+	UserEmail   string    `json:"user_email"`
+	VotedAt     time.Time `json:"voted_at"`
+	IsAnonymous bool      `json:"is_anonymous"`
+	Options     []string  `json:"options,omitempty"` // Названия выбранных опций (если разрешено показывать)
+	Comment     string    `json:"comment,omitempty"` // Комментарий (если разрешено показывать)
+}
+
+// PollVotersListResponse represents list of voters
+type PollVotersListResponse struct {
+	Voters      []*PollVoterResponse `json:"voters"`
+	TotalVoters int                  `json:"total_voters"`
+	PollID      uint                 `json:"poll_id"`
+	PollTitle   string               `json:"poll_title"`
 }
 
 // PollCommentResponse represents a comment in API responses
@@ -285,6 +307,7 @@ func (p *Poll) ToResponse() *PollResponse {
 		Visibility:        p.Visibility,
 		Category:          p.Category,
 		CreatedBy:         p.CreatedBy,
+		Creator:           p.Creator,
 		StartTime:         p.StartTime,
 		EndTime:           p.EndTime,
 		AllowAnonymous:    p.AllowAnonymous,

@@ -9,6 +9,7 @@ import (
 
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/shared/database"
+	sharedModels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
@@ -21,7 +22,7 @@ type PollRepository interface {
 	GetByIDWithAll(id uint) (*models.Poll, error)
 	Update(poll *models.Poll) error
 	Delete(id uint) error
-	GetPolls(userID uint, filter *models.PollFilterRequest) ([]*models.Poll, int64, error)
+	GetPolls(userID uint, filter *models.PollFilterRequest, userRole sharedModels.Role) ([]*models.Poll, int64, error)
 	SearchPolls(userID uint, query string, filter *models.PollFilterRequest) ([]*models.Poll, int64, error)
 	GetPollStats(userID uint) (*models.PollStatsResponse, error)
 	GetUserPolls(userID uint, filter *models.PollFilterRequest) ([]*models.Poll, int64, error)
@@ -72,7 +73,7 @@ func (r *pollRepository) GetByIDWithOptions(id uint) (*models.Poll, error) {
 	var poll models.Poll
 	err := r.db.Preload("Options", func(db *gorm.DB) *gorm.DB {
 		return db.Order("position ASC")
-	}).First(&poll, id).Error
+	}).Preload("Creator").First(&poll, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("poll not found")
@@ -89,6 +90,7 @@ func (r *pollRepository) GetByIDWithAll(id uint) (*models.Poll, error) {
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position ASC")
 		}).
+		Preload("Creator").
 		Preload("Votes").
 		Preload("Participants").
 		Preload("Comments", func(db *gorm.DB) *gorm.DB {
@@ -132,14 +134,15 @@ func (r *pollRepository) Delete(id uint) error {
 }
 
 // GetPolls retrieves polls based on visibility and filters
-func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest) ([]*models.Poll, int64, error) {
+func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest, userRole sharedModels.Role) ([]*models.Poll, int64, error) {
 	query := r.db.Model(&models.Poll{}).
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position ASC")
-		})
+		}).
+		Preload("Creator")
 
-	// Apply visibility filter
-	query = r.applyVisibilityFilter(query, userID)
+	// Apply visibility filter with draft filtering
+	query = r.applyVisibilityFilterWithDrafts(query, userID, userRole)
 
 	// Apply other filters
 	query = r.applyFilters(query, filter)
@@ -169,7 +172,8 @@ func (r *pollRepository) SearchPolls(userID uint, searchQuery string, filter *mo
 	query := r.db.Model(&models.Poll{}).
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position ASC")
-		})
+		}).
+		Preload("Creator")
 
 	// Apply visibility filter
 	query = r.applyVisibilityFilter(query, userID)
@@ -297,7 +301,8 @@ func (r *pollRepository) GetUserPolls(userID uint, filter *models.PollFilterRequ
 		Where("created_by = ?", userID).
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position ASC")
-		})
+		}).
+		Preload("Creator")
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -330,7 +335,8 @@ func (r *pollRepository) GetParticipatedPolls(userID uint, filter *models.PollFi
 		Group("polls.id").
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position ASC")
-		})
+		}).
+		Preload("Creator")
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -361,7 +367,8 @@ func (r *pollRepository) GetPollsByStatus(status models.PollStatus, filter *mode
 		Where("status = ?", status).
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
 			return db.Order("position ASC")
-		})
+		}).
+		Preload("Creator")
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -447,6 +454,27 @@ func (r *pollRepository) applyVisibilityFilter(query *gorm.DB, userID uint) *gor
 		"visibility = ? OR created_by = ? OR (visibility = ? AND id IN (SELECT poll_id FROM poll_participants WHERE user_id = ?))",
 		models.PollVisibilityPublic, userID, models.PollVisibilityInviteOnly, userID,
 	)
+}
+
+// applyVisibilityFilterWithDrafts applies visibility filtering with draft poll filtering
+// System administrators (admin, super_admin) can see ALL polls without restrictions
+// Other users see polls based on visibility rules and draft restrictions
+func (r *pollRepository) applyVisibilityFilterWithDrafts(query *gorm.DB, userID uint, userRole sharedModels.Role) *gorm.DB {
+	isAdmin := userRole == sharedModels.RoleAdmin || userRole == sharedModels.RoleSuperAdmin
+
+	// System administrators can see ALL polls from all departments and all users
+	if isAdmin {
+		// No filters applied for admins - they see everything
+		return query
+	}
+
+	// For non-admins, apply regular visibility filter
+	query = r.applyVisibilityFilter(query, userID)
+
+	// For non-admins, exclude draft polls they didn't create
+	query = query.Where("status != ? OR created_by = ?", models.PollStatusDraft, userID)
+
+	return query
 }
 
 // applyFilters applies filters to the query
@@ -566,8 +594,8 @@ func (r *pollRepository) loadPollStatistics(polls []*models.Poll, userID uint) {
 
 	var voterCounts []voterCount
 	r.db.Model(&models.PollVote{}).
-		Select("poll_id, COUNT(DISTINCT COALESCE(user_id, id)) as count").
-		Where("poll_id IN ?", pollIDs).
+		Select("poll_id, COUNT(DISTINCT user_id) as count").
+		Where("poll_id IN ? AND user_id IS NOT NULL", pollIDs).
 		Group("poll_id").
 		Scan(&voterCounts)
 

@@ -9,6 +9,7 @@ import (
 
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/services/poll/repository"
+	sharedModels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
@@ -17,14 +18,14 @@ import (
 type PollUsecase interface {
 	// Poll CRUD operations
 	CreatePoll(userID uint, req *models.CreatePollRequest) (*models.PollResponse, error)
-	GetPoll(userID, pollID uint) (*models.PollResponse, error)
-	UpdatePoll(userID, pollID uint, req *models.UpdatePollRequest) (*models.PollResponse, error)
-	DeletePoll(userID, pollID uint) error
-	GetPolls(userID uint, filter *models.PollFilterRequest) (*models.PollListResponse, error)
+	GetPoll(userID, pollID uint, userRole sharedModels.Role) (*models.PollResponse, error)
+	UpdatePoll(userID, pollID uint, req *models.UpdatePollRequest, userRole sharedModels.Role) (*models.PollResponse, error)
+	DeletePoll(userID, pollID uint, userRole sharedModels.Role) error
+	GetPolls(userID uint, filter *models.PollFilterRequest, userRole sharedModels.Role) (*models.PollListResponse, error)
 	SearchPolls(userID uint, query string, filter *models.PollFilterRequest) (*models.PollListResponse, error)
 
 	// Poll status management
-	UpdatePollStatus(userID, pollID uint, status models.PollStatus) error
+	UpdatePollStatus(userID, pollID uint, status models.PollStatus, userRole sharedModels.Role) error
 
 	// Voting operations
 	VotePoll(userID, pollID uint, req *models.VotePollRequest) ([]*models.PollVoteResponse, error)
@@ -156,7 +157,7 @@ func (u *pollUsecase) CreatePoll(userID uint, req *models.CreatePollRequest) (*m
 }
 
 // GetPoll retrieves a poll by ID with access control
-func (u *pollUsecase) GetPoll(userID, pollID uint) (*models.PollResponse, error) {
+func (u *pollUsecase) GetPoll(userID, pollID uint, userRole sharedModels.Role) (*models.PollResponse, error) {
 	poll, err := u.pollRepo.GetByIDWithAll(pollID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
@@ -166,7 +167,9 @@ func (u *pollUsecase) GetPoll(userID, pollID uint) (*models.PollResponse, error)
 	}
 
 	// Check access rights
-	if !u.hasPollAccess(userID, poll) {
+	// System administrators can access all polls
+	isAdmin := userRole == sharedModels.RoleAdmin || userRole == sharedModels.RoleSuperAdmin
+	if !isAdmin && !u.hasPollAccess(userID, poll) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -177,7 +180,7 @@ func (u *pollUsecase) GetPoll(userID, pollID uint) (*models.PollResponse, error)
 }
 
 // UpdatePoll updates an existing poll
-func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequest) (*models.PollResponse, error) {
+func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequest, userRole sharedModels.Role) (*models.PollResponse, error) {
 	// Get existing poll
 	poll, err := u.pollRepo.GetByID(pollID)
 	if err != nil {
@@ -187,9 +190,13 @@ func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequ
 		return nil, fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: only creator can update
-	if poll.CreatedBy != userID {
-		return nil, fmt.Errorf("access denied: only poll creator can update the poll")
+	// Check permissions: creator or system administrators can update
+	isCreator := poll.CreatedBy == userID
+	isAdmin := userRole == sharedModels.RoleAdmin
+	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
+
+	if !isCreator && !isAdmin && !isSuperAdmin {
+		return nil, fmt.Errorf("access denied: only poll creator or administrators can update the poll")
 	}
 
 	// Validate that poll can be updated (not closed/archived)
@@ -262,7 +269,7 @@ func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequ
 }
 
 // DeletePoll deletes a poll
-func (u *pollUsecase) DeletePoll(userID, pollID uint) error {
+func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role) error {
 	// Get existing poll
 	poll, err := u.pollRepo.GetByID(pollID)
 	if err != nil {
@@ -272,18 +279,24 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint) error {
 		return fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: only creator can delete
-	if poll.CreatedBy != userID {
-		return fmt.Errorf("access denied: only poll creator can delete the poll")
+	// Check permissions: creator, manager, admin, or super_admin can delete
+	isCreator := poll.CreatedBy == userID
+	isManager := userRole == sharedModels.RoleManager
+	isAdmin := userRole == sharedModels.RoleAdmin
+	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
+
+	if !isCreator && !isManager && !isAdmin && !isSuperAdmin {
+		return fmt.Errorf("access denied: only poll creator, managers, or administrators can delete the poll")
 	}
 
-	// Check if poll has votes (might want to prevent deletion)
+	// Check if poll has votes - only prevent deletion for non-admin users
 	voteCount, err := u.voteRepo.GetVoteCount(pollID)
 	if err != nil {
 		return fmt.Errorf("failed to check vote count: %w", err)
 	}
 
-	if voteCount > 0 {
+	// Only creators cannot delete polls with votes, admins/managers can delete regardless
+	if voteCount > 0 && isCreator && !isManager && !isAdmin && !isSuperAdmin {
 		return fmt.Errorf("cannot delete poll with existing votes")
 	}
 
@@ -296,7 +309,7 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint) error {
 }
 
 // GetPolls retrieves polls with filtering and pagination
-func (u *pollUsecase) GetPolls(userID uint, filter *models.PollFilterRequest) (*models.PollListResponse, error) {
+func (u *pollUsecase) GetPolls(userID uint, filter *models.PollFilterRequest, userRole sharedModels.Role) (*models.PollListResponse, error) {
 	// Validate filter
 	if err := filter.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid filter: %w", err)
@@ -314,7 +327,7 @@ func (u *pollUsecase) GetPolls(userID uint, filter *models.PollFilterRequest) (*
 	}
 
 	// Get polls from repository
-	polls, total, err := u.pollRepo.GetPolls(userID, filter)
+	polls, total, err := u.pollRepo.GetPolls(userID, filter, userRole)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get polls: %w", err)
 	}
@@ -376,7 +389,7 @@ func (u *pollUsecase) SearchPolls(userID uint, query string, filter *models.Poll
 }
 
 // UpdatePollStatus updates poll status
-func (u *pollUsecase) UpdatePollStatus(userID, pollID uint, status models.PollStatus) error {
+func (u *pollUsecase) UpdatePollStatus(userID, pollID uint, status models.PollStatus, userRole sharedModels.Role) error {
 	// Get existing poll
 	poll, err := u.pollRepo.GetByID(pollID)
 	if err != nil {
@@ -386,9 +399,13 @@ func (u *pollUsecase) UpdatePollStatus(userID, pollID uint, status models.PollSt
 		return fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: only creator can update status
-	if poll.CreatedBy != userID {
-		return fmt.Errorf("access denied: only poll creator can update status")
+	// Check permissions: creator or system administrators can update status
+	isCreator := poll.CreatedBy == userID
+	isAdmin := userRole == sharedModels.RoleAdmin
+	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
+
+	if !isCreator && !isAdmin && !isSuperAdmin {
+		return fmt.Errorf("access denied: only poll creator or administrators can update status")
 	}
 
 	// Validate status transition
@@ -430,17 +447,14 @@ func (u *pollUsecase) VotePoll(userID, pollID uint, req *models.VotePollRequest)
 		return nil, fmt.Errorf("invalid vote: %w", err)
 	}
 
-	// Check if user has already voted (if multiple votes not allowed)
-	if !poll.AllowMultipleVote {
-		hasVoted, err := u.voteRepo.HasUserVoted(userID, pollID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check if user voted: %w", err)
-		}
-		if hasVoted {
-			return nil, fmt.Errorf("user has already voted on this poll")
-		}
-	} else {
-		// If multiple votes allowed, delete previous votes first
+	// Check if user has already voted and delete previous votes to allow revoting
+	hasVoted, err := u.voteRepo.HasUserVoted(userID, pollID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check if user voted: %w", err)
+	}
+
+	// If user has already voted, delete previous votes first to allow revoting
+	if hasVoted {
 		if err := u.voteRepo.DeleteByUserAndPoll(userID, pollID); err != nil {
 			return nil, fmt.Errorf("failed to delete previous votes: %w", err)
 		}

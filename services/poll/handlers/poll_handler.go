@@ -120,6 +120,22 @@ func (h *PollHandler) GetPoll(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse poll ID from URL parameter
 	idStr := c.Param("id")
 	pollID, err := strconv.ParseUint(idStr, 10, 32)
@@ -138,7 +154,7 @@ func (h *PollHandler) GetPoll(c *gin.Context) {
 		return
 	}
 
-	poll, err := h.pollUsecase.GetPoll(userID, uint(pollID))
+	poll, err := h.pollUsecase.GetPoll(userID, uint(pollID), userRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -188,6 +204,22 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse poll ID from URL parameter
 	idStr := c.Param("id")
 	pollID, err := strconv.ParseUint(idStr, 10, 32)
@@ -223,7 +255,7 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		return
 	}
 
-	poll, err := h.pollUsecase.UpdatePoll(userID, uint(pollID), &req)
+	poll, err := h.pollUsecase.UpdatePoll(userID, uint(pollID), &req, userRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -282,6 +314,22 @@ func (h *PollHandler) DeletePoll(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse poll ID from URL parameter
 	idStr := c.Param("id")
 	pollID, err := strconv.ParseUint(idStr, 10, 32)
@@ -300,7 +348,7 @@ func (h *PollHandler) DeletePoll(c *gin.Context) {
 		return
 	}
 
-	err = h.pollUsecase.DeletePoll(userID, uint(pollID))
+	err = h.pollUsecase.DeletePoll(userID, uint(pollID), userRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -356,6 +404,22 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse filter parameters
 	var filter models.PollFilterRequest
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -387,7 +451,7 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		filter.SortOrder = "desc"
 	}
 
-	pollList, err := h.pollUsecase.GetPolls(userID, &filter)
+	pollList, err := h.pollUsecase.GetPolls(userID, &filter, userRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

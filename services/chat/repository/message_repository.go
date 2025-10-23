@@ -486,6 +486,9 @@ func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, erro
 	var message models.Message
 	err := r.db.
 		Preload("Sender"). // Load sender information
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
 		Order("created_at DESC").
 		First(&message).Error

@@ -212,6 +212,7 @@ type MessageResponse struct {
 	SystemData   string                         `json:"system_data,omitempty"`
 	Reactions    []MessageReactionResponse      `json:"reactions"`
 	ReadReceipts []MessageReadReceiptResponse   `json:"read_receipts"`
+	ReadBy       []uint                         `json:"read_by"` // Array of user IDs who read the message
 	Attachments  []MessageAttachmentResponse    `json:"attachments"`
 	ReplyTo      *MessageResponse               `json:"reply_to,omitempty"`
 	CreatedAt    time.Time                      `json:"created_at"`
@@ -294,6 +295,7 @@ func (m *Message) ToResponse() *MessageResponse {
 	// Include read receipts if loaded
 	if len(m.ReadReceipts) > 0 {
 		response.ReadReceipts = make([]MessageReadReceiptResponse, len(m.ReadReceipts))
+		response.ReadBy = make([]uint, len(m.ReadReceipts))
 		for i, receipt := range m.ReadReceipts {
 			response.ReadReceipts[i] = MessageReadReceiptResponse{
 				ID:        receipt.ID,
@@ -301,7 +303,11 @@ func (m *Message) ToResponse() *MessageResponse {
 				UserID:    receipt.UserID,
 				ReadAt:    receipt.ReadAt,
 			}
+			response.ReadBy[i] = receipt.UserID
 		}
+	} else {
+		// Initialize empty array to prevent null in JSON
+		response.ReadBy = []uint{}
 	}
 
 	// Include attachments if loaded

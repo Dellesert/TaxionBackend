@@ -69,6 +69,7 @@ type Poll struct {
 	Category string `gorm:"size:100" json:"category,omitempty" validate:"omitempty,max=100"`
 
 	// Associations
+	Creator      *models.User      `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	Options      []PollOption      `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"options,omitempty"`
 	Votes        []PollVote        `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"votes,omitempty"`
 	Participants []PollParticipant `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"participants,omitempty"`

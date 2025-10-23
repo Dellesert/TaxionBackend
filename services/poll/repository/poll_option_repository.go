@@ -298,8 +298,8 @@ func (r *pollVoteRepository) GetVoteCount(pollID uint) (int64, error) {
 func (r *pollVoteRepository) GetVoterCount(pollID uint) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.PollVote{}).
-		Where("poll_id = ?", pollID).
-		Distinct("COALESCE(user_id, id)").
+		Where("poll_id = ? AND user_id IS NOT NULL", pollID).
+		Distinct("user_id").
 		Count(&count).Error
 	if err != nil {
 		return 0, fmt.Errorf("failed to get voter count: %w", err)
