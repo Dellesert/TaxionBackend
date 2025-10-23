@@ -92,7 +92,9 @@ func (r *messageRepository) GetByID(id uint) (*models.Message, error) {
 func (r *messageRepository) GetByChatID(chatID uint, limit, offset int) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -127,7 +129,9 @@ func (r *messageRepository) GetByChatIDWithPagination(chatID uint, limit, offset
 
 	// Get messages with preloaded data, sorted by time (newest first)
 	err = r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -171,7 +175,9 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 	// Get messages with preloaded data, sorted by time (newest first)
 	// ВАЖНО: НЕ фильтруем is_deleted, чтобы админы могли видеть удалённые сообщения
 	err = r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -479,6 +485,7 @@ func (r *messageRepository) GetMessagesByType(chatID uint, messageType models.Me
 func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, error) {
 	var message models.Message
 	err := r.db.
+		Preload("Sender"). // Load sender information
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
 		Order("created_at DESC").
 		First(&message).Error

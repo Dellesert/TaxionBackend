@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"tachyon-messenger/shared/models"
@@ -60,8 +61,9 @@ type Message struct {
 	SystemData string `gorm:"type:text" json:"system_data,omitempty"`
 
 	// Associations
-	Chat    *Chat    `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
-	ReplyTo *Message `gorm:"foreignKey:ReplyToID" json:"reply_to,omitempty"`
+	Chat    *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
+	Sender  *models.User `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
+	ReplyTo *Message     `gorm:"foreignKey:ReplyToID" json:"reply_to,omitempty"`
 
 	// Message reactions and read receipts
 	Reactions    []MessageReaction    `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
@@ -191,6 +193,7 @@ type MessageResponse struct {
 	ID           uint                           `json:"id"`
 	ChatID       uint                           `json:"chat_id"`
 	SenderID     uint                           `json:"sender_id"`
+	Sender       *models.User                   `json:"sender,omitempty"`
 	Content      string                         `json:"content"`
 	Type         MessageType                    `json:"type"`
 	Status       MessageStatus                  `json:"status"`
@@ -234,10 +237,18 @@ type MessageReadReceiptResponse struct {
 
 // ToResponse converts Message to MessageResponse
 func (m *Message) ToResponse() *MessageResponse {
+	// Debug: check if Sender is loaded
+	if m.Sender != nil {
+		fmt.Printf("✅ Message %d: Sender loaded: ID=%d, Name=%s\n", m.ID, m.Sender.ID, m.Sender.Name)
+	} else {
+		fmt.Printf("❌ Message %d: Sender is NIL! SenderID=%d\n", m.ID, m.SenderID)
+	}
+
 	response := &MessageResponse{
 		ID:           m.ID,
 		ChatID:       m.ChatID,
 		SenderID:     m.SenderID,
+		Sender:       m.Sender,
 		Content:      m.Content,
 		Type:         m.Type,
 		Status:       m.Status,

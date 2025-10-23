@@ -248,6 +248,16 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 		messageResponses[i] = *message.ToResponse()
 	}
 
+	// Debug: Check if sender is in response
+	if len(messageResponses) > 0 {
+		firstMsg := messageResponses[0]
+		fmt.Printf("🔍 First message response: ID=%d, SenderID=%d, Sender=%v (nil=%v)\n",
+			firstMsg.ID, firstMsg.SenderID, firstMsg.Sender, firstMsg.Sender == nil)
+		if firstMsg.Sender != nil {
+			fmt.Printf("   Sender details: ID=%d, Name=%s\n", firstMsg.Sender.ID, firstMsg.Sender.Name)
+		}
+	}
+
 	hasMore := len(messages) == req.Limit
 
 	fmt.Printf("📦 Returning %d messages, hasMore=%v\n", len(messageResponses), hasMore)

@@ -183,6 +183,9 @@ func (c *Client) handleTypingMessage(wsMsg *models.WSMessage) {
 func (c *Client) handleJoinMessage(wsMsg *models.WSMessage) {
 	c.joinChatRoom(wsMsg.ChatID)
 	log.Printf("User %d joined chat room %d", c.userID, wsMsg.ChatID)
+
+	// Broadcast user presence after joining chat room
+	c.hub.broadcastUserPresence(c.userID, "online")
 }
 
 // handleLeaveMessage handles user leave messages

@@ -243,29 +243,29 @@ func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 
 // broadcastUserPresence broadcasts user presence change
 func (h *Hub) broadcastUserPresence(userID uint, status string) {
-	client := h.clients[userID]
-	if client == nil {
-		return
-	}
-
 	presence := &UserPresence{
 		UserID:   userID,
 		Status:   status,
 		LastSeen: time.Now(),
 	}
 
-	// Get user's chat rooms
-	chatRooms := make([]uint, 0, len(client.chatRooms))
-	for chatID := range client.chatRooms {
-		chatRooms = append(chatRooms, chatID)
-	}
-	presence.ChatRooms = chatRooms
-
 	// Update status in user-service
 	go updateUserStatus(userID, status)
 
+	// Find all chat rooms where this user is a member by checking h.chatRooms
+	// This works even if client.chatRooms is empty (e.g., during initial connection)
+	chatRoomIDs := make([]uint, 0)
+	for chatID, users := range h.chatRooms {
+		if _, exists := users[userID]; exists {
+			chatRoomIDs = append(chatRoomIDs, chatID)
+		}
+	}
+	presence.ChatRooms = chatRoomIDs
+
+	log.Printf("Broadcasting user_presence for user %d (status: %s) to %d chats", userID, status, len(chatRoomIDs))
+
 	// Broadcast to all chat rooms user is in
-	for chatID := range client.chatRooms {
+	for _, chatID := range chatRoomIDs {
 		broadcastMsg := &BroadcastMessage{
 			Type:        models.WSMessageType("user_presence"),
 			ChatID:      chatID,
