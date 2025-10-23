@@ -31,6 +31,7 @@ type PollUsecase interface {
 	VotePoll(userID, pollID uint, req *models.VotePollRequest) ([]*models.PollVoteResponse, error)
 	GetUserVotes(userID, pollID uint) ([]*models.PollVoteResponse, error)
 	GetPollResults(userID, pollID uint) (*models.PollResultsResponse, error)
+	GetPollVoters(userID, pollID uint, userRole sharedModels.Role) (*models.PollVotersListResponse, error)
 
 	// Participant management
 	AddParticipants(userID, pollID uint, req *models.AddParticipantsRequest) error
@@ -80,19 +81,45 @@ func (u *pollUsecase) CreatePoll(userID uint, req *models.CreatePollRequest) (*m
 
 	// Create poll model
 	poll := &models.Poll{
-		Title:             strings.TrimSpace(req.Title),
-		Description:       strings.TrimSpace(req.Description),
-		Type:              req.Type,
-		CreatedBy:         userID,
-		StartTime:         req.StartTime,
-		EndTime:           req.EndTime,
-		AllowAnonymous:    req.AllowAnonymous,
-		AllowMultipleVote: req.AllowMultipleVote,
-		RequireComment:    req.RequireComment,
-		ShowResults:       req.ShowResults,
-		ShowResultsAfter:  req.ShowResultsAfter,
-		DepartmentID:      req.DepartmentID,
-		Category:          strings.TrimSpace(req.Category),
+		Title:        strings.TrimSpace(req.Title),
+		Description:  strings.TrimSpace(req.Description),
+		Type:         req.Type,
+		CreatedBy:    userID,
+		StartTime:    req.StartTime,
+		EndTime:      req.EndTime,
+		DepartmentID: req.DepartmentID,
+		Category:     strings.TrimSpace(req.Category),
+	}
+
+	// Set bool fields with defaults if not provided
+	if req.AllowAnonymous != nil {
+		poll.AllowAnonymous = *req.AllowAnonymous
+	} else {
+		poll.AllowAnonymous = false // default
+	}
+
+	if req.AllowMultipleVote != nil {
+		poll.AllowMultipleVote = *req.AllowMultipleVote
+	} else {
+		poll.AllowMultipleVote = false // default
+	}
+
+	if req.RequireComment != nil {
+		poll.RequireComment = *req.RequireComment
+	} else {
+		poll.RequireComment = false // default
+	}
+
+	if req.ShowResults != nil {
+		poll.ShowResults = *req.ShowResults
+	} else {
+		poll.ShowResults = true // default
+	}
+
+	if req.ShowResultsAfter != nil {
+		poll.ShowResultsAfter = *req.ShowResultsAfter
+	} else {
+		poll.ShowResultsAfter = false // default
 	}
 
 	// Set visibility (default to public if not provided)
@@ -1047,4 +1074,86 @@ func (u *pollUsecase) loadPollStatistics(poll *models.Poll, userID uint) {
 			}
 		}
 	}
+}
+
+// GetPollVoters retrieves list of users who voted in a poll with access control
+func (u *pollUsecase) GetPollVoters(userID, pollID uint, userRole sharedModels.Role) (*models.PollVotersListResponse, error) {
+	// Get poll
+	poll, err := u.pollRepo.GetByIDWithAll(pollID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("poll not found")
+		}
+		return nil, fmt.Errorf("failed to get poll: %w", err)
+	}
+
+	// Check access rights to view voters
+	isCreator := poll.CreatedBy == userID
+	isAdmin := userRole == sharedModels.RoleAdmin || userRole == sharedModels.RoleSuperAdmin
+
+	// First, check if user has access to the poll itself
+	if !isCreator && !isAdmin && !u.hasPollAccess(userID, poll) {
+		return nil, fmt.Errorf("access denied: you don't have access to this poll")
+	}
+
+	// If show_results is false, only creator and admins can view voters
+	if !poll.ShowResults && !isCreator && !isAdmin {
+		return nil, fmt.Errorf("access denied: only poll creator and administrators can view voters when results are hidden")
+	}
+
+	// Get all votes with user information
+	votes, err := u.voteRepo.GetVotesWithUsers(pollID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get votes: %w", err)
+	}
+
+	// Group votes by user
+	voterMap := make(map[uint]*models.PollVoterResponse)
+	for _, vote := range votes {
+		if vote.UserID == nil {
+			continue // Skip anonymous votes
+		}
+
+		userIDVal := *vote.UserID
+		voter, exists := voterMap[userIDVal]
+		if !exists {
+			voter = &models.PollVoterResponse{
+				UserID:      userIDVal,
+				IsAnonymous: vote.IsAnonymous,
+				VotedAt:     vote.CreatedAt,
+				Options:     []string{},
+			}
+			
+			// Get user info from vote
+			if vote.User != nil {
+				voter.UserName = vote.User.Name
+				voter.UserEmail = vote.User.Email
+			}
+			
+			voterMap[userIDVal] = voter
+		}
+
+		// Add option text if available
+		if vote.Option != nil {
+			voter.Options = append(voter.Options, vote.Option.Text)
+		}
+		
+		// Add comment if available and not empty
+		if vote.Comment != "" && voter.Comment == "" {
+			voter.Comment = vote.Comment
+		}
+	}
+
+	// Convert map to slice
+	voters := make([]*models.PollVoterResponse, 0, len(voterMap))
+	for _, voter := range voterMap {
+		voters = append(voters, voter)
+	}
+
+	return &models.PollVotersListResponse{
+		Voters:      voters,
+		TotalVoters: len(voters),
+		PollID:      pollID,
+		PollTitle:   poll.Title,
+	}, nil
 }

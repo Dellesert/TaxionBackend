@@ -165,6 +165,7 @@ func setupRoutes(
 		protected.POST("/polls/:id/vote", pollHandler.VotePoll)
 		protected.GET("/polls/:id/my-votes", pollHandler.GetMyVotes)
 		protected.GET("/polls/:id/results", pollHandler.GetPollResults)
+		protected.GET("/polls/:id/voters", pollHandler.GetPollVoters)
 
 		// Participant management
 		protected.POST("/polls/:id/participants", pollHandler.AddParticipants)

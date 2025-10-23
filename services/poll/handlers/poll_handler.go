@@ -65,6 +65,17 @@ func (h *PollHandler) CreatePoll(c *gin.Context) {
 		return
 	}
 
+	// Log received request data for debugging
+	logger.WithFields(map[string]interface{}{
+		"request_id":          requestID,
+		"user_id":             userID,
+		"show_results":        req.ShowResults,
+		"allow_anonymous":     req.AllowAnonymous,
+		"allow_multiple_vote": req.AllowMultipleVote,
+		"require_comment":     req.RequireComment,
+		"show_results_after":  req.ShowResultsAfter,
+	}).Info("CreatePoll request received")
+
 	poll, err := h.pollUsecase.CreatePoll(userID, &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -767,4 +778,95 @@ func containsAccessDeniedError(errMsg string) bool {
 		}
 	}
 	return false
+}
+
+// GetPollVoters retrieves list of users who voted in a poll
+// GET /api/v1/polls/:id/voters
+func (h *PollHandler) GetPollVoters(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user role from context
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get poll ID from URL parameter
+	pollIDStr := c.Param("id")
+	pollID, err := strconv.Atoi(pollIDStr)
+	if err != nil || pollID <= 0 {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"poll_id":    pollIDStr,
+		}).Warn("Invalid poll ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid poll ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get voters list from usecase
+	votersList, err := h.pollUsecase.GetPollVoters(userID, uint(pollID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"poll_id":    pollID,
+			"error":      err.Error(),
+		}).Error("Failed to get poll voters")
+
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "poll not found" {
+			statusCode = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "access denied") {
+			statusCode = http.StatusForbidden
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to get poll voters",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":   requestID,
+		"user_id":      userID,
+		"poll_id":      pollID,
+		"total_voters": votersList.TotalVoters,
+	}).Info("Successfully retrieved poll voters")
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"data":       votersList,
+		"request_id": requestID,
+	})
 }

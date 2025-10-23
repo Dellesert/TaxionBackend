@@ -20,11 +20,11 @@ type CreatePollRequest struct {
 	EndTime   *time.Time `json:"end_time,omitempty"`
 
 	// Poll settings
-	AllowAnonymous    bool `json:"allow_anonymous"`
-	AllowMultipleVote bool `json:"allow_multiple_vote"`
-	RequireComment    bool `json:"require_comment"`
-	ShowResults       bool `json:"show_results"`
-	ShowResultsAfter  bool `json:"show_results_after"`
+	AllowAnonymous    *bool `json:"allow_anonymous,omitempty"`
+	AllowMultipleVote *bool `json:"allow_multiple_vote,omitempty"`
+	RequireComment    *bool `json:"require_comment,omitempty"`
+	ShowResults       *bool `json:"show_results,omitempty"`
+	ShowResultsAfter  *bool `json:"show_results_after,omitempty"`
 
 	// Department restriction (if visibility is 'department')
 	DepartmentID *uint `json:"department_id,omitempty" validate:"omitempty,min=1"`

@@ -164,6 +164,7 @@ type PollVoteRepository interface {
 	GetRatingStats(pollID uint, optionID uint) (*models.RatingStats, error)
 	GetRankingStats(pollID uint, optionID uint) (*models.RankingStats, error)
 	GetTextResponses(pollID uint) ([]string, error)
+	GetVotesWithUsers(pollID uint) ([]*models.PollVote, error)
 }
 
 // pollVoteRepository implements PollVoteRepository interface
@@ -739,4 +740,22 @@ func (r *pollCommentRepository) GetByUserID(userID uint, limit, offset int) ([]*
 		return nil, fmt.Errorf("failed to get user comments: %w", err)
 	}
 	return comments, nil
+}
+
+// GetVotesWithUsers retrieves all votes for a poll with user and option information
+func (r *pollVoteRepository) GetVotesWithUsers(pollID uint) ([]*models.PollVote, error) {
+	var votes []*models.PollVote
+
+	err := r.db.
+		Preload("User").
+		Preload("Option").
+		Where("poll_id = ?", pollID).
+		Order("created_at ASC").
+		Find(&votes).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return votes, nil
 }

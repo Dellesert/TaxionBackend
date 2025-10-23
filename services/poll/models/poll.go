@@ -4,7 +4,7 @@ package models
 import (
 	"time"
 
-	"tachyon-messenger/shared/models"
+	sharedModels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
@@ -43,7 +43,7 @@ const (
 
 // Poll represents a poll/survey in the system
 type Poll struct {
-	models.BaseModel
+	sharedModels.BaseModel
 	Title       string         `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description string         `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
 	Type        PollType       `gorm:"not null;size:20" json:"type" validate:"required,oneof=single_choice multiple_choice ranking rating open_text"`
@@ -56,11 +56,11 @@ type Poll struct {
 	EndTime   *time.Time `gorm:"index" json:"end_time,omitempty"`
 
 	// Poll settings
-	AllowAnonymous    bool `gorm:"not null;default:false" json:"allow_anonymous"`
-	AllowMultipleVote bool `gorm:"not null;default:false" json:"allow_multiple_vote"`
-	RequireComment    bool `gorm:"not null;default:false" json:"require_comment"`
-	ShowResults       bool `gorm:"not null;default:true" json:"show_results"`
-	ShowResultsAfter  bool `gorm:"not null;default:false" json:"show_results_after"` // Показывать результаты только после голосования
+	AllowAnonymous    bool `gorm:"not null" json:"allow_anonymous"`
+	AllowMultipleVote bool `gorm:"not null" json:"allow_multiple_vote"`
+	RequireComment    bool `gorm:"not null" json:"require_comment"`
+	ShowResults       bool `gorm:"not null" json:"show_results"`
+	ShowResultsAfter  bool `gorm:"not null" json:"show_results_after"` // Показывать результаты только после голосования
 
 	// Department restriction (if visibility is 'department')
 	DepartmentID *uint `gorm:"index" json:"department_id,omitempty" validate:"omitempty,min=1"`
@@ -69,7 +69,7 @@ type Poll struct {
 	Category string `gorm:"size:100" json:"category,omitempty" validate:"omitempty,max=100"`
 
 	// Associations
-	Creator      *models.User      `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	Creator      *sharedModels.User      `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	Options      []PollOption      `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"options,omitempty"`
 	Votes        []PollVote        `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"votes,omitempty"`
 	Participants []PollParticipant `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"participants,omitempty"`
@@ -141,7 +141,7 @@ func (p *Poll) IsActive() bool {
 
 // PollOption represents an option in a poll
 type PollOption struct {
-	models.BaseModel
+	sharedModels.BaseModel
 	PollID      uint   `gorm:"not null;index" json:"poll_id" validate:"required"`
 	Text        string `gorm:"not null;size:500" json:"text" validate:"required,min=1,max=500"`
 	Description string `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=1000"`
@@ -167,7 +167,7 @@ func (PollOption) TableName() string {
 
 // PollVote represents a vote on a poll
 type PollVote struct {
-	models.BaseModel
+	sharedModels.BaseModel
 	PollID      uint  `gorm:"not null;index" json:"poll_id" validate:"required"`
 	OptionID    *uint `gorm:"index" json:"option_id,omitempty"` // Null для open_text polls
 	UserID      *uint `gorm:"index" json:"user_id,omitempty"`   // Null для анонимных голосов
@@ -181,6 +181,7 @@ type PollVote struct {
 
 	// Associations
 	Poll   *Poll       `gorm:"foreignKey:PollID" json:"poll,omitempty"`
+	User   *sharedModels.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Option *PollOption `gorm:"foreignKey:OptionID" json:"option,omitempty"`
 }
 
@@ -206,7 +207,7 @@ func (pv *PollVote) BeforeCreate(tx *gorm.DB) error {
 
 // PollParticipant represents invited participants for invite-only polls
 type PollParticipant struct {
-	models.BaseModel
+	sharedModels.BaseModel
 	PollID     uint       `gorm:"not null;index" json:"poll_id" validate:"required"`
 	UserID     uint       `gorm:"not null;index" json:"user_id" validate:"required"`
 	InvitedBy  uint       `gorm:"not null;index" json:"invited_by" validate:"required"`
@@ -225,7 +226,7 @@ func (PollParticipant) TableName() string {
 
 // PollComment represents a comment on a poll
 type PollComment struct {
-	models.BaseModel
+	sharedModels.BaseModel
 	PollID   uint   `gorm:"not null;index" json:"poll_id" validate:"required"`
 	UserID   uint   `gorm:"not null;index" json:"user_id" validate:"required"`
 	Content  string `gorm:"not null;type:text" json:"content" validate:"required,min=1,max=1000"`
