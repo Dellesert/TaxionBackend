@@ -153,7 +153,12 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		}
 	}
 
-	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive)
+	var roleFilter *string
+	if role := c.Query("role"); role != "" {
+		roleFilter = &role
+	}
+
+	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id":    requestID,

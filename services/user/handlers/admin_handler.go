@@ -52,8 +52,33 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 	// Get filter parameters
 	status := c.Query("status")
 	role := c.Query("role")
-	departmentID := c.Query("department_id")
-	isActive := c.Query("is_active")
+	departmentIDStr := c.Query("department_id")
+	isActiveStr := c.Query("is_active")
+
+	// Parse filters
+	var departmentID *uint
+	if departmentIDStr != "" {
+		if id, err := strconv.ParseUint(departmentIDStr, 10, 32); err == nil {
+			temp := uint(id)
+			departmentID = &temp
+		}
+	}
+
+	var isActive *bool
+	if isActiveStr != "" {
+		if isActiveStr == "true" {
+			temp := true
+			isActive = &temp
+		} else if isActiveStr == "false" {
+			temp := false
+			isActive = &temp
+		}
+	}
+
+	var roleFilter *string
+	if role != "" {
+		roleFilter = &role
+	}
 
 	logger.WithFields(map[string]interface{}{
 		"request_id":    requestID,
@@ -63,9 +88,10 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 		"role":          role,
 		"department_id": departmentID,
 		"is_active":     isActive,
-	}).Info("Admin getting users list")
+	}).Info("Admin getting users list with filters")
 
-	users, total, err := h.userUsecase.GetUsers(limit, offset)
+	// Use GetUsersWithFilters to support filtering
+	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -706,6 +732,79 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "User deactivated successfully",
 		"user":       user,
+		"request_id": requestID,
+	})
+}
+
+// DeleteUser handles user deletion (admin only)
+func (h *AdminHandler) DeleteUser(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin user info from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user ID from URL parameter
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid user ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.userUsecase.DeleteUser(uint(id))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    id,
+			"error":      err.Error(),
+		}).Error("Failed to delete user")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to delete user"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "User not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"admin_id":   adminID,
+		"user_id":    id,
+	}).Info("User deleted successfully by admin")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "User deleted successfully",
 		"request_id": requestID,
 	})
 }

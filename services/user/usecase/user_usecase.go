@@ -17,7 +17,7 @@ type UserUsecase interface {
 	CreateUser(req *models.CreateUserRequest) (*models.UserResponse, error)
 	GetUser(id uint) (*models.UserResponse, error)
 	GetUsers(limit, offset int) ([]*models.UserResponse, int64, error)
-	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool) ([]*models.UserResponse, int64, error)
+	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string) ([]*models.UserResponse, int64, error)
 	GetUsersByIDs(ids []uint) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteUser(id uint) error
@@ -39,10 +39,15 @@ func NewUserUsecase(userRepo repository.UserRepository) UserUsecase {
 func (u *userUsecase) CreateUser(req *models.CreateUserRequest) (*models.UserResponse, error) {
 	// Check if user already exists
 	existingUser, err := u.userRepo.GetByEmail(req.Email)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("failed to check existing user: %w", err)
-	}
-	if existingUser != nil {
+	if err != nil {
+		// Only return error if it's NOT a "not found" error
+		// GetByEmail returns "user not found" error when user doesn't exist, which is expected here
+		if !errors.Is(err, gorm.ErrRecordNotFound) && err.Error() != "user not found" {
+			return nil, fmt.Errorf("failed to check existing user: %w", err)
+		}
+		// User not found is expected - continue with creation
+	} else if existingUser != nil {
+		// User found - cannot create duplicate
 		return nil, fmt.Errorf("user with email %s already exists", req.Email)
 	}
 
@@ -119,7 +124,7 @@ func (u *userUsecase) GetUsers(limit, offset int) ([]*models.UserResponse, int64
 }
 
 // GetUsersWithFilters retrieves users with pagination and optional filters
-func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool) ([]*models.UserResponse, int64, error) {
+func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string) ([]*models.UserResponse, int64, error) {
 	// Set default pagination values
 	if limit <= 0 {
 		limit = 20
@@ -133,10 +138,26 @@ func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint,
 		return nil, 0, fmt.Errorf("failed to get users: %w", err)
 	}
 
+	// Filter by role if specified (done in-memory for now)
+	if role != nil && *role != "" {
+		filteredUsers := make([]*models.User, 0)
+		for _, user := range users {
+			if string(user.Role) == *role {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		users = filteredUsers
+	}
+
 	// Get total count with filters
 	total, err := u.userRepo.CountWithFilters(departmentID, isActive)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// Adjust total if role filter is applied
+	if role != nil && *role != "" {
+		total = int64(len(users))
 	}
 
 	// Convert to response format

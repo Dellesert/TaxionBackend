@@ -116,6 +116,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// Department routes - proxy to user service
 		departments := v1.Group("/departments")
 		{
+			departments.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			departments.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
@@ -176,6 +177,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		admin := v1.Group("/admin")
 		{
 			admin.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
+		// Super Admin routes within /api/v1 - proxy to user service
+		superadmin := v1.Group("/superadmin")
+		{
+			superadmin.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 	}
 

@@ -255,6 +255,11 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminUsers.PUT("/:id/deactivate",
 					middleware.LogAdminAction("deactivate_user"),
 					adminHandler.DeactivateUser) // PUT /api/v1/admin/users/:id/deactivate
+
+				// Delete user
+				v1AdminUsers.DELETE("/:id",
+					middleware.LogAdminAction("delete_user"),
+					adminHandler.DeleteUser) // DELETE /api/v1/admin/users/:id
 			}
 
 			// Department management for admins
