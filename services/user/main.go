@@ -71,6 +71,13 @@ func main() {
 	profileUsecase := usecase.NewProfileUsecase(userRepo, departmentRepo)
 	adminUsecase := usecase.NewAdminUsecase(userRepo, departmentRepo)
 	departmentUsecase := usecase.NewDepartmentUsecase(departmentRepo, userRepo)
+	initUsecase := usecase.NewInitUsecase(userRepo)
+
+	// Initialize super admin if not exists
+	if err := initUsecase.InitializeSuperAdmin(); err != nil {
+		log.Errorf("Failed to initialize super admin: %v", err)
+		// Don't fail the startup, just log the error
+	}
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userUsecase)
@@ -130,8 +137,9 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 	{
 		auth.POST("/register", authHandler.Register)
 		auth.POST("/login", authHandler.Login)
-		auth.POST("/logout", authHandler.Logout)        // TODO: Add JWT middleware when implemented
-		auth.POST("/refresh", authHandler.RefreshToken) // TODO: Add refresh token validation
+		auth.POST("/login/superadmin", authHandler.LoginSuperAdmin) // Super admin login for web dashboard
+		auth.POST("/logout", authHandler.Logout)                     // TODO: Add JWT middleware when implemented
+		auth.POST("/refresh", authHandler.RefreshToken)              // TODO: Add refresh token validation
 	}
 
 	// Internal routes (for inter-service communication, no auth required)
@@ -154,9 +162,16 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		{
 			v1Auth.POST("/register", authHandler.Register)
 			v1Auth.POST("/login", authHandler.Login)
+			v1Auth.POST("/login/superadmin", authHandler.LoginSuperAdmin) // Super admin login for web dashboard
 			v1Auth.POST("/logout", authHandler.Logout)
 			v1Auth.POST("/refresh", authHandler.RefreshToken)
 		}
+
+		// Super admin password change endpoint (protected, super admin only)
+		v1.PUT("/superadmin/change-password",
+			middleware.JWTMiddleware(jwtConfig),
+			middleware.RequireRole("super_admin"),
+			profileHandler.ChangeSuperAdminPassword)
 
 		// Protected user routes (require JWT authentication)
 		users := v1.Group("/users")

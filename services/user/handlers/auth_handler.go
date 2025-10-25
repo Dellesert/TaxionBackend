@@ -207,6 +207,60 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
+// LoginSuperAdmin handles super admin login requests (web dashboard only)
+func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	var req struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for super admin login")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Call usecase to authenticate super admin
+	loginResponse, err := h.authUsecase.LoginSuperAdmin(req.Email, req.Password)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"email":      req.Email,
+			"error":      err.Error(),
+		}).Warn("Failed super admin login attempt")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Invalid credentials",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    loginResponse.User.ID,
+		"email":      loginResponse.User.Email,
+	}).Info("Super admin logged in successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":             "Login successful",
+		"user":                loginResponse.User,
+		"tokens":              loginResponse.Tokens,
+		"must_change_password": loginResponse.MustChangePassword,
+		"request_id":          requestID,
+	})
+}
+
 // Logout handles user logout requests (placeholder for future implementation)
 func (h *AuthHandler) Logout(c *gin.Context) {
 	requestID := requestid.Get(c)

@@ -19,6 +19,7 @@ type ProfileUsecase interface {
 	GetProfile(id uint) (*models.UserResponse, error)
 	UpdateProfile(id uint, req *models.UpdateProfileRequest) (*models.UserResponse, error)
 	ChangePassword(id uint, req *models.ChangePasswordRequest) error
+	ChangeSuperAdminPassword(id uint, newPassword string) error
 	UpdateStatus(id uint, status sharedmodels.UserStatus) (*models.UserResponse, error)
 }
 
@@ -148,6 +149,57 @@ func (p *profileUsecase) ChangePassword(id uint, req *models.ChangePasswordReque
 
 	// Update password
 	user.HashedPassword = string(hashedPassword)
+	if err := p.userRepo.Update(user); err != nil {
+		return fmt.Errorf("failed to update password: %w", err)
+	}
+
+	return nil
+}
+
+// ChangeSuperAdminPassword changes super admin password and resets must_change_password flag
+func (p *profileUsecase) ChangeSuperAdminPassword(id uint, newPassword string) error {
+	// Validate new password
+	if newPassword == "" {
+		return fmt.Errorf("new password is required")
+	}
+
+	if len(newPassword) < 6 {
+		return fmt.Errorf("new password must be at least 6 characters long")
+	}
+
+	if len(newPassword) > 100 {
+		return fmt.Errorf("new password must be less than 100 characters")
+	}
+
+	// Get user
+	user, err := p.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("profile not found")
+		}
+		return fmt.Errorf("failed to get profile: %w", err)
+	}
+
+	// Verify user is super admin
+	if user.Role != sharedmodels.RoleSuperAdmin {
+		return fmt.Errorf("unauthorized: only super admin can use this endpoint")
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		return fmt.Errorf("profile is deactivated")
+	}
+
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash new password: %w", err)
+	}
+
+	// Update password and reset must_change_password flag
+	user.HashedPassword = string(hashedPassword)
+	user.MustChangePassword = false
+
 	if err := p.userRepo.Update(user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}

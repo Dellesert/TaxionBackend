@@ -24,6 +24,7 @@ type UserRepository interface {
 	GetWithDepartment(id uint) (*models.User, error)
 	GetAllWithDepartments(limit, offset int) ([]*models.User, error)
 	GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error)
+	SuperAdminExists() (bool, error)
 }
 
 // DepartmentRepository defines the interface for department data operations
@@ -217,6 +218,16 @@ func (r *userRepository) CountWithFilters(departmentID *uint, isActive *bool) (i
 		return 0, fmt.Errorf("failed to count users: %w", err)
 	}
 	return count, nil
+}
+
+// SuperAdminExists checks if a super admin user exists in the system
+func (r *userRepository) SuperAdminExists() (bool, error) {
+	var count int64
+	err := r.db.Model(&models.User{}).Where("role = ?", "super_admin").Count(&count).Error
+	if err != nil {
+		return false, fmt.Errorf("failed to check super admin existence: %w", err)
+	}
+	return count > 0, nil
 }
 
 // Department Repository Methods

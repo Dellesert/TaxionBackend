@@ -19,6 +19,7 @@ import (
 type AuthUsecase interface {
 	Register(req *models.CreateUserRequest) (*models.UserResponse, error)
 	Login(email, password string) (*sharedmodels.LoginResponse, error)
+	LoginSuperAdmin(email, password string) (*sharedmodels.LoginResponse, error)
 	RefreshToken(refreshToken string) (*sharedmodels.TokenPair, error)
 	ValidateEmail(email string) error
 	ValidatePassword(password string) error
@@ -141,6 +142,12 @@ func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse
 		return nil, fmt.Errorf("user account is deactivated")
 	}
 
+	// Block super_admin from logging in via mobile app
+	// Super admin should only use the web dashboard
+	if user.Role == sharedmodels.RoleSuperAdmin {
+		return nil, fmt.Errorf("super admin access is restricted to web dashboard only")
+	}
+
 	// Verify password
 	if err := a.verifyPassword(user.HashedPassword, password); err != nil {
 		return nil, fmt.Errorf("invalid email or password")
@@ -172,6 +179,72 @@ func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse
 	response := &sharedmodels.LoginResponse{
 		User:   *responseUser,
 		Tokens: *tokens,
+	}
+
+	return response, nil
+}
+
+// LoginSuperAdmin handles super admin authentication (web dashboard only)
+func (a *authUsecase) LoginSuperAdmin(email, password string) (*sharedmodels.LoginResponse, error) {
+	// Validate input
+	if email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	if password == "" {
+		return nil, fmt.Errorf("password is required")
+	}
+
+	// Normalize email
+	email = strings.ToLower(strings.TrimSpace(email))
+
+	// Get user by email
+	user, err := a.userRepo.GetByEmail(email)
+	if err != nil {
+		// Don't reveal whether user exists or not for security
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	// Check if user is super admin
+	if user.Role != sharedmodels.RoleSuperAdmin {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		return nil, fmt.Errorf("user account is deactivated")
+	}
+
+	// Verify password
+	if err := a.verifyPassword(user.HashedPassword, password); err != nil {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	// Update user status to online and last active time
+	if err := a.updateUserLoginStatus(user); err != nil {
+		// Log error but don't fail login
+	}
+
+	// Get user with department for complete response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		userWithDept = user
+	}
+
+	// Generate JWT tokens
+	tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	// Convert user to shared model format for response
+	responseUser := convertUserToSharedModel(userWithDept)
+
+	// Create login response with must_change_password flag
+	response := &sharedmodels.LoginResponse{
+		User:               *responseUser,
+		Tokens:             *tokens,
+		MustChangePassword: user.MustChangePassword, // Important: send the flag to frontend
 	}
 
 	return response, nil

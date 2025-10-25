@@ -32,10 +32,11 @@ type User struct {
 	DepartmentID   *uint             `gorm:"index" json:"department_id,omitempty"`
 	Department     *Department       `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
 	Avatar         string            `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
-	Phone          string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
-	Position       string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
-	LastActiveAt   *time.Time        `json:"last_active_at,omitempty"`
-	IsActive       bool              `gorm:"not null;default:true" json:"is_active"`
+	Phone              string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
+	Position           string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
+	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
+	IsActive           bool              `gorm:"not null;default:true" json:"is_active"`
+	MustChangePassword bool              `gorm:"not null;default:false" json:"must_change_password"`
 }
 
 // TableName returns the table name for User model
@@ -118,12 +119,13 @@ type UserResponse struct {
 	DepartmentID *uint               `json:"department_id,omitempty"`
 	Department   *DepartmentResponse `json:"department,omitempty"`
 	Avatar       string              `json:"avatar,omitempty"`
-	Phone        string              `json:"phone,omitempty"`
-	Position     string              `json:"position,omitempty"`
-	LastActiveAt *time.Time          `json:"last_active_at,omitempty"`
-	IsActive     bool                `json:"is_active"`
-	CreatedAt    time.Time           `json:"created_at"`
-	UpdatedAt    time.Time           `json:"updated_at"`
+	Phone              string              `json:"phone,omitempty"`
+	Position           string              `json:"position,omitempty"`
+	LastActiveAt       *time.Time          `json:"last_active_at,omitempty"`
+	IsActive           bool                `json:"is_active"`
+	MustChangePassword bool                `json:"must_change_password"`
+	CreatedAt          time.Time           `json:"created_at"`
+	UpdatedAt          time.Time           `json:"updated_at"`
 }
 
 // ToResponse converts User to UserResponse
@@ -135,13 +137,14 @@ func (u *User) ToResponse() *UserResponse {
 		Role:         u.Role,
 		Status:       u.Status,
 		DepartmentID: u.DepartmentID,
-		Avatar:       u.Avatar,
-		Phone:        u.Phone,
-		Position:     u.Position,
-		LastActiveAt: u.LastActiveAt,
-		IsActive:     u.IsActive,
-		CreatedAt:    u.CreatedAt,
-		UpdatedAt:    u.UpdatedAt,
+		Avatar:             u.Avatar,
+		Phone:              u.Phone,
+		Position:           u.Position,
+		LastActiveAt:       u.LastActiveAt,
+		IsActive:           u.IsActive,
+		MustChangePassword: u.MustChangePassword,
+		CreatedAt:          u.CreatedAt,
+		UpdatedAt:          u.UpdatedAt,
 	}
 
 	// Include department if loaded

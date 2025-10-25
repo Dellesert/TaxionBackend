@@ -75,8 +75,9 @@ type LoginRequest struct {
 
 // LoginResponse represents login response payload
 type LoginResponse struct {
-	User   User      `json:"user"`
-	Tokens TokenPair `json:"tokens"`
+	User               User      `json:"user"`
+	Tokens             TokenPair `json:"tokens"`
+	MustChangePassword bool      `json:"must_change_password,omitempty"`
 }
 
 // RegisterRequest represents registration request payload

@@ -299,6 +299,87 @@ func (h *ProfileHandler) ChangePassword(c *gin.Context) {
 	})
 }
 
+// ChangeSuperAdminPassword handles changing super admin password (first login)
+func (h *ProfileHandler) ChangeSuperAdminPassword(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Extract user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req struct {
+		NewPassword string `json:"new_password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for change super admin password")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.profileUsecase.ChangeSuperAdminPassword(userID, req.NewPassword)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to change super admin password")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to change password"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Profile not found"
+		} else if strings.Contains(err.Error(), "unauthorized") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Unauthorized: only super admin can use this endpoint"
+		} else if strings.Contains(err.Error(), "validation") || strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "must be") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		} else if strings.Contains(err.Error(), "deactivated") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Profile is deactivated"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+	}).Info("Super admin password changed successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Password changed successfully. You can now access all features.",
+		"request_id": requestID,
+	})
+}
+
 // UpdateStatus handles updating current user's status
 func (h *ProfileHandler) UpdateStatus(c *gin.Context) {
 	requestID := requestid.Get(c)
