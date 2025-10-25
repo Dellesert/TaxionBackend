@@ -306,14 +306,14 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role
 		return fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: creator, manager, admin, or super_admin can delete
+	// Check permissions: creator, department_head, admin, or super_admin can delete
 	isCreator := poll.CreatedBy == userID
-	isManager := userRole == sharedModels.RoleManager
+	isDepartmentHead := userRole == sharedModels.RoleDepartmentHead
 	isAdmin := userRole == sharedModels.RoleAdmin
 	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
 
-	if !isCreator && !isManager && !isAdmin && !isSuperAdmin {
-		return fmt.Errorf("access denied: only poll creator, managers, or administrators can delete the poll")
+	if !isCreator && !isDepartmentHead && !isAdmin && !isSuperAdmin {
+		return fmt.Errorf("access denied: only poll creator, department heads, or administrators can delete the poll")
 	}
 
 	// Check if poll has votes - only prevent deletion for non-admin users
@@ -322,8 +322,8 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role
 		return fmt.Errorf("failed to check vote count: %w", err)
 	}
 
-	// Only creators cannot delete polls with votes, admins/managers can delete regardless
-	if voteCount > 0 && isCreator && !isManager && !isAdmin && !isSuperAdmin {
+	// Only creators cannot delete polls with votes, admins/department heads can delete regardless
+	if voteCount > 0 && isCreator && !isDepartmentHead && !isAdmin && !isSuperAdmin {
 		return fmt.Errorf("cannot delete poll with existing votes")
 	}
 

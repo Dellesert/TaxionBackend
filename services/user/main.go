@@ -180,17 +180,95 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			profile.GET("/:id", profileHandler.GetProfile)          // GET /api/v1/profile/:id (any user profile)
 		}
 
-		// Department management routes (admin only)
+		// Department management routes
 		departments := v1.Group("/departments")
 		departments.Use(middleware.JWTMiddleware(jwtConfig))
-		departments.Use(middleware.RequireAdminRole())
 		{
-			departments.GET("", departmentHandler.GetDepartments)                   // GET /api/v1/departments
-			departments.POST("", departmentHandler.CreateDepartment)                // POST /api/v1/departments
-			departments.GET("/:id", departmentHandler.GetDepartment)                // GET /api/v1/departments/:id
-			departments.PUT("/:id", departmentHandler.UpdateDepartment)             // PUT /api/v1/departments/:id
-			departments.DELETE("/:id", departmentHandler.DeleteDepartment)          // DELETE /api/v1/departments/:id
+			// Allow all authenticated users to view departments
+			departments.GET("", departmentHandler.GetDepartments)       // GET /api/v1/departments
+			departments.GET("/:id", departmentHandler.GetDepartment)    // GET /api/v1/departments/:id
 			departments.GET("/:id/users", departmentHandler.GetDepartmentWithUsers) // GET /api/v1/departments/:id/users
+
+			// Admin only for create/delete
+			departments.POST("", middleware.RequireAdminRole(), departmentHandler.CreateDepartment)      // POST /api/v1/departments
+			departments.DELETE("/:id", middleware.RequireAdminRole(), departmentHandler.DeleteDepartment) // DELETE /api/v1/departments/:id
+
+			// Admin or Department Head can update their department
+			departments.PUT("/:id", middleware.RequireAdminOrDepartmentHead("id"), departmentHandler.UpdateDepartment)   // PUT /api/v1/departments/:id
+		}
+
+		// Admin routes within /api/v1 for gateway compatibility
+		v1Admin := v1.Group("/admin")
+		v1Admin.Use(middleware.JWTMiddleware(jwtConfig))
+		v1Admin.Use(middleware.AdminOnlyMiddleware())
+		v1Admin.Use(middleware.ValidateAdminRequest())
+		{
+			// User management endpoints
+			v1AdminUsers := v1Admin.Group("/users")
+			{
+				v1AdminUsers.GET("",
+					middleware.LogAdminAction("list_users"),
+					adminHandler.GetUsers) // GET /api/v1/admin/users
+
+				v1AdminUsers.POST("",
+					middleware.LogAdminAction("create_user"),
+					adminHandler.CreateUser) // POST /api/v1/admin/users
+
+				v1AdminUsers.PUT("/:id",
+					middleware.LogAdminAction("update_user"),
+					adminHandler.UpdateUser) // PUT /api/v1/admin/users/:id
+
+				v1AdminUsers.GET("/stats",
+					middleware.LogAdminAction("get_user_stats"),
+					adminHandler.GetUserStats) // GET /api/v1/admin/users/stats
+
+				// User role management
+				v1AdminUsers.PUT("/:id/role",
+					middleware.LogAdminAction("update_user_role"),
+					adminHandler.UpdateUserRole) // PUT /api/v1/admin/users/:id/role
+
+				// User status management
+				v1AdminUsers.PUT("/:id/status",
+					middleware.LogAdminAction("update_user_status"),
+					adminHandler.UpdateUserStatus) // PUT /api/v1/admin/users/:id/status
+
+				// User activation/deactivation
+				v1AdminUsers.PUT("/:id/activate",
+					middleware.LogAdminAction("activate_user"),
+					adminHandler.ActivateUser) // PUT /api/v1/admin/users/:id/activate
+
+				v1AdminUsers.PUT("/:id/deactivate",
+					middleware.LogAdminAction("deactivate_user"),
+					adminHandler.DeactivateUser) // PUT /api/v1/admin/users/:id/deactivate
+			}
+
+			// Department management for admins
+			v1AdminDepartments := v1Admin.Group("/departments")
+			{
+				v1AdminDepartments.GET("",
+					middleware.LogAdminAction("list_departments"),
+					departmentHandler.GetDepartments) // GET /api/v1/admin/departments
+
+				v1AdminDepartments.POST("",
+					middleware.LogAdminAction("create_department"),
+					departmentHandler.CreateDepartment) // POST /api/v1/admin/departments
+
+				v1AdminDepartments.GET("/:id",
+					middleware.LogAdminAction("get_department"),
+					departmentHandler.GetDepartment) // GET /api/v1/admin/departments/:id
+
+				v1AdminDepartments.PUT("/:id",
+					middleware.LogAdminAction("update_department"),
+					departmentHandler.UpdateDepartment) // PUT /api/v1/admin/departments/:id
+
+				v1AdminDepartments.DELETE("/:id",
+					middleware.LogAdminAction("delete_department"),
+					departmentHandler.DeleteDepartment) // DELETE /api/v1/admin/departments/:id
+
+				v1AdminDepartments.GET("/:id/users",
+					middleware.LogAdminAction("get_department_users"),
+					departmentHandler.GetDepartmentWithUsers) // GET /api/v1/admin/departments/:id/users
+			}
 		}
 	}
 

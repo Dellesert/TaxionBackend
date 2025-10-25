@@ -171,10 +171,22 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		}
 		// WebSocket endpoint - proxy to chat service for real-time communication
 		v1.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
+
+		// Admin routes within /api/v1 - proxy to user service
+		admin := v1.Group("/admin")
+		{
+			admin.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
 	}
 
 	// Legacy WebSocket endpoint for backward compatibility
 	router.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
+
+	// Admin routes (direct) - proxy to user service
+	adminDirect := router.Group("/admin")
+	{
+		adminDirect.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+	}
 }
 
 // placeholderHandler creates a placeholder handler for development

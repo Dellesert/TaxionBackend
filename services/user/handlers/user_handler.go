@@ -133,13 +133,34 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		offset = 0
 	}
 
-	users, total, err := h.userUsecase.GetUsers(limit, offset)
+	// Parse filter parameters
+	var departmentID *uint
+	if deptIDStr := c.Query("department_id"); deptIDStr != "" {
+		if deptID, err := strconv.ParseUint(deptIDStr, 10, 32); err == nil {
+			dept := uint(deptID)
+			departmentID = &dept
+		}
+	}
+
+	var isActive *bool
+	if isActiveStr := c.Query("is_active"); isActiveStr != "" {
+		if isActiveStr == "true" || isActiveStr == "1" {
+			active := true
+			isActive = &active
+		} else if isActiveStr == "false" || isActiveStr == "0" {
+			inactive := false
+			isActive = &inactive
+		}
+	}
+
+	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
-			"request_id": requestID,
-			"limit":      limit,
-			"offset":     offset,
-			"error":      err.Error(),
+			"request_id":    requestID,
+			"limit":         limit,
+			"offset":        offset,
+			"department_id": departmentID,
+			"error":         err.Error(),
 		}).Error("Failed to get users")
 
 		c.JSON(http.StatusInternalServerError, gin.H{

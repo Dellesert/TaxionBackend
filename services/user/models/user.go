@@ -12,6 +12,7 @@ import (
 type Department struct {
 	models.BaseModel
 	Name  string `gorm:"uniqueIndex;not null;size:100" json:"name" validate:"required,min=2,max=100"`
+	HeadID *uint  `gorm:"index" json:"head_id,omitempty"`
 	Users []User `gorm:"foreignKey:DepartmentID" json:"users,omitempty"`
 }
 
@@ -26,7 +27,7 @@ type User struct {
 	Email          string            `gorm:"uniqueIndex;not null;size:255" json:"email" validate:"required,email,max=255"`
 	Name           string            `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
 	HashedPassword string            `gorm:"not null;size:255" json:"-" validate:"required"`
-	Role           models.Role       `gorm:"not null;default:'employee';size:20" json:"role" validate:"required,oneof=super_admin admin manager employee"`
+	Role           models.Role       `gorm:"not null;default:'employee';size:20" json:"role" validate:"required,oneof=super_admin admin department_head employee"`
 	Status         models.UserStatus `gorm:"not null;default:'offline';size:20" json:"status" validate:"oneof=online busy away offline"`
 	DepartmentID   *uint             `gorm:"index" json:"department_id,omitempty"`
 	Department     *Department       `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
@@ -71,6 +72,7 @@ type CreateDepartmentRequest struct {
 
 // UpdateDepartmentRequest represents request for updating a department
 type UpdateDepartmentRequest struct {
+	HeadID *uint   `json:"head_id,omitempty"`
 	Name *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
 }
 
@@ -79,8 +81,8 @@ type CreateUserRequest struct {
 	Email        string `json:"email" binding:"required,email,max=255" validate:"required,email,max=255"`
 	Name         string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
 	Password     string `json:"password" binding:"required,min=6,max=100" validate:"required,min=6,max=100"`
-	Role         string `json:"role,omitempty" binding:"omitempty,oneof=super_admin admin manager employee" validate:"omitempty,oneof=super_admin admin manager employee"`
-	DepartmentID *uint  `json:"department_id,omitempty" validate:"omitempty,min=1"`
+	Role         string `json:"role,omitempty" binding:"omitempty,oneof=super_admin admin department_head employee" validate:"omitempty,oneof=super_admin admin department_head employee"`
+	DepartmentID *uint  `json:"department_id,omitempty"`
 	Phone        string `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
 	Position     string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 }
@@ -92,7 +94,7 @@ type UpdateUserRequest struct {
 	Avatar       *string            `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
 	Phone        *string            `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
 	Position     *string            `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	DepartmentID *uint              `json:"department_id,omitempty" validate:"omitempty,min=1"`
+	DepartmentID *uint              `json:"department_id,omitempty"`
 	IsActive     *bool              `json:"is_active,omitempty"`
 }
 
@@ -100,6 +102,8 @@ type UpdateUserRequest struct {
 type DepartmentResponse struct {
 	ID        uint      `json:"id"`
 	Name      string    `json:"name"`
+	HeadID    *uint     `json:"head_id,omitempty"`
+	UserCount int       `json:"user_count,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
@@ -158,6 +162,7 @@ func (d *Department) ToResponse() *DepartmentResponse {
 	return &DepartmentResponse{
 		ID:        d.ID,
 		Name:      d.Name,
+		HeadID:    d.HeadID,
 		CreatedAt: d.CreatedAt,
 		UpdatedAt: d.UpdatedAt,
 	}
@@ -205,7 +210,7 @@ type UserStatsResponse struct {
 
 // AdminUpdateUserRoleRequest represents admin request to update user role
 type AdminUpdateUserRoleRequest struct {
-	Role models.Role `json:"role" binding:"required,oneof=super_admin admin manager employee" validate:"required,oneof=super_admin admin manager employee"`
+	Role models.Role `json:"role" binding:"required,oneof=super_admin admin department_head employee" validate:"required,oneof=super_admin admin department_head employee"`
 }
 
 // AdminUpdateUserStatusRequest represents admin request to update user status

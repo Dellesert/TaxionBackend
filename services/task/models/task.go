@@ -94,12 +94,14 @@ type CreateTaskRequest struct {
 
 // UpdateTaskRequest represents request for updating a task
 type UpdateTaskRequest struct {
-	Title       *string       `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
-	Description *string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Status      *TaskStatus   `json:"status,omitempty" binding:"omitempty,oneof=new in_progress review done cancelled" validate:"omitempty,oneof=new in_progress review done cancelled"`
-	Priority    *TaskPriority `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
-	AssignedTo  *uint         `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
-	DueDate     *time.Time    `json:"due_date,omitempty"`
+	Title                *string       `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
+	Description          *string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Status               *TaskStatus   `json:"status,omitempty" binding:"omitempty,oneof=new in_progress review done cancelled" validate:"omitempty,oneof=new in_progress review done cancelled"`
+	Priority             *TaskPriority `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
+	AssignedTo           *uint         `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`                                        // Deprecated: use AssigneeIDs instead
+	AssigneeIDs          []uint        `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`                                                           // Multiple assignees
+	AssignedToDepartment *string       `json:"assigned_to_department,omitempty" validate:"omitempty,max=100"`                                                    // Department assignment
+	DueDate              *time.Time    `json:"due_date,omitempty"`
 }
 
 // UpdateTaskStatusRequest represents request for updating task status only

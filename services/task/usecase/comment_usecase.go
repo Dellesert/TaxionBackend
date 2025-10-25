@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"tachyon-messenger/services/task/models"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
@@ -68,7 +69,7 @@ func (u *taskUsecase) AddComment(userID, taskID uint, req *models.CreateTaskComm
 }
 
 // GetTaskComments retrieves comments for a task
-func (u *taskUsecase) GetTaskComments(userID, taskID uint, filter *models.CommentFilterRequest) (*models.CommentListResponse, error) {
+func (u *taskUsecase) GetTaskComments(userID uint, userRole sharedmodels.Role, taskID uint, filter *models.CommentFilterRequest) (*models.CommentListResponse, error) {
 	// Check if task exists and user has access to it
 	task, err := u.taskRepo.GetByID(taskID)
 	if err != nil {
@@ -78,8 +79,11 @@ func (u *taskUsecase) GetTaskComments(userID, taskID uint, filter *models.Commen
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check access rights: user must be creator or assignee to view comments
-	if !u.hasTaskAccess(userID, task) {
+	// Admin and super_admin can access any task's comments
+	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+
+	// Check access rights: user must be creator, assignee, or admin to view comments
+	if !isAdmin && !u.hasTaskAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions to view comments on this task")
 	}
 

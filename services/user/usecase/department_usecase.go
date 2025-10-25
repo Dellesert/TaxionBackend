@@ -44,7 +44,21 @@ func (d *departmentUsecase) GetAllDepartments() ([]*models.DepartmentResponse, e
 
 	responses := make([]*models.DepartmentResponse, len(departments))
 	for i, dept := range departments {
-		responses[i] = dept.ToResponse()
+		response := dept.ToResponse()
+
+		// Count users in this department
+		users, err := d.userRepo.GetAllWithDepartments(10000, 0)
+		if err == nil {
+			count := 0
+			for _, user := range users {
+				if user.DepartmentID != nil && *user.DepartmentID == dept.ID {
+					count++
+				}
+			}
+			response.UserCount = count
+		}
+
+		responses[i] = response
 	}
 
 	return responses, nil
@@ -125,6 +139,69 @@ func (d *departmentUsecase) UpdateDepartment(id uint, req *models.UpdateDepartme
 		department.Name = newName
 	}
 
+	// Track if we need to update user roles
+	var oldHeadID *uint
+	var newHeadID *uint
+
+	if req.HeadID != nil {
+		oldHeadID = department.HeadID
+		newHeadID = req.HeadID
+		department.HeadID = req.HeadID
+
+		// If HeadID is being set or changed, update the new head's role to department_head
+		if newHeadID != nil && *newHeadID > 0 {
+			// Verify the user exists
+			newHead, err := d.userRepo.GetByID(*newHeadID)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+					return nil, fmt.Errorf("user with ID %d not found", *newHeadID)
+				}
+				return nil, fmt.Errorf("failed to get user: %w", err)
+			}
+
+			// Update role to department_head if not already admin or super_admin
+			if newHead.Role != "admin" && newHead.Role != "super_admin" {
+				newHead.Role = "department_head"
+				if err := d.userRepo.Update(newHead); err != nil {
+					return nil, fmt.Errorf("failed to update new head's role: %w", err)
+				}
+			}
+		}
+
+		// If there was a previous head and they're being replaced, check if they should be demoted
+		if oldHeadID != nil && *oldHeadID > 0 && (newHeadID == nil || *newHeadID != *oldHeadID) {
+			// Check if the old head is still a head of another department
+			allDepartments, err := d.departmentRepo.GetAll()
+			if err != nil {
+				return nil, fmt.Errorf("failed to get departments: %w", err)
+			}
+
+			isStillHead := false
+			for _, dept := range allDepartments {
+				// Skip the current department (it's being updated)
+				if dept.ID == id {
+					continue
+				}
+				if dept.HeadID != nil && *dept.HeadID == *oldHeadID {
+					isStillHead = true
+					break
+				}
+			}
+
+			// If they're no longer head of any department, demote to employee
+			if !isStillHead {
+				oldHead, err := d.userRepo.GetByID(*oldHeadID)
+				if err == nil && oldHead.Role == "department_head" {
+					// Only demote if they're currently a department_head (not admin/super_admin)
+					oldHead.Role = "employee"
+					if err := d.userRepo.Update(oldHead); err != nil {
+						return nil, fmt.Errorf("failed to update old head's role: %w", err)
+					}
+				}
+			}
+		}
+	}
+
 	// Save updated department
 	if err := d.departmentRepo.Update(department); err != nil {
 		return nil, fmt.Errorf("failed to update department: %w", err)
@@ -135,14 +212,17 @@ func (d *departmentUsecase) UpdateDepartment(id uint, req *models.UpdateDepartme
 
 // DeleteDepartment deletes a department by ID
 func (d *departmentUsecase) DeleteDepartment(id uint) error {
-	// Check if department exists
-	_, err := d.departmentRepo.GetByID(id)
+	// Check if department exists and get its head
+	department, err := d.departmentRepo.GetByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
 			return fmt.Errorf("department not found")
 		}
 		return fmt.Errorf("failed to get department: %w", err)
 	}
+
+	// Store the head ID before deletion
+	oldHeadID := department.HeadID
 
 	// Check if department has users (optional - can be relaxed)
 	// For now, we'll allow deletion and set users' department_id to NULL
@@ -151,6 +231,34 @@ func (d *departmentUsecase) DeleteDepartment(id uint) error {
 	// Delete department
 	if err := d.departmentRepo.Delete(id); err != nil {
 		return fmt.Errorf("failed to delete department: %w", err)
+	}
+
+	// If there was a head, check if they should be demoted
+	if oldHeadID != nil && *oldHeadID > 0 {
+		// Check if the old head is still a head of another department
+		allDepartments, err := d.departmentRepo.GetAll()
+		if err != nil {
+			// Don't fail the deletion, just log the error
+			return nil
+		}
+
+		isStillHead := false
+		for _, dept := range allDepartments {
+			if dept.HeadID != nil && *dept.HeadID == *oldHeadID {
+				isStillHead = true
+				break
+			}
+		}
+
+		// If they're no longer head of any department, demote to employee
+		if !isStillHead {
+			oldHead, err := d.userRepo.GetByID(*oldHeadID)
+			if err == nil && oldHead.Role == "department_head" {
+				// Only demote if they're currently a department_head (not admin/super_admin)
+				oldHead.Role = "employee"
+				_ = d.userRepo.Update(oldHead) // Ignore error to not fail deletion
+			}
+		}
 	}
 
 	return nil

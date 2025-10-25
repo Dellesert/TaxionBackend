@@ -16,7 +16,7 @@ import (
 // AdminUsecase defines the interface for admin business logic
 type AdminUsecase interface {
 	GetUserStats() (*models.UserStatsResponse, error)
-	UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest) (*models.UserResponse, error)
+	UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest, adminRole sharedmodels.Role) (*models.UserResponse, error)
 	UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest) (*models.UserResponse, error)
 	ActivateUser(id uint) (*models.UserResponse, error)
 	DeactivateUser(id uint) (*models.UserResponse, error)
@@ -58,7 +58,7 @@ func (a *adminUsecase) GetUserStats() (*models.UserStatsResponse, error) {
 }
 
 // UpdateUserRole updates a user's role (admin only)
-func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest) (*models.UserResponse, error) {
+func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest, adminRole sharedmodels.Role) (*models.UserResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, fmt.Errorf("request is required")
@@ -75,6 +75,14 @@ func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRe
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Check permissions: Only super_admin can assign/remove admin or super_admin roles
+	isTargetingAdminRole := req.Role == sharedmodels.RoleAdmin || req.Role == sharedmodels.RoleSuperAdmin
+	isCurrentAdminRole := user.Role == sharedmodels.RoleAdmin || user.Role == sharedmodels.RoleSuperAdmin
+
+	if (isTargetingAdminRole || isCurrentAdminRole) && adminRole != sharedmodels.RoleSuperAdmin {
+		return nil, fmt.Errorf("only super admin can assign or remove admin roles")
 	}
 
 	// Update role

@@ -9,7 +9,7 @@ func isValidRole(role string) bool {
 	validRoles := []string{
 		string(sharedmodels.RoleSuperAdmin),
 		string(sharedmodels.RoleAdmin),
-		string(sharedmodels.RoleManager),
+		string(sharedmodels.RoleDepartmentHead),
 		string(sharedmodels.RoleEmployee),
 	}
 

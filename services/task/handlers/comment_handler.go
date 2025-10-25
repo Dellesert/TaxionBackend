@@ -129,6 +129,21 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse task ID from URL parameter
 	idStr := c.Param("id")
 	taskID, err := strconv.ParseUint(idStr, 10, 32)
@@ -173,7 +188,7 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		filter.Limit = 100
 	}
 
-	comments, err := h.taskUsecase.GetTaskComments(userID, uint(taskID), &filter)
+	comments, err := h.taskUsecase.GetTaskComments(userID, userRole, uint(taskID), &filter)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

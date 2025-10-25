@@ -391,6 +391,22 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
+	// Get admin role from context
+	adminRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin role not found",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	var req models.AdminUpdateUserRoleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -408,7 +424,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminUsecase.UpdateUserRole(uint(id), &req)
+	user, err := h.adminUsecase.UpdateUserRole(uint(id), &req, adminRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

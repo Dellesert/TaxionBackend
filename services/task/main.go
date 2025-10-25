@@ -150,20 +150,27 @@ func setupRoutes(
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware(jwtConfig))
 	{
-		// Task endpoints
+		// Task endpoints - viewing tasks (all authenticated users)
 		protected.GET("/tasks", taskHandler.GetTasks)
 		protected.GET("/tasks/:id", taskHandler.GetTask)
+
+		// Creating tasks - access control handled in usecase
+		// (employees can create tasks for themselves, department_head+ can assign to others)
 		protected.POST("/tasks", taskHandler.CreateTask)
+
+		// Updating/Deleting tasks - handled in usecase (creator, admin, super_admin)
 		protected.PUT("/tasks/:id", taskHandler.UpdateTask)
 		protected.DELETE("/tasks/:id", taskHandler.DeleteTask)
+
+		// Status updates - handled in usecase (assignee, creator, department_head, admin, super_admin)
 		protected.PATCH("/tasks/:id/status", taskHandler.UpdateTaskStatus)
 
 		// Task statistics
 		protected.GET("/tasks/stats", taskHandler.GetTaskStats)
 
-		// Task assignments
-		protected.POST("/tasks/:id/assign", taskHandler.AssignTask)
-		protected.DELETE("/tasks/:id/assign", taskHandler.UnassignTask)
+		// Task assignments - only department_head, admin, super_admin can assign tasks
+		protected.POST("/tasks/:id/assign", middleware.RequireDepartmentHeadOrAbove(), taskHandler.AssignTask)
+		protected.DELETE("/tasks/:id/assign", middleware.RequireDepartmentHeadOrAbove(), taskHandler.UnassignTask)
 
 		// Task comments
 		protected.POST("/tasks/:id/comments", taskHandler.AddComment)

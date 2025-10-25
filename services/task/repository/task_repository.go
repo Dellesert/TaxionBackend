@@ -15,9 +15,11 @@ import (
 type TaskRepository interface {
 	Create(task *models.Task) error
 	CreateAssignee(assignee *models.TaskAssignee) error
+	DeleteAllAssignees(taskID uint) error
 	GetByID(id uint) (*models.Task, error)
 	Update(task *models.Task) error
 	Delete(id uint) error
+	GetAllTasks(filter *models.TaskFilterRequest) ([]*models.Task, int64, error)
 	GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error)
 	GetTasksByAssignee(assigneeID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error)
 	GetTasksByCreator(creatorID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error)
@@ -72,6 +74,14 @@ func (r *taskRepository) CreateAssignee(assignee *models.TaskAssignee) error {
 	return nil
 }
 
+// DeleteAllAssignees deletes all assignees for a task
+func (r *taskRepository) DeleteAllAssignees(taskID uint) error {
+	if err := r.db.Where("task_id = ?", taskID).Delete(&models.TaskAssignee{}).Error; err != nil {
+		return fmt.Errorf("failed to delete task assignees: %w", err)
+	}
+	return nil
+}
+
 // GetByID retrieves a task by ID
 func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 	var task models.Task
@@ -113,6 +123,34 @@ func (r *taskRepository) Delete(id uint) error {
 		return fmt.Errorf("task not found")
 	}
 	return nil
+}
+
+// GetAllTasks retrieves all tasks with filtering (for admins)
+func (r *taskRepository) GetAllTasks(filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
+	// Query all tasks without user restrictions
+	query := r.db.Model(&models.Task{})
+
+	// Apply filters
+	query = r.applyFilters(query, filter)
+
+	// Get total count
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count all tasks: %w", err)
+	}
+
+	// Apply pagination and sorting
+	query = r.applySortingAndPagination(query, filter)
+
+	var tasks []*models.Task
+	if err := query.Preload("Assignees").Find(&tasks).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to get all tasks: %w", err)
+	}
+
+	// Load comment counts
+	r.loadCommentCounts(tasks)
+
+	return tasks, total, nil
 }
 
 // GetUserTasks retrieves tasks for a user (either assigned to or created by)

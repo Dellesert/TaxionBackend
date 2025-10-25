@@ -188,6 +188,38 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 		return
 	}
 
+	// Check if department head verification is required
+	if requiresCheck, exists := c.Get("requires_department_head_check"); exists && requiresCheck.(bool) {
+		userID, _ := c.Get("user_id")
+
+		// Get department to verify user is the head
+		dept, err := h.departmentUsecase.GetDepartment(uint(id))
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":      "Department not found",
+				"request_id": requestID,
+			})
+			return
+		}
+
+		// Check if user is the department head
+		if dept.HeadID == nil || *dept.HeadID != userID.(uint) {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"user_id":       userID,
+				"department_id": id,
+				"head_id":       dept.HeadID,
+			}).Warn("User is not the head of this department")
+
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":      "Forbidden",
+				"message":    "You are not the head of this department",
+				"request_id": requestID,
+			})
+			return
+		}
+	}
+
 	var req models.UpdateDepartmentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.WithFields(map[string]interface{}{

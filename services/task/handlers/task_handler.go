@@ -59,9 +59,15 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		return
 	}
 
-	// TODO: Get user department from user-service
-	// For now, use empty string (managers will need to specify department explicitly)
+	// Get user department from JWT claims (if available) or user-service
 	userDepartment := ""
+
+	// For department_head role, we need to know their department
+	if userRole == "department_head" {
+		// TODO: Get department_id from user-service or JWT
+		// For now, we'll need to query user-service
+		// This is handled in the usecase layer via userClient
+	}
 
 	var req models.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -137,6 +143,21 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse task ID from URL parameter
 	idStr := c.Param("id")
 	taskID, err := strconv.ParseUint(idStr, 10, 32)
@@ -155,7 +176,7 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 		return
 	}
 
-	task, err := h.taskUsecase.GetTaskByID(userID, uint(taskID))
+	task, err := h.taskUsecase.GetTaskByID(userID, userRole, uint(taskID))
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -204,6 +225,21 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse task ID from URL parameter
 	idStr := c.Param("id")
 	taskID, err := strconv.ParseUint(idStr, 10, 32)
@@ -239,7 +275,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		return
 	}
 
-	task, err := h.taskUsecase.UpdateTask(userID, uint(taskID), &req)
+	task, err := h.taskUsecase.UpdateTask(userID, userRole, uint(taskID), &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -469,6 +505,21 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		return
 	}
 
+	// Get user role from JWT token
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse filter parameters
 	var filter models.TaskFilterRequest
 	if err := c.ShouldBindQuery(&filter); err != nil {
@@ -494,7 +545,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		filter.Limit = 100
 	}
 
-	tasks, total, err := h.taskUsecase.GetUserTasks(userID, &filter)
+	tasks, total, err := h.taskUsecase.GetUserTasks(userID, userRole, &filter)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

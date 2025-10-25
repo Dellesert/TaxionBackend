@@ -20,8 +20,10 @@ type UserRepository interface {
 	Update(user *models.User) error
 	Delete(id uint) error
 	Count() (int64, error)
+	CountWithFilters(departmentID *uint, isActive *bool) (int64, error)
 	GetWithDepartment(id uint) (*models.User, error)
 	GetAllWithDepartments(limit, offset int) ([]*models.User, error)
+	GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error)
 }
 
 // DepartmentRepository defines the interface for department data operations
@@ -175,6 +177,46 @@ func (r *userRepository) GetAllWithDepartments(limit, offset int) ([]*models.Use
 		return nil, fmt.Errorf("failed to get users with departments: %w", err)
 	}
 	return users, nil
+}
+
+// GetAllWithDepartmentsFiltered retrieves users with departments preloaded, filtered by department ID and active status
+func (r *userRepository) GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error) {
+	var users []*models.User
+	query := r.db.Preload("Department")
+
+	if departmentID != nil {
+		query = query.Where("department_id = ?", *departmentID)
+	}
+
+	if isActive != nil {
+		query = query.Where("is_active = ?", *isActive)
+	}
+
+	err := query.Limit(limit).Offset(offset).Order("created_at DESC").Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with departments: %w", err)
+	}
+	return users, nil
+}
+
+// CountWithFilters returns the total number of users with optional filters
+func (r *userRepository) CountWithFilters(departmentID *uint, isActive *bool) (int64, error) {
+	var count int64
+	query := r.db.Model(&models.User{})
+
+	if departmentID != nil {
+		query = query.Where("department_id = ?", *departmentID)
+	}
+
+	if isActive != nil {
+		query = query.Where("is_active = ?", *isActive)
+	}
+
+	err := query.Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	return count, nil
 }
 
 // Department Repository Methods

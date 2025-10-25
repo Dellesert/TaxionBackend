@@ -252,8 +252,7 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 	// Update status in user-service
 	go updateUserStatus(userID, status)
 
-	// Find all chat rooms where this user is a member by checking h.chatRooms
-	// This works even if client.chatRooms is empty (e.g., during initial connection)
+	// Find all chat rooms where this user is a member
 	chatRoomIDs := make([]uint, 0)
 	for chatID, users := range h.chatRooms {
 		if _, exists := users[userID]; exists {
@@ -264,22 +263,47 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 
 	log.Printf("Broadcasting user_presence for user %d (status: %s) to %d chats", userID, status, len(chatRoomIDs))
 
-	// Broadcast to all chat rooms user is in
+	// Collect all unique users across all chat rooms (except the user themselves)
+	uniqueUsers := make(map[uint]bool)
 	for _, chatID := range chatRoomIDs {
-		broadcastMsg := &BroadcastMessage{
-			Type:        models.WSMessageType("user_presence"),
-			ChatID:      chatID,
-			UserID:      userID,
-			Data:        presence,
-			ExcludeUser: userID, // Don't send to the user themselves
-		}
-
-		select {
-		case h.broadcast <- broadcastMsg:
-		default:
-			log.Println("Broadcast channel full, dropping presence message")
+		if users, exists := h.chatRooms[chatID]; exists {
+			for otherUserID := range users {
+				if otherUserID != userID {
+					uniqueUsers[otherUserID] = true
+				}
+			}
 		}
 	}
+
+	// Create the message once
+	message := &BroadcastMessage{
+		Type:      models.WSMessageType("user_presence"),
+		ChatID:    0, // Not specific to one chat
+		UserID:    userID,
+		Data:      presence,
+		Timestamp: time.Now(),
+	}
+
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling presence message: %v", err)
+		return
+	}
+
+	// Send to each unique user only once
+	sent := 0
+	for otherUserID := range uniqueUsers {
+		if client, exists := h.clients[otherUserID]; exists {
+			select {
+			case client.send <- messageBytes:
+				sent++
+			default:
+				log.Printf("Client %d send channel full, skipping presence update", otherUserID)
+			}
+		}
+	}
+
+	log.Printf("Sent user_presence to %d unique users (was in %d chats)", sent, len(chatRoomIDs))
 }
 
 // updateUserStatus updates user status in user-service via HTTP

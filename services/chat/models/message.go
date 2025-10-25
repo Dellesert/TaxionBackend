@@ -20,6 +20,7 @@ const (
 	MessageTypeAudio    MessageType = "audio"
 	MessageTypeLocation MessageType = "location"
 	MessageTypeSystem   MessageType = "system"
+	MessageTypePoll     MessageType = "poll"
 )
 
 // MessageStatus represents the status of message delivery
@@ -38,7 +39,7 @@ type Message struct {
 	ChatID    uint          `gorm:"not null;index" json:"chat_id" validate:"required"`
 	SenderID  uint          `gorm:"not null;index" json:"sender_id" validate:"required"`
 	Content   string        `gorm:"type:text" json:"content" validate:"required,max=10000"`
-	Type      MessageType   `gorm:"not null;default:'text';size:20" json:"type" validate:"oneof=text image file video audio location system"`
+	Type      MessageType   `gorm:"not null;default:'text';size:20" json:"type" validate:"oneof=text image file video audio location system poll"`
 	Status    MessageStatus `gorm:"not null;default:'sent';size:20" json:"status" validate:"oneof=sent delivered read failed"`
 	ReplyToID *uint         `gorm:"index" json:"reply_to_id,omitempty"`
 	EditedAt  *time.Time    `json:"edited_at,omitempty"`
@@ -59,6 +60,9 @@ type Message struct {
 
 	// System message metadata
 	SystemData string `gorm:"type:text" json:"system_data,omitempty"`
+
+	// Poll-related field - stored as JSON
+	PollData string `gorm:"type:text" json:"poll_data,omitempty"`
 
 	// Associations
 	Chat    *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
@@ -151,7 +155,7 @@ func (m *Message) AfterCreate(tx *gorm.DB) error {
 type SendMessageRequest struct {
 	ChatID    uint        `json:"chat_id" binding:"required,min=1" validate:"required,min=1"`
 	Content   string      `json:"content" binding:"omitempty,max=10000" validate:"omitempty,max=10000"`
-	Type      MessageType `json:"type,omitempty" binding:"omitempty,oneof=text image file video audio location system" validate:"omitempty,oneof=text image file video audio location system"`
+	Type      MessageType `json:"type,omitempty" binding:"omitempty,oneof=text image file video audio location system poll" validate:"omitempty,oneof=text image file video audio location system poll"`
 	ReplyToID *uint       `json:"reply_to_id,omitempty" validate:"omitempty,min=1"`
 
 	// File-related fields (deprecated - use Attachments instead)
@@ -167,6 +171,9 @@ type SendMessageRequest struct {
 	// Location-related fields
 	Latitude  *float64 `json:"latitude,omitempty" validate:"omitempty,min=-90,max=90"`
 	Longitude *float64 `json:"longitude,omitempty" validate:"omitempty,min=-180,max=180"`
+
+	// Poll-related field - JSON object with poll metadata
+	PollData map[string]interface{} `json:"poll_data,omitempty"`
 }
 
 // UpdateMessageRequest represents request for updating a message
@@ -210,6 +217,7 @@ type MessageResponse struct {
 	Latitude     *float64                       `json:"latitude,omitempty"`
 	Longitude    *float64                       `json:"longitude,omitempty"`
 	SystemData   string                         `json:"system_data,omitempty"`
+	PollData     string                         `json:"poll_data,omitempty"`
 	Reactions    []MessageReactionResponse      `json:"reactions"`
 	ReadReceipts []MessageReadReceiptResponse   `json:"read_receipts"`
 	ReadBy       []uint                         `json:"read_by"` // Array of user IDs who read the message
@@ -266,6 +274,7 @@ func (m *Message) ToResponse() *MessageResponse {
 		Latitude:     m.Latitude,
 		Longitude:    m.Longitude,
 		SystemData:   m.SystemData,
+		PollData:     m.PollData,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
 		// Initialize arrays to prevent undefined in JSON

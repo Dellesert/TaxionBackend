@@ -20,9 +20,9 @@ func RequireSuperAdminRole() gin.HandlerFunc {
 	return RequireRole(models.RoleSuperAdmin)
 }
 
-// RequireManagerOrAbove creates middleware that requires manager, admin, or super_admin role
-func RequireManagerOrAbove() gin.HandlerFunc {
-	return RequireRole(models.RoleManager, models.RoleAdmin, models.RoleSuperAdmin)
+// RequireDepartmentHeadOrAbove creates middleware that requires department_head, admin, or super_admin role
+func RequireDepartmentHeadOrAbove() gin.HandlerFunc {
+	return RequireRole(models.RoleDepartmentHead, models.RoleAdmin, models.RoleSuperAdmin)
 }
 
 // AdminOnlyMiddleware is a more specific admin middleware with better error messages
@@ -204,5 +204,80 @@ func ValidateAdminRequest() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+// RequireAdminOrDepartmentHead creates middleware that requires admin or department head of specified department
+// departmentIDParam is the URL parameter name containing the department ID (e.g., "id")
+func RequireAdminOrDepartmentHead(departmentIDParam string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := requestid.Get(c)
+
+		// Get user info from context
+		userRole, roleExists := c.Get("user_role")
+		userID, userIDExists := c.Get("user_id")
+
+		if !roleExists || !userIDExists {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":      "Authentication required",
+				"request_id": requestID,
+			})
+			c.Abort()
+			return
+		}
+
+		role, ok := userRole.(models.Role)
+		if !ok {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":      "Invalid authentication data",
+				"request_id": requestID,
+			})
+			c.Abort()
+			return
+		}
+
+		// Admins and super admins have full access
+		if role == models.RoleAdmin || role == models.RoleSuperAdmin {
+			c.Next()
+			return
+		}
+
+		// For department heads, check if they are the head of this specific department
+		if role == models.RoleDepartmentHead {
+			// Get department ID from URL parameter
+			departmentIDStr := c.Param(departmentIDParam)
+			if departmentIDStr == "" {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":      "Department ID required",
+					"request_id": requestID,
+				})
+				c.Abort()
+				return
+			}
+
+			// Store department ID for handler to use
+			c.Set("requested_department_id", departmentIDStr)
+			c.Set("requires_department_head_check", true)
+
+			// Handler must verify the user is actually the head of this department
+			c.Next()
+			return
+		}
+
+		// Other roles don't have access
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"user_role":  role,
+			"method":     c.Request.Method,
+			"path":       c.Request.URL.Path,
+		}).Warn("Unauthorized department access attempt")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Insufficient permissions",
+			"message":    "Only admins and department heads can perform this action",
+			"request_id": requestID,
+		})
+		c.Abort()
 	}
 }

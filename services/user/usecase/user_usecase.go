@@ -17,6 +17,7 @@ type UserUsecase interface {
 	CreateUser(req *models.CreateUserRequest) (*models.UserResponse, error)
 	GetUser(id uint) (*models.UserResponse, error)
 	GetUsers(limit, offset int) ([]*models.UserResponse, int64, error)
+	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool) ([]*models.UserResponse, int64, error)
 	GetUsersByIDs(ids []uint) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteUser(id uint) error
@@ -97,13 +98,43 @@ func (u *userUsecase) GetUsers(limit, offset int) ([]*models.UserResponse, int64
 		limit = 100
 	}
 
-	users, err := u.userRepo.GetAll(limit, offset)
+	users, err := u.userRepo.GetAllWithDepartments(limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get users: %w", err)
 	}
 
 	// Get total count
 	total, err := u.userRepo.Count()
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// Convert to response format
+	responses := make([]*models.UserResponse, len(users))
+	for i, user := range users {
+		responses[i] = user.ToResponse()
+	}
+
+	return responses, total, nil
+}
+
+// GetUsersWithFilters retrieves users with pagination and optional filters
+func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool) ([]*models.UserResponse, int64, error) {
+	// Set default pagination values
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	users, err := u.userRepo.GetAllWithDepartmentsFiltered(limit, offset, departmentID, isActive)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get users: %w", err)
+	}
+
+	// Get total count with filters
+	total, err := u.userRepo.CountWithFilters(departmentID, isActive)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
@@ -145,7 +176,12 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 		user.Position = *req.Position
 	}
 	if req.DepartmentID != nil {
-		user.DepartmentID = req.DepartmentID
+		// If DepartmentID is 0, set to nil to remove from department
+		if *req.DepartmentID == 0 {
+			user.DepartmentID = nil
+		} else {
+			user.DepartmentID = req.DepartmentID
+		}
 	}
 	if req.IsActive != nil {
 		user.IsActive = *req.IsActive

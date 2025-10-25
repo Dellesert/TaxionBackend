@@ -184,8 +184,8 @@ func (c *Client) handleJoinMessage(wsMsg *models.WSMessage) {
 	c.joinChatRoom(wsMsg.ChatID)
 	log.Printf("User %d joined chat room %d", c.userID, wsMsg.ChatID)
 
-	// Broadcast user presence after joining chat room
-	c.hub.broadcastUserPresence(c.userID, "online")
+	// Note: user presence is broadcasted only once during client registration (see hub.registerClient)
+	// We don't broadcast presence on every join to avoid spamming presence updates
 }
 
 // handleLeaveMessage handles user leave messages

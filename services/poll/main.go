@@ -147,10 +147,14 @@ func setupRoutes(
 	protected := api.Group("")
 	protected.Use(middleware.JWTMiddleware(jwtConfig))
 	{
-		// Poll CRUD operations
+		// Poll viewing - all authenticated users
 		protected.GET("/polls", pollHandler.GetPolls)
 		protected.GET("/polls/:id", pollHandler.GetPoll)
-		protected.POST("/polls", pollHandler.CreatePoll)
+
+		// Poll creation - only department_head, admin, super_admin can create polls
+		protected.POST("/polls", middleware.RequireDepartmentHeadOrAbove(), pollHandler.CreatePoll)
+
+		// Poll update/delete - handled in usecase (creator, admin, super_admin)
 		protected.PUT("/polls/:id", pollHandler.UpdatePoll)
 		protected.DELETE("/polls/:id", pollHandler.DeletePoll)
 

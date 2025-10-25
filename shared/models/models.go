@@ -19,10 +19,10 @@ type BaseModel struct {
 type Role string
 
 const (
-	RoleSuperAdmin Role = "super_admin"
-	RoleAdmin      Role = "admin"
-	RoleManager    Role = "manager"
-	RoleEmployee   Role = "employee"
+	RoleSuperAdmin     Role = "super_admin"
+	RoleAdmin          Role = "admin"
+	RoleDepartmentHead Role = "department_head"
+	RoleEmployee       Role = "employee"
 )
 
 // UserStatus represents user online status

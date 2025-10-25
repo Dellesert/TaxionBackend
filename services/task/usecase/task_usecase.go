@@ -17,19 +17,19 @@ import (
 // TaskUsecase defines the interface for task business logic
 type TaskUsecase interface {
 	CreateTask(userID uint, userRole sharedmodels.Role, userDepartment string, req *models.CreateTaskRequest) (*models.TaskResponse, error)
-	GetTaskByID(userID, taskID uint) (*models.TaskResponse, error)
+	GetTaskByID(userID uint, userRole sharedmodels.Role, taskID uint) (*models.TaskResponse, error)
 	GetTaskByIDInternal(taskID uint) (*models.Task, error) // Internal method without access control
-	UpdateTask(userID, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error)
+	UpdateTask(userID uint, userRole sharedmodels.Role, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error)
 	DeleteTask(userID uint, userRole sharedmodels.Role, taskID uint) error
 	AssignTask(userID, taskID uint, req *models.AssignTaskRequest) (*models.TaskResponse, error)
 	UnassignTask(userID, taskID uint) (*models.TaskResponse, error)
 	UpdateTaskStatus(userID, taskID uint, req *models.UpdateTaskStatusRequest) (*models.TaskResponse, error)
-	GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error)
+	GetUserTasks(userID uint, userRole sharedmodels.Role, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error)
 	GetTaskStats(userID uint) (*models.TaskStatsResponse, error)
 
 	// Comment methods
 	AddComment(userID, taskID uint, req *models.CreateTaskCommentRequest) (*models.TaskCommentResponse, error)
-	GetTaskComments(userID, taskID uint, filter *models.CommentFilterRequest) (*models.CommentListResponse, error)
+	GetTaskComments(userID uint, userRole sharedmodels.Role, taskID uint, filter *models.CommentFilterRequest) (*models.CommentListResponse, error)
 	UpdateComment(userID, commentID uint, req *models.UpdateTaskCommentRequest) (*models.TaskCommentResponse, error)
 	DeleteComment(userID, commentID uint) error
 }
@@ -216,20 +216,44 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 		return nil
 	}
 
-	// Manager can assign to their department members
-	if userRole == sharedmodels.RoleManager {
-		// Can assign to department
-		if req.AssignedToDepartment != nil && *req.AssignedToDepartment == userDepartment {
+	// Department head can assign to their department members
+	if userRole == sharedmodels.RoleDepartmentHead {
+		// Get current user's department from user-service
+		currentUsers, err := u.userClient.GetUsersByIDs([]uint{userID})
+		if err != nil {
+			return fmt.Errorf("failed to get user information: %w", err)
+		}
+
+		currentUser, exists := currentUsers[userID]
+		if !exists || currentUser.DepartmentID == nil {
+			return fmt.Errorf("access denied: department head must belong to a department")
+		}
+
+		userDeptID := *currentUser.DepartmentID
+
+		// Check if all assignees are from department head's department
+		if len(req.AssigneeIDs) > 0 {
+			// Fetch user information to validate department membership
+			users, err := u.userClient.GetUsersByIDs(req.AssigneeIDs)
+			if err != nil {
+				return fmt.Errorf("failed to validate assignees: %w", err)
+			}
+
+			// Check each assignee belongs to the department head's department
+			for _, assigneeID := range req.AssigneeIDs {
+				user, exists := users[assigneeID]
+				if !exists {
+					return fmt.Errorf("access denied: user %d not found", assigneeID)
+				}
+				if user.DepartmentID == nil || *user.DepartmentID != userDeptID {
+					return fmt.Errorf("access denied: you can only assign tasks to members of your department")
+				}
+			}
 			return nil
 		}
 
-		// TODO: Check if all assignees are from manager's department
-		// For now, allow managers to assign to specific users (will need user-service client to validate)
-		if len(req.AssigneeIDs) > 0 {
-			return nil // Temporary: trust manager's assignment
-		}
-
-		return nil // Allow managers to assign
+		// If no specific assignees, allow (task will be assigned to self or department)
+		return nil
 	}
 
 	// Employee can only create tasks for themselves
@@ -237,7 +261,7 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 }
 
 // GetTaskByID retrieves a task by ID with access control
-func (u *taskUsecase) GetTaskByID(userID, taskID uint) (*models.TaskResponse, error) {
+func (u *taskUsecase) GetTaskByID(userID uint, userRole sharedmodels.Role, taskID uint) (*models.TaskResponse, error) {
 	task, err := u.taskRepo.GetByID(taskID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
@@ -246,8 +270,11 @@ func (u *taskUsecase) GetTaskByID(userID, taskID uint) (*models.TaskResponse, er
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check access rights: user must be creator or assignee
-	if !u.hasTaskAccess(userID, task) {
+	// Admin and super_admin can access any task
+	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+
+	// Check access rights: user must be creator, assignee, or admin
+	if !isAdmin && !u.hasTaskAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -276,7 +303,7 @@ func (u *taskUsecase) GetTaskByIDInternal(taskID uint) (*models.Task, error) {
 }
 
 // UpdateTask updates an existing task
-func (u *taskUsecase) UpdateTask(userID, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error) {
+func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error) {
 	// Validate request
 	if err := u.validateUpdateTaskRequest(req); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
@@ -291,8 +318,9 @@ func (u *taskUsecase) UpdateTask(userID, taskID uint, req *models.UpdateTaskRequ
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check permissions: only creator or assignee can update
-	if !u.hasTaskAccess(userID, task) {
+	// Check permissions: creator, assignee, or admin can update
+	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+	if !isAdmin && !u.hasTaskAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -313,6 +341,9 @@ func (u *taskUsecase) UpdateTask(userID, taskID uint, req *models.UpdateTaskRequ
 	if req.AssignedTo != nil {
 		task.AssignedTo = req.AssignedTo
 	}
+	if req.AssignedToDepartment != nil {
+		task.AssignedToDepartment = req.AssignedToDepartment
+	}
 	if req.DueDate != nil {
 		task.DueDate = req.DueDate
 	}
@@ -322,7 +353,40 @@ func (u *taskUsecase) UpdateTask(userID, taskID uint, req *models.UpdateTaskRequ
 		return nil, fmt.Errorf("failed to update task: %w", err)
 	}
 
-	return task.ToResponse(), nil
+	// Update assignees if provided
+	if req.AssigneeIDs != nil {
+		// Delete existing assignees
+		if err := u.taskRepo.DeleteAllAssignees(taskID); err != nil {
+			return nil, fmt.Errorf("failed to delete existing assignees: %w", err)
+		}
+
+		// Create new assignees
+		for _, assigneeID := range req.AssigneeIDs {
+			assignee := &models.TaskAssignee{
+				TaskID: taskID,
+				UserID: assigneeID,
+			}
+			if err := u.taskRepo.CreateAssignee(assignee); err != nil {
+				return nil, fmt.Errorf("failed to create task assignee: %w", err)
+			}
+		}
+
+		// Reload task to get updated assignees
+		task, err = u.taskRepo.GetByID(taskID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to reload task: %w", err)
+		}
+	}
+
+	response := task.ToResponse()
+
+	// Enrich with user info
+	if err := u.enrichTaskWithUserInfo(response); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich task with user info: %v\n", err)
+	}
+
+	return response, nil
 }
 
 // DeleteTask deletes a task
@@ -453,7 +517,7 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 }
 
 // GetUserTasks retrieves tasks for a user with filtering
-func (u *taskUsecase) GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error) {
+func (u *taskUsecase) GetUserTasks(userID uint, userRole sharedmodels.Role, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error) {
 	// Set default pagination if not provided
 	if filter == nil {
 		filter = &models.TaskFilterRequest{
@@ -470,9 +534,22 @@ func (u *taskUsecase) GetUserTasks(userID uint, filter *models.TaskFilterRequest
 	}
 
 	// Get tasks from repository
-	tasks, total, err := u.taskRepo.GetUserTasks(userID, filter)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)
+	var tasks []*models.Task
+	var total int64
+	var err error
+
+	// Admin and super_admin can see all tasks
+	if userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin {
+		tasks, total, err = u.taskRepo.GetAllTasks(filter)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get all tasks: %w", err)
+		}
+	} else {
+		// Regular users only see their own tasks (created by or assigned to)
+		tasks, total, err = u.taskRepo.GetUserTasks(userID, filter)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)
+		}
 	}
 
 	// Convert to response format

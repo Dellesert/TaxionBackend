@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -115,6 +116,16 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	// Set default type if not provided
 	if message.Type == "" {
 		message.Type = models.MessageTypeText
+	}
+
+	// Handle poll_data if provided
+	if req.PollData != nil && len(req.PollData) > 0 {
+		pollDataJSON, err := json.Marshal(req.PollData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal poll_data: %w", err)
+		}
+		message.PollData = string(pollDataJSON)
+		fmt.Printf("📊 Poll data attached to message: %s\n", string(pollDataJSON))
 	}
 
 	if err := uc.messageRepo.Create(message); err != nil {
@@ -773,6 +784,7 @@ func (uc *messageUsecase) validateSendMessageRequest(req *models.SendMessageRequ
 			models.MessageTypeAudio,
 			models.MessageTypeLocation,
 			models.MessageTypeSystem,
+			models.MessageTypePoll,
 		}
 
 		valid := false
