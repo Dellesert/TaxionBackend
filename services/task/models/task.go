@@ -13,6 +13,7 @@ type TaskStatus string
 
 const (
 	TaskStatusNew        TaskStatus = "new"
+	TaskStatusViewed     TaskStatus = "viewed" // When task is first viewed by assignee
 	TaskStatusInProgress TaskStatus = "in_progress"
 	TaskStatusReview     TaskStatus = "review"
 	TaskStatusDone       TaskStatus = "done"
@@ -32,29 +33,102 @@ const (
 // Task represents a task in the system
 type Task struct {
 	models.BaseModel
-	Title                string       `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
-	Description          string       `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
-	Status               TaskStatus   `gorm:"not null;default:'new';size:20" json:"status" validate:"required,oneof=new in_progress review done cancelled"`
-	Priority             TaskPriority `gorm:"not null;default:'medium';size:20" json:"priority" validate:"required,oneof=low medium high critical"`
-	AssignedTo           *uint        `gorm:"index" json:"assigned_to,omitempty" validate:"omitempty,min=1"` // Deprecated: use Assignees instead
-	AssignedToDepartment *string      `gorm:"size:100" json:"assigned_to_department,omitempty"`
-	CreatedBy            uint         `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
-	LastStatusChangedBy  *uint        `gorm:"index" json:"last_status_changed_by,omitempty"`
-	DueDate              *time.Time   `json:"due_date,omitempty"`
+	Title       string       `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
+	Description string       `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
+	Status      TaskStatus   `gorm:"not null;default:'new';size:20" json:"status" validate:"required,oneof=new viewed in_progress review done cancelled"`
+	Priority    TaskPriority `gorm:"not null;default:'medium';size:20" json:"priority" validate:"required,oneof=low medium high critical"`
+
+	// Hierarchy support
+	ParentTaskID *uint `gorm:"index" json:"parent_task_id,omitempty"`
+
+	// Assignment and delegation
+	CreatedByUserID       uint  `gorm:"not null;index;column:created_by_user_id" json:"created_by_user_id" validate:"required,min=1"`
+	AssignedToUserID      *uint `gorm:"index;column:assigned_to_user_id" json:"assigned_to_user_id,omitempty"`
+	DelegatedFromUserID   *uint `gorm:"index;column:delegated_from_user_id" json:"delegated_from_user_id,omitempty"`
+	OriginalAssigneeID    *uint `gorm:"column:original_assignee_id" json:"original_assignee_id,omitempty"`
+	AssignedToDepartment  *uint `gorm:"index;column:assigned_to_department_id" json:"assigned_to_department_id,omitempty"`
+
+	// Progress tracking
+	ProgressPercentage        int        `gorm:"default:0" json:"progress_percentage" validate:"min=0,max=100"`
+	FirstViewedAt             *time.Time `json:"first_viewed_at,omitempty"`
+	FirstViewedByUserID       *uint      `json:"first_viewed_by_user_id,omitempty"`
+	LastStatusChangedByUserID *uint      `gorm:"index;column:last_status_changed_by_user_id" json:"last_status_changed_by_user_id,omitempty"`
+
+	// Dates
+	DueDate     *time.Time `json:"due_date,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 
 	// Associations
-	Comments  []TaskComment  `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
-	Assignees []TaskAssignee `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"assignees,omitempty"`
+	ParentTask  *Task              `gorm:"foreignKey:ParentTaskID" json:"parent_task,omitempty"`
+	Subtasks    []Task             `gorm:"foreignKey:ParentTaskID;constraint:OnDelete:CASCADE" json:"subtasks,omitempty"`
+	Comments    []TaskComment      `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
+	Assignees   []TaskAssignee     `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"assignees,omitempty"`
+	Activities  []TaskActivity     `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"activities,omitempty"`
+	Attachments []TaskAttachment   `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"attachments,omitempty"`
+	Checklists  []TaskChecklist    `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE" json:"checklists,omitempty"`
 
 	// Computed fields (not stored in DB)
-	CommentCount int `gorm:"-" json:"comment_count,omitempty"`
+	CommentCount    int `gorm:"-" json:"comment_count,omitempty"`
+	SubtaskCount    int `gorm:"-" json:"subtask_count,omitempty"`
+	AttachmentCount int `gorm:"-" json:"attachment_count,omitempty"`
+
+	// Backward compatibility (deprecated fields)
+	CreatedBy           uint    `gorm:"-" json:"created_by,omitempty"`
+	AssignedTo          *uint   `gorm:"-" json:"assigned_to,omitempty"`
+	LastStatusChangedBy *uint   `gorm:"-" json:"last_status_changed_by,omitempty"`
+	AssignedToDept      *string `gorm:"-" json:"assigned_to_department,omitempty"`
 }
 
 // TaskAssignee represents a user assigned to a task (many-to-many relationship)
 type TaskAssignee struct {
 	models.BaseModel
-	TaskID uint `gorm:"not null;index" json:"task_id"`
-	UserID uint `gorm:"not null;index" json:"user_id"`
+	TaskID         uint       `gorm:"not null;index" json:"task_id"`
+	UserID         uint       `gorm:"not null;index" json:"user_id"`
+	AssignedByUserID *uint    `json:"assigned_by_user_id,omitempty"`
+	AssignedAt     time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"assigned_at"`
+}
+
+// TaskActivity represents an activity/action performed on a task
+type TaskActivity struct {
+	models.BaseModel
+	TaskID     uint   `gorm:"not null;index" json:"task_id"`
+	UserID     uint   `gorm:"not null;index" json:"user_id"`
+	ActionType string `gorm:"not null;size:50;index" json:"action_type"`
+	OldValue   string `gorm:"type:text" json:"old_value,omitempty"`
+	NewValue   string `gorm:"type:text" json:"new_value,omitempty"`
+	Details    string `gorm:"type:jsonb" json:"details,omitempty"` // JSONB field for PostgreSQL
+}
+
+// TaskAttachment represents a file attached to a task
+type TaskAttachment struct {
+	models.BaseModel
+	TaskID            uint   `gorm:"not null;index" json:"task_id"`
+	UploadedByUserID  uint   `gorm:"not null;index" json:"uploaded_by_user_id"`
+	FileName          string `gorm:"not null;size:255" json:"file_name"`
+	FilePath          string `gorm:"not null;size:500" json:"file_path"`
+	FileType          string `gorm:"size:50" json:"file_type,omitempty"`
+	FileSize          int64  `json:"file_size,omitempty"`
+}
+
+// TaskChecklist represents a checklist within a task
+type TaskChecklist struct {
+	models.BaseModel
+	TaskID      uint              `gorm:"not null;index" json:"task_id"`
+	Title       string            `gorm:"not null;size:255" json:"title"`
+	Description string            `gorm:"type:text" json:"description,omitempty"`
+	Position    int               `gorm:"default:0;index" json:"position"`
+	Items       []TaskChecklistItem `gorm:"foreignKey:ChecklistID;constraint:OnDelete:CASCADE" json:"items,omitempty"`
+}
+
+// TaskChecklistItem represents an item within a checklist
+type TaskChecklistItem struct {
+	models.BaseModel
+	ChecklistID       uint       `gorm:"not null;index" json:"checklist_id"`
+	Title             string     `gorm:"not null;size:500" json:"title"`
+	IsCompleted       bool       `gorm:"default:false;index" json:"is_completed"`
+	CompletedByUserID *uint      `json:"completed_by_user_id,omitempty"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
+	Position          int        `gorm:"default:0;index" json:"position"`
 }
 
 // TableName returns the table name for Task model
@@ -67,6 +141,26 @@ func (TaskAssignee) TableName() string {
 	return "task_assignees"
 }
 
+// TableName returns the table name for TaskActivity model
+func (TaskActivity) TableName() string {
+	return "task_activities"
+}
+
+// TableName returns the table name for TaskAttachment model
+func (TaskAttachment) TableName() string {
+	return "task_attachments"
+}
+
+// TableName returns the table name for TaskChecklist model
+func (TaskChecklist) TableName() string {
+	return "task_checklists"
+}
+
+// TableName returns the table name for TaskChecklistItem model
+func (TaskChecklistItem) TableName() string {
+	return "task_checklist_items"
+}
+
 // BeforeCreate hook is called before creating a task
 func (t *Task) BeforeCreate(tx *gorm.DB) error {
 	// Set default values if not provided
@@ -76,6 +170,27 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 	if t.Priority == "" {
 		t.Priority = TaskPriorityMedium
 	}
+
+	// Initialize progress to 0 if not set
+	if t.ProgressPercentage < 0 || t.ProgressPercentage > 100 {
+		t.ProgressPercentage = 0
+	}
+
+	// Set backward compatibility fields
+	t.CreatedBy = t.CreatedByUserID
+	t.AssignedTo = t.AssignedToUserID
+	t.LastStatusChangedBy = t.LastStatusChangedByUserID
+
+	return nil
+}
+
+// AfterFind hook is called after loading a task from database
+func (t *Task) AfterFind(tx *gorm.DB) error {
+	// Set backward compatibility fields
+	t.CreatedBy = t.CreatedByUserID
+	t.AssignedTo = t.AssignedToUserID
+	t.LastStatusChangedBy = t.LastStatusChangedByUserID
+
 	return nil
 }
 
@@ -86,27 +201,42 @@ type CreateTaskRequest struct {
 	Title                string        `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description          string        `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
 	Priority             *TaskPriority `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
-	AssignedTo           *uint         `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"` // Deprecated: use AssigneeIDs instead
+	AssignedToUserID     *uint         `json:"assigned_to_user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	AssigneeIDs          []uint        `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`
-	AssignedToDepartment *string       `json:"assigned_to_department,omitempty" validate:"omitempty,max=100"`
+	AssignedToDepartment *uint         `json:"assigned_to_department_id,omitempty" validate:"omitempty,min=1"`
+	ParentTaskID         *uint         `json:"parent_task_id,omitempty" validate:"omitempty,min=1"`
 	DueDate              *time.Time    `json:"due_date,omitempty"`
+
+	// Backward compatibility
+	AssignedTo           *uint   `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"` // Deprecated
+	AssignedToDept       *string `json:"assigned_to_department,omitempty" validate:"omitempty,max=100"` // Deprecated
 }
 
 // UpdateTaskRequest represents request for updating a task
 type UpdateTaskRequest struct {
 	Title                *string       `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
 	Description          *string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Status               *TaskStatus   `json:"status,omitempty" binding:"omitempty,oneof=new in_progress review done cancelled" validate:"omitempty,oneof=new in_progress review done cancelled"`
+	Status               *TaskStatus   `json:"status,omitempty" binding:"omitempty,oneof=new viewed in_progress review done cancelled" validate:"omitempty,oneof=new viewed in_progress review done cancelled"`
 	Priority             *TaskPriority `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
-	AssignedTo           *uint         `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`                                        // Deprecated: use AssigneeIDs instead
-	AssigneeIDs          []uint        `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`                                                           // Multiple assignees
-	AssignedToDepartment *string       `json:"assigned_to_department,omitempty" validate:"omitempty,max=100"`                                                    // Department assignment
+	AssignedToUserID     *uint         `json:"assigned_to_user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	AssigneeIDs          []uint        `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`
+	AssignedToDepartment *uint         `json:"assigned_to_department_id,omitempty" validate:"omitempty,min=1"`
 	DueDate              *time.Time    `json:"due_date,omitempty"`
+
+	// Backward compatibility
+	AssignedTo           *uint   `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"` // Deprecated
+	AssignedToDept       *string `json:"assigned_to_department,omitempty" validate:"omitempty,max=100"` // Deprecated
 }
 
 // UpdateTaskStatusRequest represents request for updating task status only
 type UpdateTaskStatusRequest struct {
-	Status TaskStatus `json:"status" binding:"required,oneof=new in_progress review done cancelled" validate:"required,oneof=new in_progress review done cancelled"`
+	Status TaskStatus `json:"status" binding:"required,oneof=new viewed in_progress review done cancelled" validate:"required,oneof=new viewed in_progress review done cancelled"`
+}
+
+// DelegateTaskRequest represents request for delegating a task
+type DelegateTaskRequest struct {
+	DelegateToUserID uint   `json:"delegate_to_user_id" binding:"required,min=1" validate:"required,min=1"`
+	Comment          string `json:"comment,omitempty" validate:"omitempty,max=500"`
 }
 
 // AssignTaskRequest represents request for assigning a task to a user
@@ -123,18 +253,53 @@ type TaskResponse struct {
 	Description          string       `json:"description,omitempty"`
 	Status               TaskStatus   `json:"status"`
 	Priority             TaskPriority `json:"priority"`
-	AssignedTo           *uint        `json:"assigned_to,omitempty"` // Deprecated: use AssigneeIDs instead
+
+	// Hierarchy
+	ParentTaskID         *uint        `json:"parent_task_id,omitempty"`
+
+	// Assignment and delegation
+	CreatedByUserID      uint         `json:"created_by_user_id"`
+	AssignedToUserID     *uint        `json:"assigned_to_user_id,omitempty"`
+	DelegatedFromUserID  *uint        `json:"delegated_from_user_id,omitempty"`
+	OriginalAssigneeID   *uint        `json:"original_assignee_id,omitempty"`
+	AssignedToDepartment *uint        `json:"assigned_to_department_id,omitempty"`
 	AssigneeIDs          []uint       `json:"assignee_ids,omitempty"`
-	Assignees            []UserInfo   `json:"assignees,omitempty"`           // User info for assignees
-	AssignedToDepartment *string      `json:"assigned_to_department,omitempty"`
-	CreatedBy            uint         `json:"created_by"`
-	Creator              *UserInfo    `json:"creator,omitempty"`             // User info for creator
-	LastStatusChangedBy  *uint        `json:"last_status_changed_by,omitempty"`
-	LastStatusChanger    *UserInfo    `json:"last_status_changer,omitempty"` // User info for last status changer
+
+	// User info
+	Creator              *UserInfo    `json:"creator,omitempty"`
+	AssignedToUser       *UserInfo    `json:"assigned_to_user,omitempty"`
+	DelegatedFromUser    *UserInfo    `json:"delegated_from_user,omitempty"`
+	OriginalAssignee     *UserInfo    `json:"original_assignee,omitempty"`
+	Assignees            []UserInfo   `json:"assignees,omitempty"`
+
+	// Progress tracking
+	ProgressPercentage        int        `json:"progress_percentage"`
+	FirstViewedAt             *time.Time `json:"first_viewed_at,omitempty"`
+	FirstViewedByUser         *UserInfo  `json:"first_viewed_by_user,omitempty"`
+	LastStatusChangedByUserID *uint      `json:"last_status_changed_by_user_id,omitempty"`
+	LastStatusChanger         *UserInfo  `json:"last_status_changer,omitempty"`
+
+	// Dates
 	DueDate              *time.Time   `json:"due_date,omitempty"`
+	CompletedAt          *time.Time   `json:"completed_at,omitempty"`
+
+	// Counts
 	CommentCount         int          `json:"comment_count"`
+	SubtaskCount         int          `json:"subtask_count"`
+	AttachmentCount      int          `json:"attachment_count"`
+
+	// Delegation chain (list of users from top to current assignee)
+	DelegationChain      []UserInfo   `json:"delegation_chain,omitempty"`
+
+	// Timestamps
 	CreatedAt            time.Time    `json:"created_at"`
 	UpdatedAt            time.Time    `json:"updated_at"`
+
+	// Backward compatibility
+	AssignedTo           *uint        `json:"assigned_to,omitempty"` // Deprecated
+	CreatedBy            uint         `json:"created_by"` // Deprecated
+	LastStatusChangedBy  *uint        `json:"last_status_changed_by,omitempty"` // Deprecated
+	AssignedToDept       *string      `json:"assigned_to_department,omitempty"` // Deprecated
 }
 
 // ToResponse converts Task model to TaskResponse
@@ -146,20 +311,33 @@ func (t *Task) ToResponse() *TaskResponse {
 	}
 
 	return &TaskResponse{
-		ID:                   t.ID,
-		Title:                t.Title,
-		Description:          t.Description,
-		Status:               t.Status,
-		Priority:             t.Priority,
-		AssignedTo:           t.AssignedTo, // Deprecated field for backward compatibility
-		AssigneeIDs:          assigneeIDs,
-		AssignedToDepartment: t.AssignedToDepartment,
-		CreatedBy:            t.CreatedBy,
-		LastStatusChangedBy:  t.LastStatusChangedBy,
-		DueDate:              t.DueDate,
-		CommentCount:         t.CommentCount,
-		CreatedAt:            t.CreatedAt,
-		UpdatedAt:            t.UpdatedAt,
+		ID:                        t.ID,
+		Title:                     t.Title,
+		Description:               t.Description,
+		Status:                    t.Status,
+		Priority:                  t.Priority,
+		ParentTaskID:              t.ParentTaskID,
+		CreatedByUserID:           t.CreatedByUserID,
+		AssignedToUserID:          t.AssignedToUserID,
+		DelegatedFromUserID:       t.DelegatedFromUserID,
+		OriginalAssigneeID:        t.OriginalAssigneeID,
+		AssignedToDepartment:      t.AssignedToDepartment,
+		AssigneeIDs:               assigneeIDs,
+		ProgressPercentage:        t.ProgressPercentage,
+		FirstViewedAt:             t.FirstViewedAt,
+		LastStatusChangedByUserID: t.LastStatusChangedByUserID,
+		DueDate:                   t.DueDate,
+		CompletedAt:               t.CompletedAt,
+		CommentCount:              t.CommentCount,
+		SubtaskCount:              t.SubtaskCount,
+		AttachmentCount:           t.AttachmentCount,
+		CreatedAt:                 t.CreatedAt,
+		UpdatedAt:                 t.UpdatedAt,
+
+		// Backward compatibility
+		AssignedTo:          t.AssignedToUserID,
+		CreatedBy:           t.CreatedByUserID,
+		LastStatusChangedBy: t.LastStatusChangedByUserID,
 	}
 }
 
@@ -178,14 +356,170 @@ type TaskStatsResponse struct {
 
 // TaskFilterRequest represents filtering parameters for tasks
 type TaskFilterRequest struct {
-	Status     *TaskStatus   `form:"status" binding:"omitempty,oneof=new in_progress review done cancelled"`
-	Priority   *TaskPriority `form:"priority" binding:"omitempty,oneof=low medium high critical"`
-	AssignedTo *uint         `form:"assigned_to" binding:"omitempty,min=1"`
-	CreatedBy  *uint         `form:"created_by" binding:"omitempty,min=1"`
-	DueBefore  *time.Time    `form:"due_before" time_format:"2006-01-02"`
-	DueAfter   *time.Time    `form:"due_after" time_format:"2006-01-02"`
-	Limit      int           `form:"limit" binding:"omitempty,min=1,max=100"`
-	Offset     int           `form:"offset" binding:"omitempty,min=0"`
-	SortBy     string        `form:"sort_by" binding:"omitempty,oneof=created_at updated_at due_date priority title"`
-	SortOrder  string        `form:"sort_order" binding:"omitempty,oneof=asc desc"`
+	Status           *TaskStatus   `form:"status" binding:"omitempty,oneof=new viewed in_progress review done cancelled"`
+	Priority         *TaskPriority `form:"priority" binding:"omitempty,oneof=low medium high critical"`
+	AssignedTo       *uint         `form:"assigned_to" binding:"omitempty,min=1"`
+	AssignedToUserID *uint         `form:"assigned_to_user_id" binding:"omitempty,min=1"`
+	CreatedBy        *uint         `form:"created_by" binding:"omitempty,min=1"`
+	CreatedByUserID  *uint         `form:"created_by_user_id" binding:"omitempty,min=1"`
+	ParentTaskID     *uint         `form:"parent_task_id" binding:"omitempty,min=1"`
+	IsSubtask        *bool         `form:"is_subtask"` // true = only subtasks, false = only parent tasks
+	DueBefore        *time.Time    `form:"due_before" time_format:"2006-01-02"`
+	DueAfter         *time.Time    `form:"due_after" time_format:"2006-01-02"`
+	Limit            int           `form:"limit" binding:"omitempty,min=1,max=100"`
+	Offset           int           `form:"offset" binding:"omitempty,min=0"`
+	SortBy           string        `form:"sort_by" binding:"omitempty,oneof=created_at updated_at due_date priority title progress_percentage"`
+	SortOrder        string        `form:"sort_order" binding:"omitempty,oneof=asc desc"`
+}
+
+// Activity-related models
+
+// TaskActivityResponse represents a task activity in API responses
+type TaskActivityResponse struct {
+	ID         uint      `json:"id"`
+	TaskID     uint      `json:"task_id"`
+	UserID     uint      `json:"user_id"`
+	User       *UserInfo `json:"user,omitempty"`
+	ActionType string    `json:"action_type"`
+	OldValue   string    `json:"old_value,omitempty"`
+	NewValue   string    `json:"new_value,omitempty"`
+	Details    string    `json:"details,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// ToActivityResponse converts TaskActivity to TaskActivityResponse
+func (a *TaskActivity) ToResponse() *TaskActivityResponse {
+	return &TaskActivityResponse{
+		ID:         a.ID,
+		TaskID:     a.TaskID,
+		UserID:     a.UserID,
+		ActionType: a.ActionType,
+		OldValue:   a.OldValue,
+		NewValue:   a.NewValue,
+		Details:    a.Details,
+		CreatedAt:  a.CreatedAt,
+	}
+}
+
+// Attachment-related models
+
+// CreateAttachmentRequest represents request for uploading an attachment
+type CreateAttachmentRequest struct {
+	FileName string `json:"file_name" binding:"required" validate:"required,max=255"`
+	FilePath string `json:"file_path" binding:"required" validate:"required,max=500"`
+	FileType string `json:"file_type,omitempty" validate:"omitempty,max=50"`
+	FileSize int64  `json:"file_size,omitempty"`
+}
+
+// TaskAttachmentResponse represents a task attachment in API responses
+type TaskAttachmentResponse struct {
+	ID               uint      `json:"id"`
+	TaskID           uint      `json:"task_id"`
+	UploadedByUserID uint      `json:"uploaded_by_user_id"`
+	UploadedBy       *UserInfo `json:"uploaded_by,omitempty"`
+	FileName         string    `json:"file_name"`
+	FilePath         string    `json:"file_path"`
+	FileType         string    `json:"file_type,omitempty"`
+	FileSize         int64     `json:"file_size,omitempty"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// ToAttachmentResponse converts TaskAttachment to TaskAttachmentResponse
+func (a *TaskAttachment) ToResponse() *TaskAttachmentResponse {
+	return &TaskAttachmentResponse{
+		ID:               a.ID,
+		TaskID:           a.TaskID,
+		UploadedByUserID: a.UploadedByUserID,
+		FileName:         a.FileName,
+		FilePath:         a.FilePath,
+		FileType:         a.FileType,
+		FileSize:         a.FileSize,
+		CreatedAt:        a.CreatedAt,
+	}
+}
+
+// Checklist-related models
+
+// CreateChecklistRequest represents request for creating a checklist
+type CreateChecklistRequest struct {
+	Title       string   `json:"title" binding:"required" validate:"required,max=255"`
+	Description string   `json:"description,omitempty" validate:"omitempty,max=2000"`
+	Items       []string `json:"items,omitempty" validate:"omitempty,dive,max=500"`
+}
+
+// UpdateChecklistRequest represents request for updating a checklist
+type UpdateChecklistRequest struct {
+	Title       *string `json:"title,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
+	Description *string `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+}
+
+// CreateChecklistItemRequest represents request for creating a checklist item
+type CreateChecklistItemRequest struct {
+	Title string `json:"title" binding:"required" validate:"required,max=500"`
+}
+
+// UpdateChecklistItemRequest represents request for updating a checklist item
+type UpdateChecklistItemRequest struct {
+	Title       *string `json:"title,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	IsCompleted *bool   `json:"is_completed,omitempty"`
+}
+
+// TaskChecklistResponse represents a task checklist in API responses
+type TaskChecklistResponse struct {
+	ID          uint                       `json:"id"`
+	TaskID      uint                       `json:"task_id"`
+	Title       string                     `json:"title"`
+	Description string                     `json:"description,omitempty"`
+	Position    int                        `json:"position"`
+	Items       []TaskChecklistItemResponse `json:"items,omitempty"`
+	CreatedAt   time.Time                  `json:"created_at"`
+	UpdatedAt   time.Time                  `json:"updated_at"`
+}
+
+// TaskChecklistItemResponse represents a checklist item in API responses
+type TaskChecklistItemResponse struct {
+	ID                uint      `json:"id"`
+	ChecklistID       uint      `json:"checklist_id"`
+	Title             string    `json:"title"`
+	IsCompleted       bool      `json:"is_completed"`
+	CompletedByUserID *uint     `json:"completed_by_user_id,omitempty"`
+	CompletedBy       *UserInfo `json:"completed_by,omitempty"`
+	CompletedAt       *time.Time `json:"completed_at,omitempty"`
+	Position          int       `json:"position"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+// ToChecklistResponse converts TaskChecklist to TaskChecklistResponse
+func (c *TaskChecklist) ToResponse() *TaskChecklistResponse {
+	items := make([]TaskChecklistItemResponse, 0, len(c.Items))
+	for _, item := range c.Items {
+		items = append(items, *item.ToResponse())
+	}
+
+	return &TaskChecklistResponse{
+		ID:          c.ID,
+		TaskID:      c.TaskID,
+		Title:       c.Title,
+		Description: c.Description,
+		Position:    c.Position,
+		Items:       items,
+		CreatedAt:   c.CreatedAt,
+		UpdatedAt:   c.UpdatedAt,
+	}
+}
+
+// ToResponse converts TaskChecklistItem to TaskChecklistItemResponse
+func (i *TaskChecklistItem) ToResponse() *TaskChecklistItemResponse {
+	return &TaskChecklistItemResponse{
+		ID:                i.ID,
+		ChecklistID:       i.ChecklistID,
+		Title:             i.Title,
+		IsCompleted:       i.IsCompleted,
+		CompletedByUserID: i.CompletedByUserID,
+		CompletedAt:       i.CompletedAt,
+		Position:          i.Position,
+		CreatedAt:         i.CreatedAt,
+		UpdatedAt:         i.UpdatedAt,
+	}
 }

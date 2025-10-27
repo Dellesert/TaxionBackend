@@ -57,6 +57,11 @@ func (u *taskUsecase) AddComment(userID, taskID uint, req *models.CreateTaskComm
 		return nil, fmt.Errorf("failed to create comment: %w", err)
 	}
 
+	// Log activity
+	u.logActivity(taskID, userID, "comment_added", "", fmt.Sprintf("Comment %d added", comment.ID), map[string]interface{}{
+		"comment_id": comment.ID,
+	})
+
 	response := comment.ToResponse()
 
 	// Enrich with user information

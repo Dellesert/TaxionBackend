@@ -17,6 +17,7 @@ type TaskRepository interface {
 	CreateAssignee(assignee *models.TaskAssignee) error
 	DeleteAllAssignees(taskID uint) error
 	GetByID(id uint) (*models.Task, error)
+	GetByIDWithDetails(id uint) (*models.Task, error) // Get task with all relations loaded
 	Update(task *models.Task) error
 	Delete(id uint) error
 	GetAllTasks(filter *models.TaskFilterRequest) ([]*models.Task, int64, error)
@@ -27,6 +28,13 @@ type TaskRepository interface {
 	Count() (int64, error)
 	GetOverdueTasks(userID *uint) ([]*models.Task, error)
 	GetTasksWithComments(taskIDs []uint) ([]*models.Task, error)
+
+	// Hierarchy methods
+	GetSubtasks(parentTaskID uint) ([]*models.Task, error)
+	GetParentTask(taskID uint) (*models.Task, error)
+	CountSubtasks(parentTaskID uint) (int64, error)
+	CountCompletedSubtasks(parentTaskID uint) (int64, error)
+	UpdateProgress(taskID uint, progress int) error
 }
 
 // TaskCommentRepository defines the interface for task comment data operations
@@ -460,4 +468,151 @@ func (r *taskRepository) loadCommentCounts(tasks []*models.Task) {
 	for _, task := range tasks {
 		task.CommentCount = countMap[task.ID]
 	}
+}
+
+// Hierarchy methods
+
+// GetByIDWithDetails retrieves a task by ID with all relations loaded
+func (r *taskRepository) GetByIDWithDetails(id uint) (*models.Task, error) {
+	var task models.Task
+	err := r.db.
+		Preload("Assignees").
+		Preload("Subtasks").
+		Preload("ParentTask").
+		Preload("Activities", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC").Limit(50)
+		}).
+		Preload("Attachments", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at DESC")
+		}).
+		Preload("Checklists.Items", func(db *gorm.DB) *gorm.DB {
+			return db.Order("position ASC")
+		}).
+		First(&task, id).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("task not found")
+		}
+		return nil, fmt.Errorf("failed to get task with details: %w", err)
+	}
+
+	// Load comment count
+	var commentCount int64
+	r.db.Model(&models.TaskComment{}).Where("task_id = ?", id).Count(&commentCount)
+	task.CommentCount = int(commentCount)
+
+	// Load subtask count
+	var subtaskCount int64
+	r.db.Model(&models.Task{}).Where("parent_task_id = ?", id).Count(&subtaskCount)
+	task.SubtaskCount = int(subtaskCount)
+
+	// Load attachment count
+	var attachmentCount int64
+	r.db.Model(&models.TaskAttachment{}).Where("task_id = ?", id).Count(&attachmentCount)
+	task.AttachmentCount = int(attachmentCount)
+
+	return &task, nil
+}
+
+// GetSubtasks retrieves all subtasks for a parent task
+func (r *taskRepository) GetSubtasks(parentTaskID uint) ([]*models.Task, error) {
+	var subtasks []*models.Task
+	err := r.db.
+		Preload("Assignees").
+		Where("parent_task_id = ?", parentTaskID).
+		Order("created_at ASC").
+		Find(&subtasks).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subtasks: %w", err)
+	}
+
+	// Load comment counts for subtasks
+	r.loadCommentCounts(subtasks)
+
+	return subtasks, nil
+}
+
+// GetParentTask retrieves the parent task of a subtask
+func (r *taskRepository) GetParentTask(taskID uint) (*models.Task, error) {
+	var task models.Task
+	err := r.db.First(&task, taskID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("task not found")
+		}
+		return nil, fmt.Errorf("failed to get task: %w", err)
+	}
+
+	// If task has no parent, return nil
+	if task.ParentTaskID == nil {
+		return nil, nil
+	}
+
+	// Get parent task
+	var parentTask models.Task
+	err = r.db.
+		Preload("Assignees").
+		First(&parentTask, *task.ParentTaskID).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("parent task not found")
+		}
+		return nil, fmt.Errorf("failed to get parent task: %w", err)
+	}
+
+	return &parentTask, nil
+}
+
+// CountSubtasks returns the total number of subtasks for a parent task
+func (r *taskRepository) CountSubtasks(parentTaskID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Task{}).Where("parent_task_id = ?", parentTaskID).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count subtasks: %w", err)
+	}
+	return count, nil
+}
+
+// CountCompletedSubtasks returns the number of completed subtasks for a parent task
+func (r *taskRepository) CountCompletedSubtasks(parentTaskID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.Task{}).
+		Where("parent_task_id = ? AND status IN (?)", parentTaskID, []models.TaskStatus{
+			models.TaskStatusDone,
+			models.TaskStatusCancelled,
+		}).
+		Count(&count).Error
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to count completed subtasks: %w", err)
+	}
+	return count, nil
+}
+
+// UpdateProgress updates the progress percentage of a task
+func (r *taskRepository) UpdateProgress(taskID uint, progress int) error {
+	// Ensure progress is between 0 and 100
+	if progress < 0 {
+		progress = 0
+	}
+	if progress > 100 {
+		progress = 100
+	}
+
+	result := r.db.Model(&models.Task{}).
+		Where("id = ?", taskID).
+		Update("progress_percentage", progress)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update task progress: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("task not found")
+	}
+
+	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"tachyon-messenger/services/task/handlers"
+	"tachyon-messenger/services/task/migrations"
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/repository"
 	"tachyon-messenger/services/task/usecase"
@@ -46,9 +47,24 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations
-	if err := db.Migrate(&models.Task{}, &models.TaskComment{}, &models.TaskAssignee{}); err != nil {
-		log.Fatalf("Failed to run migrations: %v", err)
+	// Run custom SQL migrations first (for existing data)
+	log.Info("Running custom migrations...")
+	if err := migrations.RunMigrations(db); err != nil {
+		log.Fatalf("Failed to run custom migrations: %v", err)
+	}
+
+	// Run GORM auto-migrations
+	log.Info("Running GORM auto-migrations...")
+	if err := db.Migrate(
+		&models.Task{},
+		&models.TaskComment{},
+		&models.TaskAssignee{},
+		&models.TaskActivity{},
+		&models.TaskAttachment{},
+		&models.TaskChecklist{},
+		&models.TaskChecklistItem{},
+	); err != nil {
+		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
 
 	log.Info("Database connected and migrations completed")
@@ -58,22 +74,31 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Initialize dependencies
+	// Initialize repositories
 	taskRepo := repository.NewTaskRepository(db)
 	commentRepo := repository.NewCommentRepository(db)
+	activityRepo := repository.NewActivityRepository(db)
+	attachmentRepo := repository.NewAttachmentRepository(db)
+	checklistRepo := repository.NewChecklistRepository(db)
 
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
 	// Initialize usecases
-	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo)
+	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo, activityRepo, attachmentRepo, checklistRepo)
+	activityUsecase := usecase.NewActivityUsecase(activityRepo)
+	attachmentUsecase := usecase.NewAttachmentUsecase(attachmentRepo, taskRepo)
+	checklistUsecase := usecase.NewChecklistUsecase(checklistRepo, taskRepo)
 
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase)
 	internalHandler := handlers.NewInternalHandler(taskUsecase)
+	activityHandler := handlers.NewActivityHandler(activityUsecase)
+	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase)
+	checklistHandler := handlers.NewChecklistHandler(checklistUsecase)
 
 	// Setup routes
-	r := setupRoutes(taskHandler, internalHandler, jwtConfig)
+	r := setupRoutes(taskHandler, internalHandler, activityHandler, attachmentHandler, checklistHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -116,6 +141,9 @@ func main() {
 func setupRoutes(
 	taskHandler *handlers.TaskHandler,
 	internalHandler *handlers.InternalHandler,
+	activityHandler *handlers.ActivityHandler,
+	attachmentHandler *handlers.AttachmentHandler,
+	checklistHandler *handlers.ChecklistHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -179,6 +207,41 @@ func setupRoutes(
 		// Comment management
 		protected.PUT("/comments/:id", taskHandler.UpdateComment)
 		protected.DELETE("/comments/:id", taskHandler.DeleteComment)
+
+		// Task hierarchy
+		protected.POST("/tasks/:id/subtasks", taskHandler.CreateSubtask)
+		protected.GET("/tasks/:id/subtasks", taskHandler.GetSubtasks)
+		protected.GET("/tasks/:id/hierarchy", taskHandler.GetTaskHierarchy)
+
+		// Task delegation
+		protected.POST("/tasks/:id/delegate", middleware.RequireDepartmentHeadOrAbove(), taskHandler.DelegateTask)
+		protected.GET("/tasks/:id/delegation-chain", taskHandler.GetDelegationChain)
+
+		// First-view tracking
+		protected.POST("/tasks/:id/view", taskHandler.MarkTaskAsViewed)
+
+		// Progress management
+		protected.PATCH("/tasks/:id/progress", taskHandler.UpdateTaskProgress)
+
+		// Task activities
+		protected.GET("/tasks/:id/activities", activityHandler.GetTaskActivities)
+
+		// Task attachments
+		protected.POST("/tasks/:id/attachments", attachmentHandler.UploadAttachment)
+		protected.GET("/tasks/:id/attachments", attachmentHandler.GetTaskAttachments)
+		protected.DELETE("/attachments/:id", attachmentHandler.DeleteAttachment)
+
+		// Task checklists
+		protected.POST("/tasks/:id/checklists", checklistHandler.CreateChecklist)
+		protected.GET("/tasks/:id/checklists", checklistHandler.GetTaskChecklists)
+		protected.PUT("/checklists/:id", checklistHandler.UpdateChecklist)
+		protected.DELETE("/checklists/:id", checklistHandler.DeleteChecklist)
+
+		// Checklist items
+		protected.POST("/checklists/:id/items", checklistHandler.CreateChecklistItem)
+		protected.PUT("/checklist-items/:id", checklistHandler.UpdateChecklistItem)
+		protected.PATCH("/checklist-items/:id/toggle", checklistHandler.ToggleChecklistItem)
+		protected.DELETE("/checklist-items/:id", checklistHandler.DeleteChecklistItem)
 	}
 
 	return r

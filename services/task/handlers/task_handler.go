@@ -853,3 +853,357 @@ func containsSubstring(text, substring string) bool {
 	}
 	return false
 }
+
+// --- NEW HANDLERS FOR HIERARCHY, DELEGATION, AND TRACKING ---
+
+// CreateSubtask creates a subtask under a parent task
+// POST /api/v1/tasks/:id/subtasks
+func (h *TaskHandler) CreateSubtask(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get parent task ID from path
+	parentTaskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req models.CreateTaskRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Create subtask
+	subtask, err := h.taskUsecase.CreateSubtask(userID, uint(parentTaskID), &req)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsValidationError(err.Error()) {
+			statusCode = http.StatusBadRequest
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, subtask)
+}
+
+// GetSubtasks retrieves all subtasks for a parent task
+// GET /api/v1/tasks/:id/subtasks
+func (h *TaskHandler) GetSubtasks(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task ID from path
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get subtasks
+	subtasks, err := h.taskUsecase.GetSubtasks(userID, uint(taskID))
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, subtasks)
+}
+
+// GetTaskHierarchy retrieves task with full hierarchy
+// GET /api/v1/tasks/:id/hierarchy
+func (h *TaskHandler) GetTaskHierarchy(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task ID from path
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task hierarchy
+	task, err := h.taskUsecase.GetTaskHierarchy(userID, uint(taskID))
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsKeyword(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// DelegateTask delegates a task to another user
+// POST /api/v1/tasks/:id/delegate
+func (h *TaskHandler) DelegateTask(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task ID from path
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		ToUserID uint `json:"to_user_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Delegate task
+	task, err := h.taskUsecase.DelegateTask(userID, uint(taskID), req.ToUserID)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsKeyword(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// GetDelegationChain retrieves the delegation chain for a task
+// GET /api/v1/tasks/:id/delegation-chain
+func (h *TaskHandler) GetDelegationChain(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task ID from path
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get delegation chain
+	chain, err := h.taskUsecase.GetDelegationChain(userID, uint(taskID))
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsKeyword(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"delegation_chain": chain})
+}
+
+// MarkTaskAsViewed marks a task as viewed
+// POST /api/v1/tasks/:id/view
+func (h *TaskHandler) MarkTaskAsViewed(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task ID from path
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Mark as viewed
+	task, err := h.taskUsecase.MarkTaskAsViewed(userID, uint(taskID))
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsKeyword(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
+
+// UpdateTaskProgress updates task progress manually
+// PATCH /api/v1/tasks/:id/progress
+func (h *TaskHandler) UpdateTaskProgress(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get task ID from path
+	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		Progress int `json:"progress" binding:"required,min=0,max=100"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Update progress
+	task, err := h.taskUsecase.UpdateTaskProgress(userID, uint(taskID), req.Progress)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsKeyword(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+		} else if containsValidationError(err.Error()) {
+			statusCode = http.StatusBadRequest
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, task)
+}
