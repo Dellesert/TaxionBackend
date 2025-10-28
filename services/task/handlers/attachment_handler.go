@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -21,7 +22,7 @@ func NewAttachmentHandler(attachmentUsecase usecase.AttachmentUsecase) *Attachme
 	}
 }
 
-// UploadAttachment uploads a file attachment
+// UploadAttachment uploads a file attachment or attaches existing file
 // POST /api/v1/tasks/:id/attachments
 func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 	// Get user ID from context (set by JWT middleware)
@@ -38,10 +39,27 @@ func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 		return
 	}
 
-	// Get uploaded file
+	// Check if file_id is provided in JSON body (new approach)
+	var requestBody struct {
+		FileID uint `json:"file_id"`
+	}
+
+	if err := c.ShouldBindJSON(&requestBody); err == nil && requestBody.FileID > 0 {
+		// New approach: attach existing file by ID
+		fmt.Printf("📎 Attaching existing file_id: %d to task: %d\n", requestBody.FileID, taskID)
+		attachment, err := h.attachmentUsecase.AttachFileToTask(uint(taskID), userID.(uint), requestBody.FileID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusCreated, attachment)
+		return
+	}
+
+	// Old approach: direct file upload
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded and no file_id provided"})
 		return
 	}
 

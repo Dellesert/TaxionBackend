@@ -94,6 +94,9 @@ func main() {
 	attachmentUsecase := usecase.NewAttachmentUsecase(attachmentRepo, taskRepo)
 	checklistUsecase := usecase.NewChecklistUsecase(checklistRepo, taskRepo)
 
+	// Set activity usecase for attachment usecase (to avoid circular dependency)
+	attachmentUsecase.SetActivityUsecase(activityUsecase)
+
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase)
 	internalHandler := handlers.NewInternalHandler(taskUsecase)

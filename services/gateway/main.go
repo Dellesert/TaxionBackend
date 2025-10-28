@@ -139,6 +139,30 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			tasks.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
 		}
 
+		// Task attachments - proxy to task service
+		attachments := v1.Group("/attachments")
+		{
+			attachments.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
+		}
+
+		// Task comments - proxy to task service
+		comments := v1.Group("/comments")
+		{
+			comments.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
+		}
+
+		// Task checklists - proxy to task service
+		checklists := v1.Group("/checklists")
+		{
+			checklists.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
+		}
+
+		// Checklist items - proxy to task service
+		checklistItems := v1.Group("/checklist-items")
+		{
+			checklistItems.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
+		}
+
 		// Calendar routes - proxy to calendar service
 		calendar := v1.Group("/calendar")
 		{

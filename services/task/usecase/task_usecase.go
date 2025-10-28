@@ -1077,6 +1077,17 @@ func (u *taskUsecase) DelegateTask(userID uint, taskID uint, toUserID uint) (*mo
 		return nil, fmt.Errorf("failed to delegate task: %w", err)
 	}
 
+	// Add new assignee to task_assignees
+	// Previous assignees remain in the table so they can still view the delegated task
+	// The new assignee becomes the active owner (assigned_to field)
+	newAssignee := &models.TaskAssignee{
+		TaskID: taskID,
+		UserID: toUserID,
+	}
+	if err := u.taskRepo.CreateAssignee(newAssignee); err != nil {
+		return nil, fmt.Errorf("failed to add new assignee: %w", err)
+	}
+
 	// Log activity
 	u.logActivity(taskID, userID, "task_delegated", fmt.Sprintf("User %d", userID), fmt.Sprintf("User %d", toUserID), map[string]interface{}{
 		"from_user_id": userID,

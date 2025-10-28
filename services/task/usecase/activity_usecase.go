@@ -181,7 +181,7 @@ func (u *activityUsecase) LogAttachmentAdded(taskID, userID, attachmentID uint, 
 		TaskID:     taskID,
 		UserID:     userID,
 		ActionType: "attachment_added",
-		NewValue:   fmt.Sprintf("File added: %s", fileName),
+		NewValue:   fileName, // Just the filename, label is on frontend
 		Details:    marshalDetails(map[string]interface{}{
 			"attachment_id": attachmentID,
 			"file_name":     fileName,
@@ -196,7 +196,7 @@ func (u *activityUsecase) LogAttachmentDeleted(taskID, userID, attachmentID uint
 		TaskID:     taskID,
 		UserID:     userID,
 		ActionType: "attachment_deleted",
-		OldValue:   fmt.Sprintf("File deleted: %s", fileName),
+		NewValue:   fileName, // Just the filename, label is on frontend
 		Details:    marshalDetails(map[string]interface{}{
 			"attachment_id": attachmentID,
 			"file_name":     fileName,
@@ -332,6 +332,12 @@ func (u *activityUsecase) EnrichActivitiesWithUserInfo(activities []*models.Task
 	// Build response
 	responses := make([]*models.TaskActivityResponse, 0, len(activities))
 	for _, activity := range activities {
+		// Debug logging for attachment activities
+		if activity.ActionType == "attachment_added" || activity.ActionType == "attachment_deleted" {
+			fmt.Printf("🔍 Activity ID=%d, Type=%s, OldValue=[%s], NewValue=[%s]\n",
+				activity.ID, activity.ActionType, activity.OldValue, activity.NewValue)
+		}
+
 		response := &models.TaskActivityResponse{
 			ID:         activity.ID,
 			TaskID:     activity.TaskID,

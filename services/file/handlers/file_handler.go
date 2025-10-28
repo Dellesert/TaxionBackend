@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -49,7 +50,10 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 	// Get file from request
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to get file from request"})
+		fmt.Printf("❌ Error getting file from form: %v\n", err)
+		fmt.Printf("📋 Request headers: %v\n", c.Request.Header)
+		fmt.Printf("📋 Content-Type: %s\n", c.ContentType())
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Failed to get file from request: %v", err)})
 		return
 	}
 
