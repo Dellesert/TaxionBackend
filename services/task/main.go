@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"tachyon-messenger/services/task/clients"
 	"tachyon-messenger/services/task/handlers"
 	"tachyon-messenger/services/task/migrations"
 	"tachyon-messenger/services/task/models"
@@ -84,9 +85,12 @@ func main() {
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
+	// Initialize user client
+	userClient := clients.NewUserClient()
+
 	// Initialize usecases
 	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo, activityRepo, attachmentRepo, checklistRepo)
-	activityUsecase := usecase.NewActivityUsecase(activityRepo)
+	activityUsecase := usecase.NewActivityUsecase(activityRepo, taskRepo, userClient)
 	attachmentUsecase := usecase.NewAttachmentUsecase(attachmentRepo, taskRepo)
 	checklistUsecase := usecase.NewChecklistUsecase(checklistRepo, taskRepo)
 

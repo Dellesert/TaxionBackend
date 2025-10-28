@@ -73,9 +73,9 @@ type Task struct {
 	AttachmentCount int `gorm:"-" json:"attachment_count,omitempty"`
 
 	// Backward compatibility (deprecated fields)
-	CreatedBy           uint    `gorm:"-" json:"created_by,omitempty"`
-	AssignedTo          *uint   `gorm:"-" json:"assigned_to,omitempty"`
-	LastStatusChangedBy *uint   `gorm:"-" json:"last_status_changed_by,omitempty"`
+	CreatedBy           uint    `gorm:"column:created_by" json:"created_by,omitempty"`
+	AssignedTo          *uint   `gorm:"column:assigned_to" json:"assigned_to,omitempty"`
+	LastStatusChangedBy *uint   `gorm:"column:last_status_changed_by" json:"last_status_changed_by,omitempty"`
 	AssignedToDept      *string `gorm:"-" json:"assigned_to_department,omitempty"`
 }
 
@@ -91,12 +91,12 @@ type TaskAssignee struct {
 // TaskActivity represents an activity/action performed on a task
 type TaskActivity struct {
 	models.BaseModel
-	TaskID     uint   `gorm:"not null;index" json:"task_id"`
-	UserID     uint   `gorm:"not null;index" json:"user_id"`
-	ActionType string `gorm:"not null;size:50;index" json:"action_type"`
-	OldValue   string `gorm:"type:text" json:"old_value,omitempty"`
-	NewValue   string `gorm:"type:text" json:"new_value,omitempty"`
-	Details    string `gorm:"type:jsonb" json:"details,omitempty"` // JSONB field for PostgreSQL
+	TaskID     uint    `gorm:"not null;index" json:"task_id"`
+	UserID     uint    `gorm:"not null;index" json:"user_id"`
+	ActionType string  `gorm:"not null;size:50;index" json:"action_type"`
+	OldValue   string  `gorm:"type:text" json:"old_value,omitempty"`
+	NewValue   string  `gorm:"type:text" json:"new_value,omitempty"`
+	Details    *string `gorm:"type:jsonb" json:"details,omitempty"` // JSONB field for PostgreSQL (nullable)
 }
 
 // TaskAttachment represents a file attached to a task
@@ -376,15 +376,17 @@ type TaskFilterRequest struct {
 
 // TaskActivityResponse represents a task activity in API responses
 type TaskActivityResponse struct {
-	ID         uint      `json:"id"`
-	TaskID     uint      `json:"task_id"`
-	UserID     uint      `json:"user_id"`
-	User       *UserInfo `json:"user,omitempty"`
-	ActionType string    `json:"action_type"`
-	OldValue   string    `json:"old_value,omitempty"`
-	NewValue   string    `json:"new_value,omitempty"`
-	Details    string    `json:"details,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID         uint        `json:"id"`
+	TaskID     uint        `json:"task_id"`
+	TaskTitle  string      `json:"task_title,omitempty"`
+	UserID     uint        `json:"user_id"`
+	User       *UserInfo   `json:"user,omitempty"`
+	ActionType string      `json:"action_type"`
+	OldValue   string      `json:"old_value,omitempty"`
+	NewValue   string      `json:"new_value,omitempty"`
+	Details    *string     `json:"details,omitempty"`
+	Assignees  []*UserInfo `json:"assignees,omitempty"` // For subtask_created activities
+	CreatedAt  time.Time   `json:"created_at"`
 }
 
 // ToActivityResponse converts TaskActivity to TaskActivityResponse

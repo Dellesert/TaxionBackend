@@ -5,9 +5,15 @@ import (
 	"fmt"
 	"time"
 
+	"tachyon-messenger/services/task/clients"
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/repository"
 )
+
+// UserClientInterface defines the interface for user service client operations
+type UserClientInterface interface {
+	GetUsersByIDs(ids []uint) (map[uint]*clients.UserInfo, error)
+}
 
 // ActivityUsecase defines the interface for task activity business logic
 type ActivityUsecase interface {
@@ -27,30 +33,40 @@ type ActivityUsecase interface {
 	// Query activities
 	GetTaskActivities(taskID uint, limit, offset int) ([]*models.TaskActivity, int64, error)
 	GetActivityByID(id uint) (*models.TaskActivity, error)
+	EnrichActivitiesWithUserInfo(activities []*models.TaskActivity) ([]*models.TaskActivityResponse, error)
 }
 
 // activityUsecase implements ActivityUsecase interface
 type activityUsecase struct {
 	activityRepo repository.ActivityRepository
+	taskRepo     repository.TaskRepository
+	userClient   UserClientInterface
 }
 
 // NewActivityUsecase creates a new activity usecase
-func NewActivityUsecase(activityRepo repository.ActivityRepository) ActivityUsecase {
+func NewActivityUsecase(
+	activityRepo repository.ActivityRepository,
+	taskRepo repository.TaskRepository,
+	userClient UserClientInterface,
+) ActivityUsecase {
 	return &activityUsecase{
 		activityRepo: activityRepo,
+		taskRepo:     taskRepo,
+		userClient:   userClient,
 	}
 }
 
 // Helper function to marshal details to JSON string
-func marshalDetails(details interface{}) string {
+func marshalDetails(details interface{}) *string {
 	if details == nil {
-		return ""
+		return nil
 	}
 	jsonBytes, err := json.Marshal(details)
 	if err != nil {
-		return ""
+		return nil
 	}
-	return string(jsonBytes)
+	result := string(jsonBytes)
+	return &result
 }
 
 // LogTaskCreated logs when a task is created
@@ -226,12 +242,146 @@ func (u *activityUsecase) LogChecklistItemCompleted(taskID, userID, checklistID,
 	return u.activityRepo.Create(activity)
 }
 
-// GetTaskActivities retrieves activities for a task with pagination
+// GetTaskActivities retrieves activities for a task with pagination, including subtask activities
 func (u *activityUsecase) GetTaskActivities(taskID uint, limit, offset int) ([]*models.TaskActivity, int64, error) {
+	// Get subtasks for the parent task
+	subtasks, err := u.taskRepo.GetSubtasks(taskID)
+	if err != nil {
+		// If error getting subtasks, just return activities for main task
+		return u.activityRepo.GetByTaskID(taskID, limit, offset)
+	}
+
+	// Extract subtask IDs
+	subtaskIDs := make([]uint, 0, len(subtasks))
+	for _, subtask := range subtasks {
+		subtaskIDs = append(subtaskIDs, subtask.ID)
+	}
+
+	// Get activities for task and subtasks
+	if len(subtaskIDs) > 0 {
+		return u.activityRepo.GetByTaskIDWithSubtasks(taskID, subtaskIDs, limit, offset)
+	}
+
+	// No subtasks, just get activities for main task
 	return u.activityRepo.GetByTaskID(taskID, limit, offset)
 }
 
 // GetActivityByID retrieves an activity by ID
 func (u *activityUsecase) GetActivityByID(id uint) (*models.TaskActivity, error) {
 	return u.activityRepo.GetByID(id)
+}
+
+// EnrichActivitiesWithUserInfo enriches activities with user information and task titles
+func (u *activityUsecase) EnrichActivitiesWithUserInfo(activities []*models.TaskActivity) ([]*models.TaskActivityResponse, error) {
+	if len(activities) == 0 {
+		return []*models.TaskActivityResponse{}, nil
+	}
+
+	// Collect unique user IDs and task IDs
+	userIDs := make(map[uint]bool)
+	taskIDs := make(map[uint]bool)
+	for _, activity := range activities {
+		userIDs[activity.UserID] = true
+		taskIDs[activity.TaskID] = true
+
+		// Parse details to extract assignee_ids if present
+		if activity.Details != nil && *activity.Details != "" {
+			var details map[string]interface{}
+			if err := json.Unmarshal([]byte(*activity.Details), &details); err == nil {
+				if assigneeIDs, ok := details["assignee_ids"].([]interface{}); ok {
+					for _, id := range assigneeIDs {
+						if floatID, ok := id.(float64); ok {
+							userIDs[uint(floatID)] = true
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Convert maps to slices
+	userIDList := make([]uint, 0, len(userIDs))
+	for id := range userIDs {
+		userIDList = append(userIDList, id)
+	}
+
+	taskIDList := make([]uint, 0, len(taskIDs))
+	for id := range taskIDs {
+		taskIDList = append(taskIDList, id)
+	}
+
+	// Fetch users from user service
+	usersMap, err := u.userClient.GetUsersByIDs(userIDList)
+	if err != nil {
+		// Log error but continue - we can return activities without user info
+		fmt.Printf("Warning: failed to fetch users: %v\n", err)
+		usersMap = make(map[uint]*clients.UserInfo)
+	}
+
+	// Fetch task titles
+	tasksMap := make(map[uint]string)
+	for _, taskID := range taskIDList {
+		task, err := u.taskRepo.GetByID(taskID)
+		if err != nil {
+			// If task not found, skip it
+			continue
+		}
+		tasksMap[taskID] = task.Title
+	}
+
+	// Build response
+	responses := make([]*models.TaskActivityResponse, 0, len(activities))
+	for _, activity := range activities {
+		response := &models.TaskActivityResponse{
+			ID:         activity.ID,
+			TaskID:     activity.TaskID,
+			TaskTitle:  tasksMap[activity.TaskID],
+			UserID:     activity.UserID,
+			ActionType: activity.ActionType,
+			OldValue:   activity.OldValue,
+			NewValue:   activity.NewValue,
+			Details:    activity.Details,
+			CreatedAt:  activity.CreatedAt,
+		}
+
+		// Add user info if available
+		if user, ok := usersMap[activity.UserID]; ok {
+			response.User = &models.UserInfo{
+				ID:       user.ID,
+				Name:     user.Name,
+				Email:    user.Email,
+				Avatar:   user.Avatar,
+				Position: user.Position,
+			}
+		}
+
+		// Parse details to extract assignees for subtask_created activities
+		if activity.ActionType == "subtask_created" && activity.Details != nil && *activity.Details != "" {
+			var details map[string]interface{}
+			if err := json.Unmarshal([]byte(*activity.Details), &details); err == nil {
+				if assigneeIDs, ok := details["assignee_ids"].([]interface{}); ok {
+					assignees := make([]*models.UserInfo, 0, len(assigneeIDs))
+					for _, id := range assigneeIDs {
+						if floatID, ok := id.(float64); ok {
+							assigneeID := uint(floatID)
+							if user, ok := usersMap[assigneeID]; ok {
+								assignees = append(assignees, &models.UserInfo{
+									ID:       user.ID,
+									Name:     user.Name,
+									Email:    user.Email,
+									Avatar:   user.Avatar,
+									Position: user.Position,
+								})
+							}
+						}
+					}
+					response.Assignees = assignees
+				}
+			}
+		}
+
+		responses = append(responses, response)
+	}
+
+	return responses, nil
 }

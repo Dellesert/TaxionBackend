@@ -35,15 +35,22 @@ func (h *ActivityHandler) GetTaskActivities(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
-	// Get activities
+	// Get activities (includes subtask activities)
 	activities, total, err := h.activityUsecase.GetTaskActivities(uint(taskID), limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
+	// Enrich with user info and task titles
+	responses, err := h.activityUsecase.EnrichActivitiesWithUserInfo(activities)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"activities": activities,
+		"activities": responses,
 		"total":      total,
 		"limit":      limit,
 		"offset":     offset,

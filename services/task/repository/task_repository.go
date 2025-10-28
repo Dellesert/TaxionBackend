@@ -106,6 +106,11 @@ func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 	r.db.Model(&models.TaskComment{}).Where("task_id = ?", id).Count(&commentCount)
 	task.CommentCount = int(commentCount)
 
+	// Load subtask count
+	var subtaskCount int64
+	r.db.Model(&models.Task{}).Where("parent_task_id = ? AND deleted_at IS NULL", id).Count(&subtaskCount)
+	task.SubtaskCount = int(subtaskCount)
+
 	return &task, nil
 }
 
@@ -136,7 +141,8 @@ func (r *taskRepository) Delete(id uint) error {
 // GetAllTasks retrieves all tasks with filtering (for admins)
 func (r *taskRepository) GetAllTasks(filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
 	// Query all tasks without user restrictions
-	query := r.db.Model(&models.Task{})
+	// Only show top-level tasks (exclude subtasks) by default
+	query := r.db.Model(&models.Task{}).Where("parent_task_id IS NULL")
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -155,8 +161,9 @@ func (r *taskRepository) GetAllTasks(filter *models.TaskFilterRequest) ([]*model
 		return nil, 0, fmt.Errorf("failed to get all tasks: %w", err)
 	}
 
-	// Load comment counts
+	// Load comment counts and subtask counts
 	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
 
 	return tasks, total, nil
 }
@@ -164,12 +171,12 @@ func (r *taskRepository) GetAllTasks(filter *models.TaskFilterRequest) ([]*model
 // GetUserTasks retrieves tasks for a user (either assigned to or created by)
 func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
 	// Query to find tasks where user is either:
-	// 1. Creator (created_by)
-	// 2. Assigned via old field (assigned_to)
-	// 3. Assigned via task_assignees table
+	// 1. Top-level tasks where user is creator or assignee
+	// 2. Subtasks where user is assignee (regardless of who created parent task)
 	query := r.db.Model(&models.Task{}).Where(
-		"created_by = ? OR assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)",
-		userID, userID, userID,
+		"((parent_task_id IS NULL AND (created_by = ? OR assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL))) OR "+
+			"(parent_task_id IS NOT NULL AND (assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL))))",
+		userID, userID, userID, userID, userID,
 	)
 
 	// Apply filters
@@ -189,15 +196,17 @@ func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequ
 		return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)
 	}
 
-	// Load comment counts
+	// Load comment counts and subtask counts
 	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
 
 	return tasks, total, nil
 }
 
 // GetTasksByAssignee retrieves tasks assigned to a specific user
 func (r *taskRepository) GetTasksByAssignee(assigneeID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
-	query := r.db.Model(&models.Task{}).Where("assigned_to = ?", assigneeID)
+	// Only show top-level tasks (exclude subtasks)
+	query := r.db.Model(&models.Task{}).Where("assigned_to = ? AND parent_task_id IS NULL", assigneeID)
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -216,15 +225,17 @@ func (r *taskRepository) GetTasksByAssignee(assigneeID uint, filter *models.Task
 		return nil, 0, fmt.Errorf("failed to get assignee tasks: %w", err)
 	}
 
-	// Load comment counts
+	// Load comment counts and subtask counts
 	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
 
 	return tasks, total, nil
 }
 
 // GetTasksByCreator retrieves tasks created by a specific user
 func (r *taskRepository) GetTasksByCreator(creatorID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
-	query := r.db.Model(&models.Task{}).Where("created_by = ?", creatorID)
+	// Only show top-level tasks (exclude subtasks)
+	query := r.db.Model(&models.Task{}).Where("created_by = ? AND parent_task_id IS NULL", creatorID)
 
 	// Apply filters
 	query = r.applyFilters(query, filter)
@@ -243,8 +254,9 @@ func (r *taskRepository) GetTasksByCreator(creatorID uint, filter *models.TaskFi
 		return nil, 0, fmt.Errorf("failed to get creator tasks: %w", err)
 	}
 
-	// Load comment counts
+	// Load comment counts and subtask counts
 	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
 
 	return tasks, total, nil
 }
@@ -339,8 +351,9 @@ func (r *taskRepository) GetOverdueTasks(userID *uint) ([]*models.Task, error) {
 		return nil, fmt.Errorf("failed to get overdue tasks: %w", err)
 	}
 
-	// Load comment counts
+	// Load comment counts and subtask counts
 	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
 
 	return tasks, nil
 }
@@ -353,8 +366,9 @@ func (r *taskRepository) GetTasksWithComments(taskIDs []uint) ([]*models.Task, e
 		return nil, fmt.Errorf("failed to get tasks with comments: %w", err)
 	}
 
-	// Load comment counts
+	// Load comment counts and subtask counts
 	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
 
 	return tasks, nil
 }
@@ -470,6 +484,42 @@ func (r *taskRepository) loadCommentCounts(tasks []*models.Task) {
 	}
 }
 
+// loadSubtaskCounts loads subtask counts for a batch of tasks
+func (r *taskRepository) loadSubtaskCounts(tasks []*models.Task) {
+	if len(tasks) == 0 {
+		return
+	}
+
+	taskIDs := make([]uint, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.ID
+	}
+
+	// Get subtask counts for all tasks in one query
+	type subtaskCount struct {
+		ParentTaskID uint
+		Count        int
+	}
+
+	var counts []subtaskCount
+	r.db.Model(&models.Task{}).
+		Select("parent_task_id, COUNT(*) as count").
+		Where("parent_task_id IN ?", taskIDs).
+		Where("deleted_at IS NULL").
+		Group("parent_task_id").
+		Scan(&counts)
+
+	// Map counts to tasks
+	countMap := make(map[uint]int)
+	for _, count := range counts {
+		countMap[count.ParentTaskID] = count.Count
+	}
+
+	for _, task := range tasks {
+		task.SubtaskCount = countMap[task.ID]
+	}
+}
+
 // Hierarchy methods
 
 // GetByIDWithDetails retrieves a task by ID with all relations loaded
@@ -528,8 +578,9 @@ func (r *taskRepository) GetSubtasks(parentTaskID uint) ([]*models.Task, error) 
 		return nil, fmt.Errorf("failed to get subtasks: %w", err)
 	}
 
-	// Load comment counts for subtasks
+	// Load comment counts and subtask counts (in case subtasks have their own subtasks)
 	r.loadCommentCounts(subtasks)
+	r.loadSubtaskCounts(subtasks)
 
 	return subtasks, nil
 }

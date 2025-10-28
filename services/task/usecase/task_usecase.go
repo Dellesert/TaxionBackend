@@ -257,21 +257,26 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 
 	// Department head can assign to their department members
 	if userRole == sharedmodels.RoleDepartmentHead {
-		// Get current user's department from user-service
-		currentUsers, err := u.userClient.GetUsersByIDs([]uint{userID})
-		if err != nil {
-			return fmt.Errorf("failed to get user information: %w", err)
-		}
-
-		currentUser, exists := currentUsers[userID]
-		if !exists || currentUser.DepartmentID == nil {
-			return fmt.Errorf("access denied: department head must belong to a department")
-		}
-
-		userDeptID := *currentUser.DepartmentID
-
 		// Check if all assignees are from department head's department
 		if len(req.AssigneeIDs) > 0 {
+			// If assigning only to self, allow
+			if len(req.AssigneeIDs) == 1 && req.AssigneeIDs[0] == userID {
+				return nil
+			}
+
+			// Get current user's department from user-service
+			currentUsers, err := u.userClient.GetUsersByIDs([]uint{userID})
+			if err != nil {
+				return fmt.Errorf("failed to get user information: %w", err)
+			}
+
+			currentUser, exists := currentUsers[userID]
+			if !exists || currentUser.DepartmentID == nil {
+				return fmt.Errorf("access denied: department head must belong to a department")
+			}
+
+			userDeptID := *currentUser.DepartmentID
+
 			// Fetch user information to validate department membership
 			users, err := u.userClient.GetUsersByIDs(req.AssigneeIDs)
 			if err != nil {
@@ -593,9 +598,19 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 	// Recalculate progress if status changed
 	if oldStatus != task.Status {
 		u.RecalculateTaskProgress(taskID)
-		// If task has parent, recalculate parent progress
+		// If task has parent, recalculate parent progress and log activity
 		if task.ParentTaskID != nil {
 			u.RecalculateTaskProgress(*task.ParentTaskID)
+
+			// Log activity in parent task about subtask status change
+			statusChangeMessage := fmt.Sprintf("Подзадача '%s' изменила статус: %s → %s", task.Title, oldStatus, req.Status)
+			u.logActivity(*task.ParentTaskID, userID, "subtask_status_changed", string(oldStatus), string(req.Status), map[string]interface{}{
+				"subtask_id":    taskID,
+				"subtask_title": task.Title,
+				"old_status":    oldStatus,
+				"new_status":    req.Status,
+				"message":       statusChangeMessage,
+			})
 		}
 	}
 
@@ -932,11 +947,13 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 
 	// Create subtask
 	task := &models.Task{
-		ParentTaskID: &parentTaskID,
-		Title:        strings.TrimSpace(req.Title),
-		Description:  strings.TrimSpace(req.Description),
-		CreatedBy:    userID,
-		DueDate:      req.DueDate,
+		ParentTaskID:    &parentTaskID,
+		Title:           strings.TrimSpace(req.Title),
+		Description:     strings.TrimSpace(req.Description),
+		CreatedBy:       userID,
+		CreatedByUserID: userID,
+		DueDate:         req.DueDate,
+		Status:          models.TaskStatusNew,
 	}
 
 	// Set priority (default to medium)
@@ -968,8 +985,13 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 		task.Assignees = append(task.Assignees, *assignee)
 	}
 
-	// Log activity
-	u.logActivity(task.ID, userID, "subtask_created", "", fmt.Sprintf("Subtask created under task %d", parentTaskID), nil)
+	// Log activity for parent task with assignee information
+	details := map[string]interface{}{
+		"subtask_id":    task.ID,
+		"subtask_title": task.Title,
+		"assignee_ids":  assigneeIDs,
+	}
+	u.logActivity(parentTaskID, userID, "subtask_created", "", task.Title, details)
 
 	// Recalculate parent progress
 	u.RecalculateTaskProgress(parentTaskID)
@@ -1310,13 +1332,15 @@ func (u *taskUsecase) logActivity(taskID, userID uint, actionType, oldValue, new
 	}
 
 	if details != nil {
-		if detailsJSON, err := u.marshalDetails(details); err == nil {
-			activity.Details = detailsJSON
+		if detailsJSON, err := u.marshalDetails(details); err == nil && detailsJSON != "" {
+			activity.Details = &detailsJSON
 		}
 	}
 
-	// Ignore errors - activity logging is non-critical
-	u.activityRepo.Create(activity)
+	// Log error if activity creation fails
+	if err := u.activityRepo.Create(activity); err != nil {
+		fmt.Printf("WARNING: Failed to create activity log: %v (taskID=%d, actionType=%s)\n", err, taskID, actionType)
+	}
 }
 
 // marshalDetails marshals details to JSON string

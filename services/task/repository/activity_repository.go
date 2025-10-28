@@ -11,6 +11,7 @@ import (
 type ActivityRepository interface {
 	Create(activity *models.TaskActivity) error
 	GetByTaskID(taskID uint, limit, offset int) ([]*models.TaskActivity, int64, error)
+	GetByTaskIDWithSubtasks(taskID uint, subtaskIDs []uint, limit, offset int) ([]*models.TaskActivity, int64, error)
 	GetByID(id uint) (*models.TaskActivity, error)
 	Delete(id uint) error
 	Count(taskID uint) (int64, error)
@@ -56,6 +57,41 @@ func (r *activityRepository) GetByTaskID(taskID uint, limit, offset int) ([]*mod
 
 	// Get activities ordered by created_at DESC (newest first)
 	query := r.db.Where("task_id = ?", taskID).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset)
+
+	if err := query.Find(&activities).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to get task activities: %w", err)
+	}
+
+	return activities, total, nil
+}
+
+// GetByTaskIDWithSubtasks retrieves all activities for a task and its subtasks with pagination
+func (r *activityRepository) GetByTaskIDWithSubtasks(taskID uint, subtaskIDs []uint, limit, offset int) ([]*models.TaskActivity, int64, error) {
+	var activities []*models.TaskActivity
+	var total int64
+
+	// Build list of all task IDs (parent + subtasks)
+	taskIDs := []uint{taskID}
+	taskIDs = append(taskIDs, subtaskIDs...)
+
+	// Count total activities for task and subtasks
+	if err := r.db.Model(&models.TaskActivity{}).Where("task_id IN ?", taskIDs).Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count task activities: %w", err)
+	}
+
+	// Set default pagination
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	// Get activities ordered by created_at DESC (newest first)
+	query := r.db.Where("task_id IN ?", taskIDs).
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset)
