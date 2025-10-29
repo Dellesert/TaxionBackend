@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"tachyon-messenger/services/calendar/models"
@@ -126,12 +127,22 @@ func (r *eventRepository) CreateEvent(event *models.Event) error {
 // GetEventByID retrieves an event by ID
 func (r *eventRepository) GetEventByID(id uint) (*models.Event, error) {
 	var event models.Event
-	err := r.db.First(&event, id).Error
+	err := r.db.Preload("Creator").Preload("Participants.User").Preload("Reminders").First(&event, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("event not found")
 		}
 		return nil, fmt.Errorf("failed to get event: %w", err)
+	}
+
+	// Debug: Check if participants loaded
+	log.Printf("GetEventByID: Event %d has %d participants", id, len(event.Participants))
+	for i, p := range event.Participants {
+		if p.User != nil {
+			log.Printf("  Participant %d: UserID=%d, User.Name=%s", i, p.UserID, p.User.Name)
+		} else {
+			log.Printf("  Participant %d: UserID=%d, User=nil", i, p.UserID)
+		}
 	}
 
 	// Load participant count
@@ -144,6 +155,11 @@ func (r *eventRepository) GetEventByID(id uint) (*models.Event, error) {
 
 // GetUserEvents retrieves events for a user with filtering
 func (r *eventRepository) GetUserEvents(userID uint, filter *models.EventFilterRequest) ([]*models.Event, int64, error) {
+	// Debug logging
+	if filter != nil {
+		log.Printf("GetUserEvents filter: Start=%v, End=%v, Type=%v", filter.Start, filter.End, filter.Type)
+	}
+
 	query := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
 		Where("events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')", userID, userID).
@@ -164,6 +180,13 @@ func (r *eventRepository) GetUserEvents(userID uint, filter *models.EventFilterR
 	var events []*models.Event
 	if err := query.Find(&events).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to get user events: %w", err)
+	}
+
+	// Load Creator for each event
+	for _, event := range events {
+		if err := r.db.Model(event).Association("Creator").Find(&event.Creator); err != nil {
+			log.Printf("Failed to load creator for event %d: %v", event.ID, err)
+		}
 	}
 
 	// Load participant counts and user status
@@ -242,7 +265,7 @@ func (r *eventRepository) CheckTimeConflict(userID uint, startTime, endTime time
 // GetEventWithParticipants retrieves an event with its participants
 func (r *eventRepository) GetEventWithParticipants(id uint) (*models.Event, error) {
 	var event models.Event
-	err := r.db.Preload("Participants").First(&event, id).Error
+	err := r.db.Preload("Participants.User").First(&event, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("event not found")
@@ -276,12 +299,22 @@ func (r *eventRepository) GetEventWithReminders(id uint) (*models.Event, error) 
 // GetEventWithAll retrieves an event with all related data
 func (r *eventRepository) GetEventWithAll(id uint) (*models.Event, error) {
 	var event models.Event
-	err := r.db.Preload("Participants").Preload("Reminders").First(&event, id).Error
+	err := r.db.Preload("Creator").Preload("Participants.User").Preload("Reminders").First(&event, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("event not found")
 		}
 		return nil, fmt.Errorf("failed to get event with all data: %w", err)
+	}
+
+	// Debug: Check if participants loaded
+	log.Printf("GetEventWithAll: Event %d has %d participants", id, len(event.Participants))
+	for i, p := range event.Participants {
+		if p.User != nil {
+			log.Printf("  Participant %d: UserID=%d, User.Name=%s", i, p.UserID, p.User.Name)
+		} else {
+			log.Printf("  Participant %d: UserID=%d, User=nil", i, p.UserID)
+		}
 	}
 
 	event.ParticipantCount = len(event.Participants)
@@ -505,6 +538,20 @@ func (r *eventRepository) applyFilters(query *gorm.DB, filter *models.EventFilte
 		query = query.Where("events.type = ?", *filter.Type)
 	}
 
+	// Handle simple date range filters (Start/End)
+	// Events that overlap with the specified range
+	if filter.Start != nil && filter.End != nil {
+		// Event overlaps if: event_start < range_end AND event_end > range_start
+		query = query.Where("events.start_time < ? AND events.end_time > ?", *filter.End, *filter.Start)
+	} else if filter.Start != nil {
+		// Events that end after start date
+		query = query.Where("events.end_time > ?", *filter.Start)
+	} else if filter.End != nil {
+		// Events that start before end date
+		query = query.Where("events.start_time < ?", *filter.End)
+	}
+
+	// Handle detailed time filters (for more precise queries)
 	if filter.StartAfter != nil {
 		query = query.Where("events.start_time > ?", *filter.StartAfter)
 	}

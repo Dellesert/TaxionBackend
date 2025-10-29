@@ -56,7 +56,15 @@
       "Bash(npm install:*)",
       "Bash(docker cp:*)",
       "Bash(powershell -Command:*)",
-      "Bash(timeout 15 docker logs:*)"
+      "Bash(timeout 15 docker logs:*)",
+      "Bash(lsof:*)",
+      "Bash(sudo lsof:*)",
+      "Bash(ps:*)",
+      "Bash(kill:*)",
+      "Bash(export DOCKER_BUILDKIT=1)",
+      "Bash(test:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(time DOCKER_BUILDKIT=1 docker-compose build:*)"
     ],
     "deny": [],
     "ask": []

@@ -14,8 +14,9 @@ WORKDIR /build
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 
-# Download dependencies
-RUN go mod download
+# Download dependencies with cache mount
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy shared dependencies first (for better layer caching)
 COPY shared/ ./shared/
@@ -26,14 +27,16 @@ COPY services/task/ ./services/task/
 # Set working directory to task service
 WORKDIR /build/services/task
 
-# Build the application
+# Build the application with cache mounts
 # CGO_ENABLED=0 for static binary
 # GOOS=linux for Linux target
-# -a flag forces rebuilding of packages
+# Removed -a flag to allow Go to use cached builds
 # -installsuffix cgo for static linking
 # -ldflags for reducing binary size
-RUN CGO_ENABLED=0 GOOS=linux go build \
-    -a -installsuffix cgo \
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build \
+    -installsuffix cgo \
     -ldflags='-w -s -extldflags "-static"' \
     -o task-service \
     main.go

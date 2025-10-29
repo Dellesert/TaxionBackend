@@ -86,6 +86,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 
 	// Health check endpoints
 	router.GET("/health", healthHandler)
+	router.HEAD("/health", healthHandler)
 	router.GET("/health/services", servicesHealthHandler)
 	router.GET("/health/ready", readinessHandler)
 	router.GET("/health/live", livenessHandler)
@@ -167,6 +168,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		calendar := v1.Group("/calendar")
 		{
 			calendar.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+		}
+
+		// Event routes - proxy to calendar service
+		events := v1.Group("/events")
+		{
+			events.Any("", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+			events.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
 		}
 
 		// Poll routes - proxy to poll service

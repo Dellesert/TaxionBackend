@@ -60,6 +60,7 @@ type Event struct {
 	TaskID *uint `gorm:"index" json:"task_id,omitempty" validate:"omitempty,min=1"`
 
 	// Associations
+	Creator      *models.User       `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 	Participants []EventParticipant `gorm:"foreignKey:EventID;constraint:OnDelete:CASCADE" json:"participants,omitempty"`
 	Reminders    []EventReminder    `gorm:"foreignKey:EventID;constraint:OnDelete:CASCADE" json:"reminders,omitempty"`
 
@@ -116,7 +117,8 @@ type EventParticipant struct {
 	RespondedAt *time.Time `json:"responded_at,omitempty"`
 
 	// Associations
-	Event *Event `gorm:"foreignKey:EventID" json:"event,omitempty"`
+	Event *Event       `gorm:"foreignKey:EventID" json:"event,omitempty"`
+	User  *models.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // TableName returns the table name for EventParticipant model
@@ -249,6 +251,7 @@ type EventResponse struct {
 	Location         string                      `json:"location,omitempty"`
 	Type             EventType                   `json:"type"`
 	CreatedBy        uint                        `json:"created_by"`
+	Creator          *models.User                `json:"creator,omitempty"`
 	Color            string                      `json:"color"`
 	IsPrivate        bool                        `json:"is_private"`
 	IsRecurring      bool                        `json:"is_recurring"`
@@ -274,6 +277,7 @@ func (e *Event) ToResponse() *EventResponse {
 		Location:         e.Location,
 		Type:             e.Type,
 		CreatedBy:        e.CreatedBy,
+		Creator:          e.Creator,
 		Color:            e.Color,
 		IsPrivate:        e.IsPrivate,
 		IsRecurring:      e.IsRecurring,
@@ -313,6 +317,7 @@ type EventParticipantResponse struct {
 	IsOrganizer bool              `json:"is_organizer"`
 	Role        string            `json:"role,omitempty"`
 	RespondedAt *time.Time        `json:"responded_at,omitempty"`
+	User        *models.User      `json:"user,omitempty"`
 	CreatedAt   time.Time         `json:"created_at"`
 	UpdatedAt   time.Time         `json:"updated_at"`
 }
@@ -327,6 +332,7 @@ func (ep *EventParticipant) ToResponse() *EventParticipantResponse {
 		IsOrganizer: ep.IsOrganizer,
 		Role:        ep.Role,
 		RespondedAt: ep.RespondedAt,
+		User:        ep.User,
 		CreatedAt:   ep.CreatedAt,
 		UpdatedAt:   ep.UpdatedAt,
 	}
@@ -369,6 +375,10 @@ func (er *EventReminder) ToResponse() *EventReminderResponse {
 // EventFilterRequest represents filtering parameters for events
 type EventFilterRequest struct {
 	Type        *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline"`
+	// Date range filters (alternative naming)
+	Start       *time.Time `form:"start" time_format:"2006-01-02T15:04:05Z07:00"` // Alias for date range start
+	End         *time.Time `form:"end" time_format:"2006-01-02T15:04:05Z07:00"`   // Alias for date range end
+	// Detailed time filters
 	StartAfter  *time.Time `form:"start_after" time_format:"2006-01-02T15:04:05Z07:00"`
 	StartBefore *time.Time `form:"start_before" time_format:"2006-01-02T15:04:05Z07:00"`
 	EndAfter    *time.Time `form:"end_after" time_format:"2006-01-02T15:04:05Z07:00"`

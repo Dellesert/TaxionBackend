@@ -374,6 +374,27 @@ func (h *CalendarHandler) GetUserEvents(c *gin.Context) {
 		return
 	}
 
+	// Manual parsing for start/end if not parsed by ShouldBindQuery
+	if startStr := c.Query("start"); startStr != "" && filter.Start == nil {
+		if startTime, err := time.Parse(time.RFC3339, startStr); err == nil {
+			filter.Start = &startTime
+		}
+	}
+	if endStr := c.Query("end"); endStr != "" && filter.End == nil {
+		if endTime, err := time.Parse(time.RFC3339, endStr); err == nil {
+			filter.End = &endTime
+		}
+	}
+
+	// Debug logging
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"start":      filter.Start,
+		"end":        filter.End,
+		"type":       filter.Type,
+	}).Info("GetUserEvents parsed filter")
+
 	// Set default pagination if not provided
 	if filter.Limit <= 0 {
 		filter.Limit = 20

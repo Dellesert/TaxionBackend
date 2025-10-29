@@ -63,15 +63,15 @@ func (u *calendarUsecase) CreateEvent(userID uint, req *models.CreateEventReques
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	// Check for time conflicts
-	hasConflict, err := u.eventRepo.CheckTimeConflict(userID, req.StartTime, req.EndTime, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check time conflict: %w", err)
-	}
-
-	if hasConflict {
-		return nil, fmt.Errorf("time conflict detected: you have another event scheduled at this time")
-	}
+	// Check for time conflicts - DISABLED to allow overlapping events
+	// hasConflict, err := u.eventRepo.CheckTimeConflict(userID, req.StartTime, req.EndTime, nil)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to check time conflict: %w", err)
+	// }
+	//
+	// if hasConflict {
+	// 	return nil, fmt.Errorf("time conflict detected: you have another event scheduled at this time")
+	// }
 
 	// Create event model
 	event := &models.Event{
@@ -241,7 +241,7 @@ func (u *calendarUsecase) UpdateEvent(userID, eventID uint, req *models.UpdateEv
 		event.AllDay = *req.AllDay
 	}
 
-	// Handle time changes with conflict checking
+	// Handle time changes - conflict checking DISABLED to allow overlapping events
 	if req.StartTime != nil || req.EndTime != nil {
 		startTime := event.StartTime
 		endTime := event.EndTime
@@ -253,15 +253,15 @@ func (u *calendarUsecase) UpdateEvent(userID, eventID uint, req *models.UpdateEv
 			endTime = *req.EndTime
 		}
 
-		// Check for time conflicts (excluding current event)
-		hasConflict, err := u.eventRepo.CheckTimeConflict(userID, startTime, endTime, &eventID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check time conflict: %w", err)
-		}
-
-		if hasConflict {
-			return nil, fmt.Errorf("time conflict detected: you have another event scheduled at this time")
-		}
+		// Check for time conflicts (excluding current event) - DISABLED
+		// hasConflict, err := u.eventRepo.CheckTimeConflict(userID, startTime, endTime, &eventID)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to check time conflict: %w", err)
+		// }
+		//
+		// if hasConflict {
+		// 	return nil, fmt.Errorf("time conflict detected: you have another event scheduled at this time")
+		// }
 
 		event.StartTime = startTime
 		event.EndTime = endTime
