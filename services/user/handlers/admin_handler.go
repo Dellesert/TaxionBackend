@@ -80,6 +80,16 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 		roleFilter = &role
 	}
 
+	// Get current user role from context
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user role from context")
+		userRole = "admin" // Default to admin for admin endpoints
+	}
+
 	logger.WithFields(map[string]interface{}{
 		"request_id":    requestID,
 		"limit":         limit,
@@ -91,7 +101,7 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 	}).Info("Admin getting users list with filters")
 
 	// Use GetUsersWithFilters to support filtering
-	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter)
+	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter, string(userRole))
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"tachyon-messenger/services/task/models"
@@ -407,6 +408,23 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 
 	if filter.DueAfter != nil {
 		query = query.Where("due_date > ?", *filter.DueAfter)
+	}
+
+	// Text search in title and description (case-insensitive)
+	if filter.Search != "" {
+		// Trim whitespace from search query
+		searchTerm := strings.TrimSpace(filter.Search)
+
+		// For Unicode (Cyrillic) support, we need to search both lowercase and original case
+		// because LOWER() doesn't work with locale 'C' in PostgreSQL
+		lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
+		upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
+		titlePattern := "%" + strings.Title(strings.ToLower(searchTerm)) + "%"
+
+		query = query.Where(
+			"title LIKE ? OR title LIKE ? OR title LIKE ? OR description LIKE ? OR description LIKE ? OR description LIKE ?",
+			lowerPattern, upperPattern, titlePattern, lowerPattern, upperPattern, titlePattern,
+		)
 	}
 
 	return query

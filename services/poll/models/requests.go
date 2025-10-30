@@ -12,6 +12,7 @@ type CreatePollRequest struct {
 	Title       string         `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description string         `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
 	Type        PollType       `json:"type" binding:"required,oneof=single_choice multiple_choice ranking rating open_text" validate:"required,oneof=single_choice multiple_choice ranking rating open_text"`
+	Status      *PollStatus    `json:"status,omitempty" binding:"omitempty,oneof=draft active closed archived cancelled" validate:"omitempty,oneof=draft active closed archived cancelled"`
 	Visibility  PollVisibility `json:"visibility" binding:"omitempty,oneof=public department invite_only private" validate:"omitempty,oneof=public department invite_only private"`
 	Category    string         `json:"category,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 
@@ -103,6 +104,9 @@ type PollFilterRequest struct {
 	UserHasVoted  *bool `json:"user_has_voted,omitempty"`
 	UserIsInvited *bool `json:"user_is_invited,omitempty"`
 
+	// Text search
+	Search string `json:"search,omitempty" validate:"omitempty"`
+
 	// Pagination
 	Limit  int `json:"limit" validate:"omitempty,min=1,max=100"`
 	Offset int `json:"offset" validate:"omitempty,min=0"`
@@ -138,7 +142,8 @@ type PollResponse struct {
 	ShowResultsAfter  bool `json:"show_results_after"`
 
 	// Department
-	DepartmentID *uint `json:"department_id,omitempty"`
+	DepartmentID   *uint  `json:"department_id,omitempty"`
+	DepartmentName string `json:"department_name,omitempty"`
 
 	// Statistics
 	TotalVotes      int     `json:"total_votes"`
@@ -203,13 +208,15 @@ type PollParticipantResponse struct {
 
 // PollVoterResponse represents a voter with their details
 type PollVoterResponse struct {
-	UserID      uint      `json:"user_id"`
-	UserName    string    `json:"user_name"`
-	UserEmail   string    `json:"user_email"`
-	VotedAt     time.Time `json:"voted_at"`
-	IsAnonymous bool      `json:"is_anonymous"`
-	Options     []string  `json:"options,omitempty"` // Названия выбранных опций (если разрешено показывать)
-	Comment     string    `json:"comment,omitempty"` // Комментарий (если разрешено показывать)
+	UserID       uint      `json:"user_id"`
+	UserName     string    `json:"user_name"`
+	UserEmail    string    `json:"user_email"`
+	Avatar       string    `json:"avatar,omitempty"`        // Аватар пользователя
+	Position     string    `json:"position,omitempty"`      // Должность пользователя
+	VotedAt      time.Time `json:"voted_at"`
+	IsAnonymous  bool      `json:"is_anonymous"`
+	Options      []string  `json:"options,omitempty"` // Названия выбранных опций (если разрешено показывать)
+	Comment      string    `json:"comment,omitempty"` // Комментарий (если разрешено показывать)
 }
 
 // PollVotersListResponse represents list of voters
@@ -316,6 +323,7 @@ func (p *Poll) ToResponse() *PollResponse {
 		ShowResults:       p.ShowResults,
 		ShowResultsAfter:  p.ShowResultsAfter,
 		DepartmentID:      p.DepartmentID,
+		DepartmentName:    p.DepartmentName,
 		TotalVotes:        p.TotalVotes,
 		TotalVoters:       p.TotalVoters,
 		UserHasVoted:      p.UserHasVoted,

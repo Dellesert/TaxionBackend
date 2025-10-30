@@ -366,6 +366,7 @@ type TaskFilterRequest struct {
 	IsSubtask        *bool         `form:"is_subtask"` // true = only subtasks, false = only parent tasks
 	DueBefore        *time.Time    `form:"due_before" time_format:"2006-01-02"`
 	DueAfter         *time.Time    `form:"due_after" time_format:"2006-01-02"`
+	Search           string        `form:"search" binding:"omitempty"` // Text search in title and description
 	Limit            int           `form:"limit" binding:"omitempty,min=1,max=100"`
 	Offset           int           `form:"offset" binding:"omitempty,min=0"`
 	SortBy           string        `form:"sort_by" binding:"omitempty,oneof=created_at updated_at due_date priority title progress_percentage"`

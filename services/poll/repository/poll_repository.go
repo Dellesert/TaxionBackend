@@ -9,6 +9,7 @@ import (
 
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/shared/database"
+	"tachyon-messenger/shared/logger"
 	sharedModels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
@@ -160,6 +161,14 @@ func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest,
 	if err := query.Find(&polls).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to get polls: %w", err)
 	}
+
+	// Debug logging
+	logger.WithFields(map[string]interface{}{
+		"user_id":     userID,
+		"user_role":   userRole,
+		"total_polls": total,
+		"found_polls": len(polls),
+	}).Info("GetPolls result")
 
 	// Load computed fields
 	r.loadPollStatistics(polls, userID)
@@ -450,6 +459,20 @@ func (r *pollRepository) CountByStatus(status models.PollStatus) (int64, error) 
 
 // applyVisibilityFilter applies visibility filtering based on user access
 func (r *pollRepository) applyVisibilityFilter(query *gorm.DB, userID uint) *gorm.DB {
+	// Get user's department ID
+	var result struct {
+		DepartmentID *uint
+	}
+
+	if err := r.db.Table("users").Select("department_id").Where("id = ?", userID).First(&result).Error; err == nil && result.DepartmentID != nil {
+		// User has a department - include department polls
+		return query.Where(
+			"visibility = ? OR created_by = ? OR (visibility = ? AND id IN (SELECT poll_id FROM poll_participants WHERE user_id = ?)) OR (visibility = ? AND department_id = ?)",
+			models.PollVisibilityPublic, userID, models.PollVisibilityInviteOnly, userID, models.PollVisibilityDepartment, *result.DepartmentID,
+		)
+	}
+
+	// User has no department - exclude department polls
 	return query.Where(
 		"visibility = ? OR created_by = ? OR (visibility = ? AND id IN (SELECT poll_id FROM poll_participants WHERE user_id = ?))",
 		models.PollVisibilityPublic, userID, models.PollVisibilityInviteOnly, userID,
@@ -521,6 +544,22 @@ func (r *pollRepository) applyFilters(query *gorm.DB, filter *models.PollFilterR
 
 	if filter.EndDateTo != nil {
 		query = query.Where("end_time <= ?", *filter.EndDateTo)
+	}
+
+	// Text search in title and description (case-insensitive)
+	if filter.Search != "" {
+		searchTerm := strings.TrimSpace(filter.Search)
+
+		// For Unicode (Cyrillic) support, we need to search both lowercase and original case
+		// because LOWER() doesn't work with locale 'C' in PostgreSQL
+		lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
+		upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
+		titlePattern := "%" + strings.Title(strings.ToLower(searchTerm)) + "%"
+
+		query = query.Where(
+			"title LIKE ? OR title LIKE ? OR title LIKE ? OR description LIKE ? OR description LIKE ? OR description LIKE ?",
+			lowerPattern, upperPattern, titlePattern, lowerPattern, upperPattern, titlePattern,
+		)
 	}
 
 	return query
@@ -626,11 +665,42 @@ func (r *pollRepository) loadPollStatistics(polls []*models.Poll, userID uint) {
 		userVoteMap[uv.PollID] = true
 	}
 
+	// Load department names for polls with department visibility
+	type departmentInfo struct {
+		PollID         uint
+		DepartmentName string
+	}
+
+	var departmentInfos []departmentInfo
+	r.db.Table("polls").
+		Select("polls.id as poll_id, departments.name as department_name").
+		Joins("LEFT JOIN departments ON departments.id = polls.department_id").
+		Where("polls.id IN ? AND polls.department_id IS NOT NULL", pollIDs).
+		Scan(&departmentInfos)
+
+	departmentMap := make(map[uint]string)
+	for _, di := range departmentInfos {
+		departmentMap[di.PollID] = di.DepartmentName
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"department_map": departmentMap,
+	}).Info("Loaded department names")
+
 	// Apply computed fields to polls
 	for _, poll := range polls {
 		poll.TotalVotes = int(voteCountMap[poll.ID])
 		poll.TotalVoters = int(voterCountMap[poll.ID])
 		poll.UserHasVoted = userVoteMap[poll.ID]
+		poll.DepartmentName = departmentMap[poll.ID]
+
+		if poll.DepartmentID != nil {
+			logger.WithFields(map[string]interface{}{
+				"poll_id":         poll.ID,
+				"department_id":   *poll.DepartmentID,
+				"department_name": poll.DepartmentName,
+			}).Info("Poll with department")
+		}
 
 		// Calculate participation rate (simplified)
 		if poll.Visibility == models.PollVisibilityInviteOnly {

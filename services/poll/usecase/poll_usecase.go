@@ -129,8 +129,12 @@ func (u *pollUsecase) CreatePoll(userID uint, req *models.CreatePollRequest) (*m
 		poll.Visibility = models.PollVisibilityPublic
 	}
 
-	// Set status to draft initially
-	poll.Status = models.PollStatusDraft
+	// Set status (default to draft if not provided)
+	if req.Status != nil {
+		poll.Status = *req.Status
+	} else {
+		poll.Status = models.PollStatusDraft
+	}
 
 	// Save poll
 	if err := u.pollRepo.Create(poll); err != nil {
@@ -1123,13 +1127,15 @@ func (u *pollUsecase) GetPollVoters(userID, pollID uint, userRole sharedModels.R
 				VotedAt:     vote.CreatedAt,
 				Options:     []string{},
 			}
-			
+
 			// Get user info from vote
 			if vote.User != nil {
 				voter.UserName = vote.User.Name
 				voter.UserEmail = vote.User.Email
+				voter.Avatar = vote.User.Avatar
+				voter.Position = vote.User.Position
 			}
-			
+
 			voterMap[userIDVal] = voter
 		}
 

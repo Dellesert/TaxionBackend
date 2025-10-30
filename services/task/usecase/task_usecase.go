@@ -201,6 +201,7 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 			ID:       creator.ID,
 			Name:     creator.Name,
 			Email:    creator.Email,
+			Avatar:   creator.Avatar,
 			Position: creator.Position,
 		}
 	}
@@ -213,6 +214,7 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 				ID:       assignee.ID,
 				Name:     assignee.Name,
 				Email:    assignee.Email,
+				Avatar:   assignee.Avatar,
 				Position: assignee.Position,
 			})
 		}
@@ -225,6 +227,7 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 				ID:       statusChanger.ID,
 				Name:     statusChanger.Name,
 				Email:    statusChanger.Email,
+				Avatar:   statusChanger.Avatar,
 				Position: statusChanger.Position,
 			}
 		}
@@ -718,6 +721,7 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 				ID:       creator.ID,
 				Name:     creator.Name,
 				Email:    creator.Email,
+				Avatar:   creator.Avatar,
 				Position: creator.Position,
 			}
 		}
@@ -730,6 +734,7 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 					ID:       assignee.ID,
 					Name:     assignee.Name,
 					Email:    assignee.Email,
+					Avatar:   assignee.Avatar,
 					Position: assignee.Position,
 				})
 			}
@@ -742,6 +747,7 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 					ID:       statusChanger.ID,
 					Name:     statusChanger.Name,
 					Email:    statusChanger.Email,
+					Avatar:   statusChanger.Avatar,
 					Position: statusChanger.Position,
 				}
 			}
@@ -1170,6 +1176,7 @@ func (u *taskUsecase) GetDelegationChain(userID uint, taskID uint) ([]models.Use
 				ID:       user.ID,
 				Name:     user.Name,
 				Email:    user.Email,
+				Avatar:   user.Avatar,
 				Position: user.Position,
 			})
 		}

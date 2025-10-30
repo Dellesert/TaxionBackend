@@ -119,6 +119,15 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 func (h *UserHandler) GetUsers(c *gin.Context) {
 	requestID := requestid.Get(c)
 
+	// Get current user role from context
+	userRole, exists := c.Get("user_role")
+	var currentUserRole string
+	if exists {
+		if role, ok := userRole.(string); ok {
+			currentUserRole = role
+		}
+	}
+
 	// Parse pagination parameters
 	limitStr := c.DefaultQuery("limit", "20")
 	offsetStr := c.DefaultQuery("offset", "0")
@@ -158,7 +167,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		roleFilter = &role
 	}
 
-	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter)
+	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter, currentUserRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id":    requestID,
@@ -303,6 +312,15 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
 	requestID := requestid.Get(c)
 
+	// Get current user role from context
+	userRole, exists := c.Get("user_role")
+	var currentUserRole string
+	if exists {
+		if role, ok := userRole.(string); ok {
+			currentUserRole = role
+		}
+	}
+
 	// Parse IDs from query parameter (comma-separated)
 	idsStr := c.Query("ids")
 	if idsStr == "" {
@@ -331,7 +349,7 @@ func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
 		return
 	}
 
-	users, err := h.userUsecase.GetUsersByIDs(ids)
+	users, err := h.userUsecase.GetUsersByIDs(ids, currentUserRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

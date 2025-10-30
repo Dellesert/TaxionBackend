@@ -17,8 +17,8 @@ type UserUsecase interface {
 	CreateUser(req *models.CreateUserRequest) (*models.UserResponse, error)
 	GetUser(id uint) (*models.UserResponse, error)
 	GetUsers(limit, offset int) ([]*models.UserResponse, int64, error)
-	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string) ([]*models.UserResponse, int64, error)
-	GetUsersByIDs(ids []uint) ([]*models.UserResponse, error)
+	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string, currentUserRole string) ([]*models.UserResponse, int64, error)
+	GetUsersByIDs(ids []uint, currentUserRole string) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteUser(id uint) error
 }
@@ -124,7 +124,7 @@ func (u *userUsecase) GetUsers(limit, offset int) ([]*models.UserResponse, int64
 }
 
 // GetUsersWithFilters retrieves users with pagination and optional filters
-func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string) ([]*models.UserResponse, int64, error) {
+func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string, currentUserRole string) ([]*models.UserResponse, int64, error) {
 	// Set default pagination values
 	if limit <= 0 {
 		limit = 20
@@ -136,6 +136,17 @@ func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint,
 	users, err := u.userRepo.GetAllWithDepartmentsFiltered(limit, offset, departmentID, isActive)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get users: %w", err)
+	}
+
+	// Filter super_admin users - only super_admin can see other super_admins
+	if currentUserRole != string(sharedmodels.RoleSuperAdmin) {
+		filteredUsers := make([]*models.User, 0)
+		for _, user := range users {
+			if user.Role != sharedmodels.RoleSuperAdmin {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		users = filteredUsers
 	}
 
 	// Filter by role if specified (done in-memory for now)
@@ -155,8 +166,8 @@ func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint,
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
 
-	// Adjust total if role filter is applied
-	if role != nil && *role != "" {
+	// Adjust total based on filtering
+	if currentUserRole != string(sharedmodels.RoleSuperAdmin) || (role != nil && *role != "") {
 		total = int64(len(users))
 	}
 
@@ -236,7 +247,7 @@ func (u *userUsecase) DeleteUser(id uint) error {
 }
 
 // GetUsersByIDs retrieves multiple users by their IDs
-func (u *userUsecase) GetUsersByIDs(ids []uint) ([]*models.UserResponse, error) {
+func (u *userUsecase) GetUsersByIDs(ids []uint, currentUserRole string) ([]*models.UserResponse, error) {
 	if len(ids) == 0 {
 		return []*models.UserResponse{}, nil
 	}
@@ -244,6 +255,17 @@ func (u *userUsecase) GetUsersByIDs(ids []uint) ([]*models.UserResponse, error) 
 	users, err := u.userRepo.GetByIDs(ids)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users by IDs: %w", err)
+	}
+
+	// Filter super_admin users - only super_admin can see other super_admins
+	if currentUserRole != string(sharedmodels.RoleSuperAdmin) {
+		filteredUsers := make([]*models.User, 0)
+		for _, user := range users {
+			if user.Role != sharedmodels.RoleSuperAdmin {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		users = filteredUsers
 	}
 
 	// Convert to response format

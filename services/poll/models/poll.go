@@ -76,10 +76,11 @@ type Poll struct {
 	Comments     []PollComment     `gorm:"foreignKey:PollID;constraint:OnDelete:CASCADE" json:"comments,omitempty"`
 
 	// Computed fields (not stored in DB)
-	TotalVotes      int     `gorm:"-" json:"total_votes,omitempty"`
-	TotalVoters     int     `gorm:"-" json:"total_voters,omitempty"`
-	UserHasVoted    bool    `gorm:"-" json:"user_has_voted,omitempty"`
-	ParticipantRate float64 `gorm:"-" json:"participant_rate,omitempty"` // Процент участия
+	TotalVotes       int     `gorm:"-" json:"total_votes,omitempty"`
+	TotalVoters      int     `gorm:"-" json:"total_voters,omitempty"`
+	UserHasVoted     bool    `gorm:"-" json:"user_has_voted,omitempty"`
+	ParticipantRate  float64 `gorm:"-" json:"participant_rate,omitempty"` // Процент участия
+	DepartmentName   string  `gorm:"-" json:"department_name,omitempty"`  // Имя департамента
 }
 
 // TableName returns the table name for Poll model
