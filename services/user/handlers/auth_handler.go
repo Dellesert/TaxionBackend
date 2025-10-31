@@ -270,8 +270,14 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed super admin login attempt")
 
+		// Check if error is 2FA required
+		errorMessage := "Invalid credentials"
+		if strings.Contains(err.Error(), "2FA") || strings.Contains(err.Error(), "two-factor") {
+			errorMessage = err.Error()
+		}
+
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Invalid credentials",
+			"error":      errorMessage,
 			"request_id": requestID,
 		})
 		return

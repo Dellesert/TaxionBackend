@@ -255,6 +255,11 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
+	// Check if 2FA is enabled for this user
+	if user.TwoFactorEnabled {
+		return nil, fmt.Errorf("2FA is required for this user. Please use /api/v1/auth/2fa/send to get verification code")
+	}
+
 	// Update user status to online and last active time
 	if err := a.updateUserLoginStatus(user); err != nil {
 		// Log error but don't fail login
