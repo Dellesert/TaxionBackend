@@ -905,3 +905,123 @@ func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// ResetUserPassword handles resetting a user's password (super admin only)
+func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin info from context
+	adminID, adminIDExists := c.Get("user_id")
+	adminRole, adminRoleExists := c.Get("user_role")
+
+	if !adminIDExists || !adminRoleExists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Only super_admin can reset passwords
+	role, ok := adminRole.(sharedmodels.Role)
+	if !ok || role != sharedmodels.RoleSuperAdmin {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"admin_role": adminRole,
+		}).Warn("Non-super admin attempted to reset password")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Only super administrators can reset passwords",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user ID from URL parameter
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid user ID for password reset")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		NewPassword string `json:"new_password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    id,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for password reset")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Validate new password is not empty
+	if strings.TrimSpace(req.NewPassword) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "New password is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Call usecase to reset password
+	err = h.adminUsecase.ResetUserPassword(uint(id), req.NewPassword)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    id,
+			"error":      err.Error(),
+		}).Error("Failed to reset user password")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to reset password"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "User not found"
+		} else if strings.Contains(err.Error(), "password") && strings.Contains(err.Error(), "weak") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"admin_id":   adminID,
+		"user_id":    id,
+	}).Info("User password reset successfully by admin")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Password reset successfully",
+		"request_id": requestID,
+	})
+}

@@ -288,7 +288,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminUsers.PUT("/:id/status", middleware.LogAdminAction("update_user_status"), adminHandler.UpdateUserStatus)
 				v1AdminUsers.PUT("/:id/activate", middleware.LogAdminAction("activate_user"), adminHandler.ActivateUser)
 				v1AdminUsers.PUT("/:id/deactivate", middleware.LogAdminAction("deactivate_user"), adminHandler.DeactivateUser)
-				v1AdminUsers.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA) // Super admin only
+				v1AdminUsers.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA)                         // Super admin only
+				v1AdminUsers.POST("/:id/reset-password", middleware.LogAdminAction("reset_user_password"), adminHandler.ResetUserPassword) // Super admin only
 				v1AdminUsers.DELETE("/:id", middleware.LogAdminAction("delete_user"), adminHandler.DeleteUser)
 			}
 
@@ -331,7 +332,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			users.PUT("/:id/status", middleware.LogAdminAction("update_user_status"), adminHandler.UpdateUserStatus)
 			users.PUT("/:id/activate", middleware.LogAdminAction("activate_user"), adminHandler.ActivateUser)
 			users.PUT("/:id/deactivate", middleware.LogAdminAction("deactivate_user"), adminHandler.DeactivateUser)
-			users.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA) // Super admin only
+			users.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA)                         // Super admin only
+			users.POST("/:id/reset-password", middleware.LogAdminAction("reset_user_password"), adminHandler.ResetUserPassword) // Super admin only
 		}
 
 		// Department management for admins
