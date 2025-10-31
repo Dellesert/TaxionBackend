@@ -54,5 +54,6 @@ bin/
 tmp/
 temp/
 NUL
-.claude/settings.local.json
-.claude/settings.local.json
+
+# Claude Code
+.claude/
