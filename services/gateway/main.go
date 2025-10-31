@@ -114,6 +114,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			profile.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
+		// Session management routes - proxy to user service
+		sessions := v1.Group("/sessions")
+		{
+			sessions.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			sessions.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Department routes - proxy to user service
 		departments := v1.Group("/departments")
 		{

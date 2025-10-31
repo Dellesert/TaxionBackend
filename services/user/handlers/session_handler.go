@@ -1,0 +1,229 @@
+package handlers
+
+import (
+	"net/http"
+
+	"tachyon-messenger/shared/logger"
+	"tachyon-messenger/shared/middleware"
+
+	"github.com/gin-contrib/requestid"
+	"github.com/gin-gonic/gin"
+)
+
+// SessionHandler handles HTTP requests for session management
+type SessionHandler struct{}
+
+// NewSessionHandler creates a new session handler
+func NewSessionHandler() *SessionHandler {
+	return &SessionHandler{}
+}
+
+// GetActiveSessions returns all active sessions for the current user
+// GET /api/v1/sessions
+func (h *SessionHandler) GetActiveSessions(c *gin.Context) {
+	requestID := requestid.Get(c)
+	userID := c.GetUint("user_id")
+
+	authConfig := middleware.GetAuthConfig()
+	if authConfig == nil || authConfig.SessionStore == nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+		}).Error("Session store not configured")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Session management not available",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	sessions, err := authConfig.SessionStore.GetUserSessions(c.Request.Context(), userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user sessions")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get active sessions",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"session_count": len(sessions),
+	}).Info("Retrieved active sessions")
+
+	c.JSON(http.StatusOK, gin.H{
+		"sessions": sessions,
+		"total":    len(sessions),
+	})
+}
+
+// DeleteSession terminates a specific session
+// DELETE /api/v1/sessions/:session_id
+func (h *SessionHandler) DeleteSession(c *gin.Context) {
+	requestID := requestid.Get(c)
+	userID := c.GetUint("user_id")
+	sessionID := c.Param("session_id")
+
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Session ID is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	authConfig := middleware.GetAuthConfig()
+	if authConfig == nil || authConfig.SessionStore == nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+		}).Error("Session store not configured")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Session management not available",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Verify the session belongs to the user before deleting
+	session, err := authConfig.SessionStore.GetSession(c.Request.Context(), sessionID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"session_id": sessionID,
+			"error":      err.Error(),
+		}).Warn("Session not found or already deleted")
+
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":      "Session not found",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check if the session belongs to the current user
+	if session.UserID != userID {
+		logger.WithFields(map[string]interface{}{
+			"request_id":        requestID,
+			"user_id":           userID,
+			"session_id":        sessionID,
+			"session_owner_id":  session.UserID,
+		}).Warn("User attempted to delete another user's session")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "You can only delete your own sessions",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Delete the session
+	if err := authConfig.SessionStore.DeleteSession(c.Request.Context(), sessionID); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"session_id": sessionID,
+			"error":      err.Error(),
+		}).Error("Failed to delete session")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to delete session",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"session_id": sessionID,
+	}).Info("Session deleted successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Session deleted successfully",
+		"request_id": requestID,
+	})
+}
+
+// DeleteAllSessions terminates all sessions except the current one
+// DELETE /api/v1/sessions
+func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
+	requestID := requestid.Get(c)
+	userID := c.GetUint("user_id")
+
+	// Get current session ID from header
+	currentSessionID := c.GetHeader("X-Session-ID")
+	if currentSessionID == "" {
+		// Try to get from cookie
+		currentSessionID, _ = c.Cookie("session_id")
+	}
+
+	authConfig := middleware.GetAuthConfig()
+	if authConfig == nil || authConfig.SessionStore == nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+		}).Error("Session store not configured")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Session management not available",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get all user sessions
+	sessions, err := authConfig.SessionStore.GetUserSessions(c.Request.Context(), userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user sessions")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to delete sessions",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Delete all sessions except the current one
+	deletedCount := 0
+	for _, session := range sessions {
+		if session.SessionID != currentSessionID {
+			if err := authConfig.SessionStore.DeleteSession(c.Request.Context(), session.SessionID); err != nil {
+				logger.WithFields(map[string]interface{}{
+					"request_id": requestID,
+					"user_id":    userID,
+					"session_id": session.SessionID,
+					"error":      err.Error(),
+				}).Warn("Failed to delete session")
+				continue
+			}
+			deletedCount++
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"deleted_count": deletedCount,
+	}).Info("Deleted other sessions")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "All other sessions deleted successfully",
+		"deleted_count": deletedCount,
+		"request_id":    requestID,
+	})
+}

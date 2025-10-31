@@ -34,55 +34,102 @@ func NewWebSocketHandler(hub *websocket.Hub, messageUsecase usecase.MessageUseca
 func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 	requestID := requestid.Get(c)
 
-	// Authenticate user via JWT token
-	// WebSocket может получать токен из query параметра или заголовка
-	var tokenString string
+	// Authenticate user via session_id (session mode) or JWT token (JWT mode)
+	var userID uint
+	var err error
 
-	// Сначала пробуем получить из query параметра (для WebSocket)
-	if token := c.Query("token"); token != "" {
-		tokenString = token
+	// Try session_id first (session mode)
+	sessionID := c.Query("session_id")
+	if sessionID != "" {
+		// Session mode authentication
+		authConfig := middleware.GetAuthConfig()
+		if authConfig == nil || authConfig.SessionStore == nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+			}).Error("Session store not configured for WebSocket")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":      "Session authentication not configured",
+				"request_id": requestID,
+			})
+			return
+		}
+
+		session, err := authConfig.SessionStore.GetSession(c.Request.Context(), sessionID)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"error":      err.Error(),
+			}).Error("Failed to validate session for WebSocket")
+
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":      "Invalid or expired session",
+				"request_id": requestID,
+			})
+			return
+		}
+
+		userID = session.UserID
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"auth_mode":  "session",
+		}).Info("WebSocket authenticated via session")
 	} else {
-		// Если нет в query, пробуем Authorization header
-		authHeader := c.GetHeader("Authorization")
-		if authHeader != "" {
-			tokenParts := strings.Split(authHeader, " ")
-			if len(tokenParts) == 2 && tokenParts[0] == "Bearer" {
-				tokenString = tokenParts[1]
+		// Fallback to JWT mode
+		var tokenString string
+
+		// Try to get token from query parameter (for WebSocket)
+		if token := c.Query("token"); token != "" {
+			tokenString = token
+		} else {
+			// If not in query, try Authorization header
+			authHeader := c.GetHeader("Authorization")
+			if authHeader != "" {
+				tokenParts := strings.Split(authHeader, " ")
+				if len(tokenParts) == 2 && tokenParts[0] == "Bearer" {
+					tokenString = tokenParts[1]
+				}
 			}
 		}
-	}
 
-	if tokenString == "" {
+		if tokenString == "" {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+			}).Error("No authentication provided for WebSocket connection")
+
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":      "Authentication required - provide session_id or token in query parameter",
+				"request_id": requestID,
+			})
+			return
+		}
+
+		// Create temporary JWT config for validation
+		jwtConfig := middleware.DefaultJWTConfig(os.Getenv("JWT_SECRET"))
+
+		// Validate token
+		claims, err := middleware.ValidateToken(tokenString, jwtConfig)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"error":      err.Error(),
+			}).Error("Failed to validate JWT token for WebSocket")
+
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":      "Invalid or expired token",
+				"request_id": requestID,
+			})
+			return
+		}
+
+		userID = claims.UserID
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
-		}).Error("No JWT token provided for WebSocket connection")
-
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Authentication required - provide token in query parameter or Authorization header",
-			"request_id": requestID,
-		})
-		return
+			"user_id":    userID,
+			"auth_mode":  "jwt",
+		}).Info("WebSocket authenticated via JWT")
 	}
-
-	// Создаем временный JWT config для валидации
-	jwtConfig := middleware.DefaultJWTConfig(os.Getenv("JWT_SECRET"))
-
-	// Валидируем токен
-	claims, err := middleware.ValidateToken(tokenString, jwtConfig)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"request_id": requestID,
-			"error":      err.Error(),
-		}).Error("Failed to validate JWT token for WebSocket")
-
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Invalid or expired token",
-			"request_id": requestID,
-		})
-		return
-	}
-
-	userID := claims.UserID
 
 	// Configure WebSocket upgrader
 	upgrader := gorilla_websocket.Upgrader{

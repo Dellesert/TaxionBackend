@@ -123,7 +123,6 @@ func main() {
 	departmentHandler := handlers.NewDepartmentHandler(departmentUsecase)
 	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)
 	settingsHandler := handlers.NewSettingsHandler()
-	sessionHandler := handlers.NewSessionHandler()
 
 	// Create Gin router
 	router := gin.New()
@@ -132,7 +131,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -167,7 +166,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -232,15 +231,6 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			profile.PUT("/password", profileHandler.ChangePassword)
 			profile.PUT("/status", profileHandler.UpdateStatus)
 			profile.GET("/:id", profileHandler.GetProfile)
-		}
-
-		// Session management routes (require authentication)
-		sessions := v1.Group("/sessions")
-		sessions.Use(middleware.AuthMiddleware())
-		{
-			sessions.GET("", sessionHandler.GetActiveSessions)           // GET /api/v1/sessions - get all active sessions
-			sessions.DELETE("", sessionHandler.DeleteAllSessions)        // DELETE /api/v1/sessions - delete all other sessions
-			sessions.DELETE("/:session_id", sessionHandler.DeleteSession) // DELETE /api/v1/sessions/:id - delete specific session
 		}
 
 		// Department management routes

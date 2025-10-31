@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -14,6 +15,7 @@ type Config struct {
 	Redis    RedisConfig
 	JWT      JWTConfig
 	Server   ServerConfig
+	Auth     AuthConfig
 }
 
 // DatabaseConfig holds database configuration
@@ -34,6 +36,12 @@ type JWTConfig struct {
 // ServerConfig holds server configuration
 type ServerConfig struct {
 	Port string
+}
+
+// AuthConfig holds authentication configuration
+type AuthConfig struct {
+	Mode            string // "jwt" or "session"
+	SessionDuration int    // Session duration in hours (for session mode)
 }
 
 // LoadConfig loads configuration from environment variables
@@ -90,6 +98,8 @@ func LoadConfig() (*Config, error) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	redisURL := os.Getenv("REDIS_URL")
 	serverPort := os.Getenv("SERVER_PORT")
+	authMode := os.Getenv("AUTH_MODE")
+	sessionDuration := os.Getenv("SESSION_DURATION_HOURS")
 
 	// DEBUG: показываем что загрузилось
 	if jwtSecret != "" {
@@ -107,6 +117,19 @@ func LoadConfig() (*Config, error) {
 	fmt.Printf("REDIS_URL: %s\n", maskURL(redisURL))
 	fmt.Printf("SERVER_PORT: %s\n", serverPort)
 
+	// Parse session duration
+	sessionDurationHours := 168 // Default 7 days
+	if sessionDuration != "" {
+		if parsed, err := strconv.Atoi(sessionDuration); err == nil && parsed > 0 {
+			sessionDurationHours = parsed
+		}
+	}
+
+	// Default auth mode
+	if authMode == "" {
+		authMode = "jwt" // Default to JWT
+	}
+
 	config := &Config{
 		Database: DatabaseConfig{
 			URL: databaseURL,
@@ -119,6 +142,10 @@ func LoadConfig() (*Config, error) {
 		},
 		Server: ServerConfig{
 			Port: serverPort,
+		},
+		Auth: AuthConfig{
+			Mode:            authMode,
+			SessionDuration: sessionDurationHours,
 		},
 	}
 

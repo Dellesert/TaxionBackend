@@ -17,6 +17,8 @@ import (
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedmodels "tachyon-messenger/shared/models"
+	sharedredis "tachyon-messenger/shared/redis"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -53,6 +55,27 @@ func main() {
 
 	log.Info("Database connected and migrations completed")
 
+	// Connect to Redis
+	redisConfig := sharedredis.DefaultConfig(cfg.Redis.URL)
+	redisClient, err := sharedredis.ConnectRedis(redisConfig)
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	defer redisClient.Close()
+	log.Info("Redis connected successfully")
+
+	// Create JWT config
+	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
+
+	// Initialize authentication configuration (for session support)
+	authMode := sharedmodels.AuthMode(cfg.Auth.Mode)
+	sessionDuration := time.Duration(cfg.Auth.SessionDuration) * time.Hour
+	middleware.InitAuthConfig(authMode, jwtConfig, redisClient.Client, sessionDuration)
+	log.WithFields(map[string]interface{}{
+		"auth_mode":        authMode,
+		"session_duration": sessionDuration,
+	}).Info("Authentication configuration initialized")
+
 	// Set Gin mode based on environment
 	if os.Getenv("ENVIRONMENT") == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -63,8 +86,6 @@ func main() {
 	participantRepo := repository.NewParticipantRepository(db)
 	reminderRepo := repository.NewReminderRepository(db)
 
-	// Create JWT config
-	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
 	// Initialize usecases
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
@@ -141,7 +162,7 @@ func setupRoutes(
 
 	// Protected routes (require JWT)
 	protected := api.Group("")
-	protected.Use(middleware.JWTMiddleware(jwtConfig))
+	protected.Use(middleware.AuthMiddleware())
 	{
 		// Event endpoints
 		protected.GET("/events", calendarHandler.GetUserEvents)

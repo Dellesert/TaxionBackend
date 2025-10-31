@@ -7,6 +7,7 @@ import (
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/usecase"
 	"tachyon-messenger/shared/logger"
+	"tachyon-messenger/shared/middleware"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -157,8 +158,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Extract client info for session tracking
+	ipAddress, userAgent := middleware.ExtractClientInfo(c)
+
 	// Call usecase to authenticate user
-	loginResponse, err := h.authUsecase.Login(req.Email, req.Password)
+	loginResponse, err := h.authUsecase.Login(req.Email, req.Password, ipAddress, userAgent)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -197,14 +201,38 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"request_id": requestID,
 		"user_id":    loginResponse.User.ID,
 		"email":      loginResponse.User.Email,
+		"auth_mode":  loginResponse.AuthMode,
 	}).Info("User logged in successfully")
 
-	c.JSON(http.StatusOK, gin.H{
+	// Set session cookie if in session mode
+	if loginResponse.Session != nil {
+		c.SetCookie(
+			"session_id",
+			loginResponse.Session.SessionID,
+			int(loginResponse.Session.ExpiresAt),
+			"/",
+			"",
+			false, // secure - set to true in production with HTTPS
+			true,  // httpOnly
+		)
+	}
+
+	response := gin.H{
 		"message":    "Login successful",
 		"user":       loginResponse.User,
-		"tokens":     loginResponse.Tokens,
+		"auth_mode":  loginResponse.AuthMode,
 		"request_id": requestID,
-	})
+	}
+
+	// Add tokens or session based on auth mode
+	if loginResponse.Tokens.AccessToken != "" {
+		response["tokens"] = loginResponse.Tokens
+	}
+	if loginResponse.Session != nil {
+		response["session"] = loginResponse.Session
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // LoginSuperAdmin handles super admin login requests (web dashboard only)
@@ -230,8 +258,11 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 		return
 	}
 
+	// Extract client info for session tracking
+	ipAddress, userAgent := middleware.ExtractClientInfo(c)
+
 	// Call usecase to authenticate super admin
-	loginResponse, err := h.authUsecase.LoginSuperAdmin(req.Email, req.Password)
+	loginResponse, err := h.authUsecase.LoginSuperAdmin(req.Email, req.Password, ipAddress, userAgent)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -250,27 +281,99 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 		"request_id": requestID,
 		"user_id":    loginResponse.User.ID,
 		"email":      loginResponse.User.Email,
+		"auth_mode":  loginResponse.AuthMode,
 	}).Info("Super admin logged in successfully")
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":             "Login successful",
-		"user":                loginResponse.User,
-		"tokens":              loginResponse.Tokens,
+	// Set session cookie if in session mode
+	if loginResponse.Session != nil {
+		c.SetCookie(
+			"session_id",
+			loginResponse.Session.SessionID,
+			int(loginResponse.Session.ExpiresAt),
+			"/",
+			"",
+			false, // secure - set to true in production with HTTPS
+			true,  // httpOnly
+		)
+	}
+
+	response := gin.H{
+		"message":              "Login successful",
+		"user":                 loginResponse.User,
 		"must_change_password": loginResponse.MustChangePassword,
-		"request_id":          requestID,
-	})
+		"auth_mode":            loginResponse.AuthMode,
+		"request_id":           requestID,
+	}
+
+	// Add tokens or session based on auth mode
+	if loginResponse.Tokens.AccessToken != "" {
+		response["tokens"] = loginResponse.Tokens
+	}
+	if loginResponse.Session != nil {
+		response["session"] = loginResponse.Session
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
-// Logout handles user logout requests (placeholder for future implementation)
+// Logout handles user logout requests
 func (h *AuthHandler) Logout(c *gin.Context) {
 	requestID := requestid.Get(c)
 
-	logger.WithField("request_id", requestID).Info("Logout endpoint called")
+	// Get user ID from context (set by auth middleware)
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Failed to get user ID for logout")
 
-	// TODO: Implement logout logic
-	// - Blacklist the current JWT token
-	// - Update user status to offline
-	// - Clear any session data
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get session ID if exists
+	sessionID := ""
+	if sid, exists := c.Get("session_id"); exists {
+		if s, ok := sid.(string); ok {
+			sessionID = s
+		}
+	}
+
+	// Call usecase to handle logout
+	err = h.authUsecase.Logout(userID, sessionID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to logout user")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to logout",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Clear session cookie if exists
+	c.SetCookie(
+		"session_id",
+		"",
+		-1,
+		"/",
+		"",
+		false,
+		true,
+	)
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+	}).Info("User logged out successfully")
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Logout successful",

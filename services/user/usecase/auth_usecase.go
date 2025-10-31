@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -18,8 +19,9 @@ import (
 // AuthUsecase defines the interface for authentication business logic
 type AuthUsecase interface {
 	Register(req *models.CreateUserRequest) (*models.UserResponse, error)
-	Login(email, password string) (*sharedmodels.LoginResponse, error)
-	LoginSuperAdmin(email, password string) (*sharedmodels.LoginResponse, error)
+	Login(email, password, ipAddress, userAgent string) (*sharedmodels.LoginResponse, error)
+	LoginSuperAdmin(email, password, ipAddress, userAgent string) (*sharedmodels.LoginResponse, error)
+	Logout(userID uint, sessionID string) error
 	RefreshToken(refreshToken string) (*sharedmodels.TokenPair, error)
 	ValidateEmail(email string) error
 	ValidatePassword(password string) error
@@ -118,7 +120,7 @@ func (a *authUsecase) Register(req *models.CreateUserRequest) (*models.UserRespo
 }
 
 // Login handles user authentication
-func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse, error) {
+func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*sharedmodels.LoginResponse, error) {
 	// Validate input
 	if email == "" {
 		return nil, fmt.Errorf("email is required")
@@ -166,26 +168,60 @@ func (a *authUsecase) Login(email, password string) (*sharedmodels.LoginResponse
 		userWithDept = user
 	}
 
-	// Generate JWT tokens
-	tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
-	}
-
 	// Convert user to shared model format for response
 	responseUser := convertUserToSharedModel(userWithDept)
 
-	// Create login response
+	// Get current auth mode
+	authMode := middleware.GetAuthMode()
+
+	// Create response based on auth mode
 	response := &sharedmodels.LoginResponse{
-		User:   *responseUser,
-		Tokens: *tokens,
+		User:     *responseUser,
+		AuthMode: authMode,
+	}
+
+	switch authMode {
+	case sharedmodels.AuthModeSession:
+		// Create session
+		authConfig := middleware.GetAuthConfig()
+		if authConfig != nil && authConfig.SessionStore != nil {
+			ctx := context.Background()
+			session, err := authConfig.SessionStore.CreateSession(
+				ctx,
+				user.ID,
+				user.Email,
+				user.Role,
+				ipAddress,
+				userAgent,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create session: %w", err)
+			}
+
+			response.Session = &sharedmodels.SessionResponse{
+				SessionID: session.SessionID,
+				ExpiresAt: session.ExpiresAt.Unix(),
+			}
+		} else {
+			return nil, fmt.Errorf("session store not available")
+		}
+
+	case sharedmodels.AuthModeJWT:
+		fallthrough
+	default:
+		// Generate JWT tokens
+		tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		}
+		response.Tokens = *tokens
 	}
 
 	return response, nil
 }
 
 // LoginSuperAdmin handles super admin authentication (web dashboard only)
-func (a *authUsecase) LoginSuperAdmin(email, password string) (*sharedmodels.LoginResponse, error) {
+func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent string) (*sharedmodels.LoginResponse, error) {
 	// Validate input
 	if email == "" {
 		return nil, fmt.Errorf("email is required")
@@ -231,20 +267,54 @@ func (a *authUsecase) LoginSuperAdmin(email, password string) (*sharedmodels.Log
 		userWithDept = user
 	}
 
-	// Generate JWT tokens
-	tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate tokens: %w", err)
-	}
-
 	// Convert user to shared model format for response
 	responseUser := convertUserToSharedModel(userWithDept)
+
+	// Get current auth mode
+	authMode := middleware.GetAuthMode()
 
 	// Create login response with must_change_password flag
 	response := &sharedmodels.LoginResponse{
 		User:               *responseUser,
-		Tokens:             *tokens,
 		MustChangePassword: user.MustChangePassword, // Important: send the flag to frontend
+		AuthMode:           authMode,
+	}
+
+	switch authMode {
+	case sharedmodels.AuthModeSession:
+		// Create session
+		authConfig := middleware.GetAuthConfig()
+		if authConfig != nil && authConfig.SessionStore != nil {
+			ctx := context.Background()
+			session, err := authConfig.SessionStore.CreateSession(
+				ctx,
+				user.ID,
+				user.Email,
+				user.Role,
+				ipAddress,
+				userAgent,
+			)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create session: %w", err)
+			}
+
+			response.Session = &sharedmodels.SessionResponse{
+				SessionID: session.SessionID,
+				ExpiresAt: session.ExpiresAt.Unix(),
+			}
+		} else {
+			return nil, fmt.Errorf("session store not available")
+		}
+
+	case sharedmodels.AuthModeJWT:
+		fallthrough
+	default:
+		// Generate JWT tokens
+		tokens, err := middleware.GenerateTokens(user.ID, user.Email, user.Role, a.jwtConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate tokens: %w", err)
+		}
+		response.Tokens = *tokens
 	}
 
 	return response, nil
@@ -402,4 +472,34 @@ func (a *authUsecase) hashPassword(password string) (string, error) {
 // verifyPassword verifies a password against its hash (private method for auth usecase)
 func (a *authUsecase) verifyPassword(hashedPassword, password string) error {
 	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+}
+
+// Logout handles user logout
+func (a *authUsecase) Logout(userID uint, sessionID string) error {
+	// Get current auth mode
+	authMode := middleware.GetAuthMode()
+
+	// For session mode, delete the session
+	if authMode == sharedmodels.AuthModeSession && sessionID != "" {
+		authConfig := middleware.GetAuthConfig()
+		if authConfig != nil && authConfig.SessionStore != nil {
+			ctx := context.Background()
+			err := authConfig.SessionStore.DeleteSession(ctx, sessionID)
+			if err != nil {
+				return fmt.Errorf("failed to delete session: %w", err)
+			}
+		}
+	}
+
+	// Update user status to offline
+	user, err := a.userRepo.GetByID(userID)
+	if err != nil {
+		// Not critical, just log
+		return nil
+	}
+
+	user.Status = sharedmodels.StatusOffline
+	a.userRepo.Update(user)
+
+	return nil
 }

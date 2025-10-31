@@ -64,7 +64,13 @@
       "Bash(export DOCKER_BUILDKIT=1)",
       "Bash(test:*)",
       "Bash(docker-compose down:*)",
-      "Bash(time DOCKER_BUILDKIT=1 docker-compose build:*)"
+      "Bash(time DOCKER_BUILDKIT=1 docker-compose build:*)",
+      "Bash(timeout 10 docker-compose:*)",
+      "Read(//Users/dellesert/Documents/GitHub/**)",
+      "Bash(docker-compose logs:*)",
+      "Bash(for service in task poll calendar notification file)",
+      "Bash(do echo \"=== $service ===\" grep -n \"JWTMiddleware\\|AuthMiddleware\" services/$service/main.go)",
+      "Bash(do echo \"=== $service-service ===\" docker logs tachyon-$service-service)"
     ],
     "deny": [],
     "ask": []

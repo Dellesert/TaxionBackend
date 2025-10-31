@@ -75,9 +75,11 @@ type LoginRequest struct {
 
 // LoginResponse represents login response payload
 type LoginResponse struct {
-	User               User      `json:"user"`
-	Tokens             TokenPair `json:"tokens"`
-	MustChangePassword bool      `json:"must_change_password,omitempty"`
+	User               User             `json:"user"`
+	Tokens             TokenPair        `json:"tokens,omitempty"`             // Only for JWT mode
+	Session            *SessionResponse `json:"session,omitempty"`            // Only for session mode
+	MustChangePassword bool             `json:"must_change_password,omitempty"`
+	AuthMode           AuthMode         `json:"auth_mode"` // Indicates which auth mode was used
 }
 
 // RegisterRequest represents registration request payload
@@ -93,4 +95,33 @@ type RegisterRequest struct {
 // RefreshTokenRequest represents refresh token request payload
 type RefreshTokenRequest struct {
 	RefreshToken string `json:"refresh_token" validate:"required"`
+}
+
+// Session Related Structures
+
+// AuthMode represents authentication mode
+type AuthMode string
+
+const (
+	AuthModeJWT     AuthMode = "jwt"     // Stateless JWT authentication
+	AuthModeSession AuthMode = "session" // Stateful session-based authentication
+)
+
+// Session represents user session in stateful authentication
+type Session struct {
+	SessionID    string    `json:"session_id" redis:"session_id"`
+	UserID       uint      `json:"user_id" redis:"user_id"`
+	Email        string    `json:"email" redis:"email"`
+	Role         Role      `json:"role" redis:"role"`
+	IPAddress    string    `json:"ip_address" redis:"ip_address"`
+	UserAgent    string    `json:"user_agent" redis:"user_agent"`
+	CreatedAt    time.Time `json:"created_at" redis:"created_at"`
+	ExpiresAt    time.Time `json:"expires_at" redis:"expires_at"`
+	LastActiveAt time.Time `json:"last_active_at" redis:"last_active_at"`
+}
+
+// SessionResponse represents session data in API responses
+type SessionResponse struct {
+	SessionID string `json:"session_id"`
+	ExpiresAt int64  `json:"expires_at"` // Unix timestamp
 }

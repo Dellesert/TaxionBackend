@@ -19,6 +19,8 @@ import (
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedmodels "tachyon-messenger/shared/models"
+	sharedredis "tachyon-messenger/shared/redis"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,6 +69,15 @@ func main() {
 
 	log.Info("Database connected and migrations completed")
 
+	// Connect to Redis
+	redisConfig := sharedredis.DefaultConfig(cfg.Redis.URL)
+	redisClient, err := sharedredis.ConnectRedis(redisConfig)
+	if err != nil {
+		log.Fatalf("Failed to connect to Redis: %v", err)
+	}
+	defer redisClient.Close()
+	log.Info("Redis connected successfully")
+
 	// Set Gin mode based on environment
 	if os.Getenv("ENVIRONMENT") == "production" {
 		gin.SetMode(gin.ReleaseMode)
@@ -78,6 +89,15 @@ func main() {
 
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
+
+	// Initialize authentication configuration (for session support in WebSocket)
+	authMode := sharedmodels.AuthMode(cfg.Auth.Mode)
+	sessionDuration := time.Duration(cfg.Auth.SessionDuration) * time.Hour
+	middleware.InitAuthConfig(authMode, jwtConfig, redisClient.Client, sessionDuration)
+	log.WithFields(map[string]interface{}{
+		"auth_mode":        authMode,
+		"session_duration": sessionDuration,
+	}).Info("Authentication configuration initialized")
 
 	// Initialize usecases
 	chatUsecase := usecase.NewChatUsecase(chatRepo, messageRepo)
@@ -148,9 +168,9 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 	// WebSocket endpoint БЕЗ JWT middleware (обрабатывает аутентификацию самостоятельно)
 	router.GET("/api/v1/ws", wsHandler.HandleWebSocket) // GET /api/v1/ws
 
-	// API v1 routes с JWT middleware
+	// API v1 routes с unified auth middleware (supports both session and JWT)
 	v1 := router.Group("/api/v1")
-	v1.Use(middleware.JWTMiddleware(jwtConfig)) // JWT middleware только для этих routes
+	v1.Use(middleware.AuthMiddleware()) // Unified auth middleware (session or JWT)
 	{
 		// Chat routes
 		chats := v1.Group("/chats")
