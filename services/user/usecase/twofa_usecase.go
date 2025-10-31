@@ -69,6 +69,11 @@ func (u *twoFAUsecase) SendCode(email, password, ipAddress, userAgent string) er
 		return fmt.Errorf("user account is deactivated")
 	}
 
+	// Check if 2FA is enabled for this user
+	if !user.TwoFactorEnabled {
+		return fmt.Errorf("two factor authentication is not enabled for this account")
+	}
+
 	// Verify password using auth usecase
 	if err := u.authUsecase.ValidatePassword(password); err != nil {
 		return fmt.Errorf("invalid password format")

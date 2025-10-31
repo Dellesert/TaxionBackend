@@ -82,7 +82,9 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNywiZW1haWwiOiJtaXNoYWphY2tzb25AaW5ib3gucnUiLCJyb2xlIjoic3VwZXJfYWRtaW4iLCJpc3MiOiJ0YWNoeW9uLW1lc3NlbmdlciIsInN1YiI6IjE3IiwiZXhwIjoxNzYxOTI0NjMyLCJuYmYiOjE3NjE5MjM3MzIsImlhdCI6MTc2MTkyMzczMn0.CrHDX3szbJ1R66eZZ5MplX7eKOkVdujl1cKODw5Svzo\")",
       "Bash(go run:*)",
       "Bash(npm run dev:*)",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "Bash(for password in \"Admin123\" \"admin123\" \"Admin@123\" \"password\" \"12345678\")",
+      "Bash(do echo \"Trying password: $password\" curl -s http://localhost:8081/api/v1/auth/login -H \"Content-Type: application/json\" -d \"{\"\"email\"\":\"\"admin@example.com\"\",\"\"password\"\":\"\"$password\"\"}\")"
     ],
     "deny": [],
     "ask": []
