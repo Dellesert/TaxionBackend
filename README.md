@@ -133,7 +133,7 @@ sudo usermod -aG docker $USER
 ### 1. Клонирование репозитория
 
 ```bash
-git clone <URL_ВАШЕГО_РЕПОЗИТОРИЯ>
+git clone https://github.com/mishkajackson/Taxion
 cd TaxionBack
 ```
 
