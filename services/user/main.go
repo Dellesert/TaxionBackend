@@ -33,6 +33,7 @@ import (
 	"tachyon-messenger/services/user/usecase"
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/database"
+	"tachyon-messenger/shared/email"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
@@ -66,8 +67,8 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations
-	if err := db.Migrate(&models.Department{}, &models.User{}); err != nil {
+	// Run database migrations (including 2FA table)
+	if err := db.Migrate(&models.Department{}, &models.User{}, &models.TwoFactorCode{}); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -88,9 +89,14 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	// Initialize dependencies
+	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	departmentRepo := repository.NewDepartmentRepository(db)
+	twoFARepo := repository.NewTwoFARepository(db)
+
+	// Initialize email service for 2FA
+	emailConfig := email.LoadConfigFromEnv()
+	emailService := email.NewEmailService(emailConfig)
 
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
@@ -109,6 +115,7 @@ func main() {
 	adminUsecase := usecase.NewAdminUsecase(userRepo, departmentRepo)
 	departmentUsecase := usecase.NewDepartmentUsecase(departmentRepo, userRepo)
 	initUsecase := usecase.NewInitUsecase(userRepo)
+	twoFAUsecase := usecase.NewTwoFAUsecase(userRepo, twoFARepo, emailService, authUsecase)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -124,6 +131,7 @@ func main() {
 	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)
 	settingsHandler := handlers.NewSettingsHandler()
 	sessionHandler := handlers.NewSessionHandler()
+	twoFAHandler := handlers.NewTwoFAHandler(twoFAUsecase, authUsecase, jwtConfig)
 
 	// Create Gin router
 	router := gin.New()
@@ -132,7 +140,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -167,7 +175,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -179,6 +187,10 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		auth.POST("/login/superadmin", authHandler.LoginSuperAdmin)
 		auth.POST("/logout", middleware.AuthMiddleware(), authHandler.Logout) // Requires auth
 		auth.POST("/refresh", authHandler.RefreshToken)
+
+		// 2FA endpoints (public - no auth required)
+		auth.POST("/2fa/send", twoFAHandler.SendCode)
+		auth.POST("/2fa/verify", twoFAHandler.VerifyCode)
 	}
 
 	// Internal routes (for inter-service communication, no auth required)
@@ -204,6 +216,10 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			v1Auth.POST("/login/superadmin", authHandler.LoginSuperAdmin)
 			v1Auth.POST("/logout", middleware.AuthMiddleware(), authHandler.Logout) // Requires auth
 			v1Auth.POST("/refresh", authHandler.RefreshToken)
+
+			// 2FA endpoints (public - no auth required)
+			v1Auth.POST("/2fa/send", twoFAHandler.SendCode)
+			v1Auth.POST("/2fa/verify", twoFAHandler.VerifyCode)
 		}
 
 		// Super admin password change endpoint (protected, super admin only)

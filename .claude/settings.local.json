@@ -70,7 +70,10 @@
       "Bash(docker-compose logs:*)",
       "Bash(for service in task poll calendar notification file)",
       "Bash(do echo \"=== $service ===\" grep -n \"JWTMiddleware\\|AuthMiddleware\" services/$service/main.go)",
-      "Bash(do echo \"=== $service-service ===\" docker logs tachyon-$service-service)"
+      "Bash(do echo \"=== $service-service ===\" docker logs tachyon-$service-service)",
+      "Bash(main_fixed.go)",
+      "Bash(main_clean.go)",
+      "Bash(docker run:*)"
     ],
     "deny": [],
     "ask": []
