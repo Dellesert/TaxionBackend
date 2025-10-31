@@ -25,6 +25,7 @@ type UserRepository interface {
 	GetAllWithDepartments(limit, offset int) ([]*models.User, error)
 	GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error)
 	SuperAdminExists() (bool, error)
+	UpdateTwoFactorStatus(userID uint, enabled bool) error
 }
 
 // DepartmentRepository defines the interface for department data operations
@@ -302,6 +303,18 @@ func (r *departmentRepository) Delete(id uint) error {
 	}
 	if result.RowsAffected == 0 {
 		return fmt.Errorf("department not found")
+	}
+	return nil
+}
+
+// UpdateTwoFactorStatus updates the two-factor authentication status for a user
+func (r *userRepository) UpdateTwoFactorStatus(userID uint, enabled bool) error {
+	result := r.db.Model(&models.User{}).Where("id = ?", userID).Update("two_factor_enabled", enabled)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update 2FA status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user not found")
 	}
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"tachyon-messenger/services/user/usecase"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -815,6 +816,92 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "User deleted successfully",
+		"request_id": requestID,
+	})
+}
+
+// UpdateUser2FA handles enabling/disabling 2FA for a user (super admin only)
+func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin info from context
+	adminID, adminIDExists := c.Get("user_id")
+	adminRole, adminRoleExists := c.Get("user_role")
+
+	if !adminIDExists || !adminRoleExists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Only super_admin can manage 2FA settings
+	role, ok := adminRole.(sharedmodels.Role)
+	if !ok || role != sharedmodels.RoleSuperAdmin {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"admin_role": adminRole,
+		}).Warn("Non-super admin attempted to manage 2FA")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Only super administrators can manage 2FA settings",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user ID from path
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Bind request
+	var req models.AdminUpdate2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Update 2FA status
+	user, err := h.adminUsecase.UpdateUser2FAStatus(uint(id), &req)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		errorMessage := err.Error()
+
+		if strings.Contains(errorMessage, "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "User not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":         requestID,
+		"admin_id":           adminID,
+		"admin_role":         adminRole,
+		"user_id":            id,
+		"two_factor_enabled": req.TwoFactorEnabled,
+	}).Info("User 2FA status updated by admin")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "2FA status updated successfully",
+		"user":       user,
 		"request_id": requestID,
 	})
 }

@@ -21,6 +21,7 @@ type AdminUsecase interface {
 	ActivateUser(id uint) (*models.UserResponse, error)
 	DeactivateUser(id uint) (*models.UserResponse, error)
 	ResetUserPassword(id uint, newPassword string) error
+	UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARequest) (*models.UserResponse, error)
 }
 
 // adminUsecase implements AdminUsecase interface
@@ -259,4 +260,33 @@ func hashPasswordAdmin(password string) (string, error) {
 		return "", err
 	}
 	return string(bytes), nil
+}
+
+// UpdateUser2FAStatus enables or disables 2FA for a specific user
+func (a *adminUsecase) UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARequest) (*models.UserResponse, error) {
+	// Get user to verify exists
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Update 2FA status
+	if err := a.userRepo.UpdateTwoFactorStatus(id, req.TwoFactorEnabled); err != nil {
+		return nil, fmt.Errorf("failed to update 2FA status: %w", err)
+	}
+
+	// Update local user object
+	user.TwoFactorEnabled = req.TwoFactorEnabled
+
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
 }

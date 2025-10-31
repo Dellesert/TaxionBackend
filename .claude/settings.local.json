@@ -73,7 +73,15 @@
       "Bash(do echo \"=== $service-service ===\" docker logs tachyon-$service-service)",
       "Bash(main_fixed.go)",
       "Bash(main_clean.go)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "Bash(timeout 3 docker logs:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNywiZW1haWwiOiJtaXNoYWphY2tzb25AaW5ib3gucnUiLCJyb2xlIjoiZW1wbG95ZWUiLCJpc3MiOiJ0YWNoeW9uLW1lc3NlbmdlciIsInN1YiI6IjE3IiwiZXhwIjoxNzYxOTIzNzY4LCJuYmYiOjE3NjE5MjI4NjgsImlhdCI6MTc2MTkyMjg2OH0.2GUVCCbVutKyv9uFnvAgRZOriz0-zb3_tOAs2eF9wcs\")",
+      "Bash(timeout 5 docker exec:*)",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNywiZW1haWwiOiJtaXNoYWphY2tzb25AaW5ib3gucnUiLCJyb2xlIjoiYWRtaW4iLCJpc3MiOiJ0YWNoeW9uLW1lc3NlbmdlciIsInN1YiI6IjE3IiwiZXhwIjoxNzYxOTIzOTk0LCJuYmYiOjE3NjE5MjMwOTQsImlhdCI6MTc2MTkyMzA5NH0.0n270dxBVLaQaLfVOT2upVSNsG3xA04uMdsGWVD0rnk\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNywiZW1haWwiOiJtaXNoYWphY2tzb25AaW5ib3gucnUiLCJyb2xlIjoic3VwZXJfYWRtaW4iLCJpc3MiOiJ0YWNoeW9uLW1lc3NlbmdlciIsInN1YiI6IjE3IiwiZXhwIjoxNzYxOTI0MzI5LCJuYmYiOjE3NjE5MjM0MjksImlhdCI6MTc2MTkyMzQyOX0.jG7Y03VcfuJ3TQB-FYduzhZCCihZdSWPU2UJrud68do\")",
+      "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoxNywiZW1haWwiOiJtaXNoYWphY2tzb25AaW5ib3gucnUiLCJyb2xlIjoic3VwZXJfYWRtaW4iLCJpc3MiOiJ0YWNoeW9uLW1lc3NlbmdlciIsInN1YiI6IjE3IiwiZXhwIjoxNzYxOTI0NjMyLCJuYmYiOjE3NjE5MjM3MzIsImlhdCI6MTc2MTkyMzczMn0.CrHDX3szbJ1R66eZZ5MplX7eKOkVdujl1cKODw5Svzo\")",
+      "Bash(go run:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": []

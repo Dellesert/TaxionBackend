@@ -37,6 +37,7 @@ type User struct {
 	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
 	IsActive           bool              `gorm:"not null;default:true" json:"is_active"`
 	MustChangePassword bool              `gorm:"not null;default:false" json:"must_change_password"`
+	TwoFactorEnabled   bool              `gorm:"not null;default:false" json:"two_factor_enabled"`
 }
 
 // TableName returns the table name for User model
@@ -124,6 +125,7 @@ type UserResponse struct {
 	LastActiveAt       *time.Time          `json:"last_active_at,omitempty"`
 	IsActive           bool                `json:"is_active"`
 	MustChangePassword bool                `json:"must_change_password"`
+	TwoFactorEnabled   bool                `json:"two_factor_enabled"`
 	CreatedAt          time.Time           `json:"created_at"`
 	UpdatedAt          time.Time           `json:"updated_at"`
 }
@@ -143,6 +145,7 @@ func (u *User) ToResponse() *UserResponse {
 		LastActiveAt:       u.LastActiveAt,
 		IsActive:           u.IsActive,
 		MustChangePassword: u.MustChangePassword,
+		TwoFactorEnabled:   u.TwoFactorEnabled,
 		CreatedAt:          u.CreatedAt,
 		UpdatedAt:          u.UpdatedAt,
 	}
@@ -219,4 +222,9 @@ type AdminUpdateUserRoleRequest struct {
 // AdminUpdateUserStatusRequest represents admin request to update user status
 type AdminUpdateUserStatusRequest struct {
 	Status models.UserStatus `json:"status" binding:"required,oneof=online busy away offline" validate:"required,oneof=online busy away offline"`
+}
+
+// AdminUpdate2FARequest represents admin request to enable/disable 2FA for a user
+type AdminUpdate2FARequest struct {
+	TwoFactorEnabled bool `json:"two_factor_enabled"`
 }

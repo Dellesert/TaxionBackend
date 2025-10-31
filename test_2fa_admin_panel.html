@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaxionDashboard - Управление 2FA (Тест)</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .login-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .users-section {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e1e8ed;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .user-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 2px solid #e1e8ed;
+            transition: border-color 0.3s;
+        }
+
+        .user-card:hover {
+            border-color: #667eea;
+        }
+
+        .user-info {
+            flex: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .user-email {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .user-role {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 10px;
+        }
+
+        .role-admin {
+            background: #ffd700;
+            color: #333;
+        }
+
+        .role-employee {
+            background: #e1e8ed;
+            color: #333;
+        }
+
+        .badge-2fa {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .badge-2fa-enabled {
+            background: #4caf50;
+            color: white;
+        }
+
+        .badge-2fa-disabled {
+            background: #f44336;
+            color: white;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #4caf50;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔐 TaxionDashboard - Управление 2FA</h1>
+            <p>Тестовая панель для управления двухфакторной аутентификацией</p>
+        </div>
+
+        <!-- Login Section -->
+        <div class="login-section" id="loginSection">
+            <h2>Вход администратора через 2FA</h2>
+            <div id="loginAlert" class="alert hidden"></div>
+
+            <div id="loginStep1">
+                <div class="form-group">
+                    <label>Email:</label>
+                    <input type="email" id="adminEmail" placeholder="admin@example.com">
+                </div>
+                <div class="form-group">
+                    <label>Пароль:</label>
+                    <input type="password" id="adminPassword" placeholder="Введите пароль">
+                </div>
+                <button onclick="sendAdminCode()" id="btnSendCode">Отправить код</button>
+            </div>
+
+            <div id="loginStep2" class="hidden">
+                <div class="form-group">
+                    <label>Код из email:</label>
+                    <input type="text" id="admin2FACode" placeholder="123456" maxlength="6">
+                </div>
+                <button onclick="verifyAdminCode()" id="btnVerifyCode">Войти</button>
+                <button onclick="resetLogin()" style="background: #6c757d; margin-left: 10px;">Отмена</button>
+            </div>
+        </div>
+
+        <!-- Users Section -->
+        <div class="users-section hidden" id="usersSection">
+            <h2>Управление пользователями</h2>
+            <div id="usersAlert" class="alert hidden"></div>
+            <button onclick="loadUsers()" style="margin-bottom: 20px;">🔄 Обновить список</button>
+            <button onclick="logout()" style="background: #dc3545; margin-bottom: 20px; margin-left: 10px;">Выйти</button>
+
+            <div id="usersList"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8081/api/v1';
+        let adminToken = null;
+        let currentAdminEmail = null;
+
+        // Отправка 2FA кода администратору
+        async function sendAdminCode() {
+            const email = document.getElementById('adminEmail').value;
+            const password = document.getElementById('adminPassword').value;
+
+            if (!email || !password) {
+                showAlert('loginAlert', 'Введите email и пароль', 'error');
+                return;
+            }
+
+            currentAdminEmail = email;
+            document.getElementById('btnSendCode').disabled = true;
+            document.getElementById('btnSendCode').textContent = 'Отправка...';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/2fa/send`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка отправки кода');
+                }
+
+                showAlert('loginAlert', 'Код отправлен на email! Проверьте почту.', 'success');
+                document.getElementById('loginStep1').classList.add('hidden');
+                document.getElementById('loginStep2').classList.remove('hidden');
+
+            } catch (error) {
+                showAlert('loginAlert', error.message, 'error');
+            } finally {
+                document.getElementById('btnSendCode').disabled = false;
+                document.getElementById('btnSendCode').textContent = 'Отправить код';
+            }
+        }
+
+        // Проверка 2FA кода и вход
+        async function verifyAdminCode() {
+            const code = document.getElementById('admin2FACode').value;
+
+            if (!code || code.length !== 6) {
+                showAlert('loginAlert', 'Введите 6-значный код', 'error');
+                return;
+            }
+
+            document.getElementById('btnVerifyCode').disabled = true;
+            document.getElementById('btnVerifyCode').textContent = 'Проверка...';
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/2fa/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: currentAdminEmail, code })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Неверный код');
+                }
+
+                adminToken = data.tokens.access_token;
+                showAlert('loginAlert', `Добро пожаловать, ${data.user.name}!`, 'success');
+
+                // Переключиться на панель управления
+                setTimeout(() => {
+                    document.getElementById('loginSection').classList.add('hidden');
+                    document.getElementById('usersSection').classList.remove('hidden');
+                    loadUsers();
+                }, 1500);
+
+            } catch (error) {
+                showAlert('loginAlert', error.message, 'error');
+            } finally {
+                document.getElementById('btnVerifyCode').disabled = false;
+                document.getElementById('btnVerifyCode').textContent = 'Войти';
+            }
+        }
+
+        // Загрузка списка пользователей
+        async function loadUsers() {
+            if (!adminToken) {
+                showAlert('usersAlert', 'Необходима авторизация', 'error');
+                return;
+            }
+
+            document.getElementById('usersList').innerHTML = '<div class="loading">Загрузка...</div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users?limit=50`, {
+                    headers: { 'Authorization': `Bearer ${adminToken}` }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка загрузки пользователей');
+                }
+
+                displayUsers(data.users || []);
+
+            } catch (error) {
+                document.getElementById('usersList').innerHTML = '';
+                showAlert('usersAlert', error.message, 'error');
+            }
+        }
+
+        // Отображение пользователей
+        function displayUsers(users) {
+            const container = document.getElementById('usersList');
+
+            if (users.length === 0) {
+                container.innerHTML = '<p class="loading">Пользователи не найдены</p>';
+                return;
+            }
+
+            container.innerHTML = users.map(user => `
+                <div class="user-card">
+                    <div class="user-info">
+                        <div class="user-name">${user.name}</div>
+                        <div class="user-email">${user.email}</div>
+                        <div style="margin-top: 10px;">
+                            <span class="user-role role-${user.role === 'admin' || user.role === 'super_admin' ? 'admin' : 'employee'}">
+                                ${user.role}
+                            </span>
+                            <span class="badge-2fa badge-2fa-${user.two_factor_enabled ? 'enabled' : 'disabled'}">
+                                2FA: ${user.two_factor_enabled ? 'Включена' : 'Выключена'}
+                            </span>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" ${user.two_factor_enabled ? 'checked' : ''}
+                                   onchange="toggle2FA(${user.id}, this.checked, '${user.name}')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Переключение 2FA для пользователя
+        async function toggle2FA(userId, enabled, userName) {
+            if (!confirm(`${enabled ? 'Включить' : 'Выключить'} 2FA для ${userName}?`)) {
+                // Revert checkbox if cancelled
+                loadUsers();
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${userId}/2fa`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${adminToken}`
+                    },
+                    body: JSON.stringify({ two_factor_enabled: enabled })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка обновления 2FA');
+                }
+
+                showAlert('usersAlert', `2FA ${enabled ? 'включена' : 'выключена'} для ${userName}`, 'success');
+                loadUsers();
+
+            } catch (error) {
+                showAlert('usersAlert', error.message, 'error');
+                loadUsers();
+            }
+        }
+
+        // Вспомогательные функции
+        function showAlert(elementId, message, type) {
+            const alert = document.getElementById(elementId);
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alert.classList.remove('hidden');
+
+            setTimeout(() => {
+                alert.classList.add('hidden');
+            }, 5000);
+        }
+
+        function resetLogin() {
+            document.getElementById('loginStep1').classList.remove('hidden');
+            document.getElementById('loginStep2').classList.add('hidden');
+            document.getElementById('admin2FACode').value = '';
+        }
+
+        function logout() {
+            adminToken = null;
+            currentAdminEmail = null;
+            document.getElementById('loginSection').classList.remove('hidden');
+            document.getElementById('usersSection').classList.add('hidden');
+            resetLogin();
+            document.getElementById('adminEmail').value = '';
+            document.getElementById('adminPassword').value = '';
+        }
+    </script>
+</body>
+</html>
