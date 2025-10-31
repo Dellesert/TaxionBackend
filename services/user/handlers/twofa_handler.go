@@ -94,9 +94,16 @@ func (h *TwoFAHandler) SendCode(c *gin.Context) {
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
 			errorMessage = "Account is deactivated"
+		} else if strings.Contains(err.Error(), "super admin access is restricted") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Super admin access is restricted to web dashboard"
 		} else if strings.Contains(err.Error(), "invalid password format") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
+		} else if strings.Contains(err.Error(), "two factor authentication is not enabled") ||
+			strings.Contains(err.Error(), "2FA not enabled") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Two factor authentication is not enabled for this account"
 		}
 
 		c.JSON(statusCode, gin.H{
