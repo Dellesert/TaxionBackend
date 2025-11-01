@@ -112,27 +112,38 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 			RawQuery: c.Request.URL.RawQuery,
 		}
 
-		// Read request body
-		var bodyBytes []byte
-		if c.Request.Body != nil {
-			bodyBytes, err = io.ReadAll(c.Request.Body)
-			if err != nil {
-				logger.WithFields(map[string]interface{}{
-					"request_id": requestID,
-					"service":    serviceName,
-					"error":      err.Error(),
-				}).Error("Failed to read request body")
+		// For multipart/form-data, we need to forward the body directly without reading it
+		contentType := c.GetHeader("Content-Type")
+		isMultipart := strings.HasPrefix(contentType, "multipart/form-data")
 
-				c.JSON(http.StatusBadRequest, gin.H{
-					"error":      "Failed to read request body",
-					"request_id": requestID,
-				})
-				return
+		var bodyReader io.Reader
+		if isMultipart {
+			// For multipart, forward the body directly
+			bodyReader = c.Request.Body
+		} else {
+			// For other content types, read and buffer the body
+			var bodyBytes []byte
+			if c.Request.Body != nil {
+				bodyBytes, err = io.ReadAll(c.Request.Body)
+				if err != nil {
+					logger.WithFields(map[string]interface{}{
+						"request_id": requestID,
+						"service":    serviceName,
+						"error":      err.Error(),
+					}).Error("Failed to read request body")
+
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error":      "Failed to read request body",
+						"request_id": requestID,
+					})
+					return
+				}
 			}
+			bodyReader = bytes.NewReader(bodyBytes)
 		}
 
 		// Create proxy request
-		proxyReq, err := http.NewRequest(c.Request.Method, proxyURL.String(), bytes.NewReader(bodyBytes))
+		proxyReq, err := http.NewRequest(c.Request.Method, proxyURL.String(), bodyReader)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{
 				"request_id": requestID,

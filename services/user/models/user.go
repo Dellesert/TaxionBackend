@@ -239,3 +239,30 @@ type AdminUpdateUserStatusRequest struct {
 type AdminUpdate2FARequest struct {
 	TwoFactorEnabled bool `json:"two_factor_enabled"`
 }
+
+// CSVUserRow represents a single user row from CSV import
+type CSVUserRow struct {
+	Email        string `csv:"email"`
+	Name         string `csv:"name"`
+	Password     string `csv:"password"`
+	Role         string `csv:"role"`
+	DepartmentID string `csv:"department_id"`
+	Phone        string `csv:"phone"`
+	Position     string `csv:"position"`
+}
+
+// ImportUsersResponse represents response from CSV import
+type ImportUsersResponse struct {
+	TotalRows      int                    `json:"total_rows"`
+	SuccessCount   int                    `json:"success_count"`
+	ErrorCount     int                    `json:"error_count"`
+	SuccessUsers   []*UserResponse        `json:"success_users"`
+	Errors         []ImportError          `json:"errors"`
+}
+
+// ImportError represents an error that occurred during import
+type ImportError struct {
+	Row     int    `json:"row"`
+	Email   string `json:"email,omitempty"`
+	Message string `json:"message"`
+}

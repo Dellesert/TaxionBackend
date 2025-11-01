@@ -22,6 +22,7 @@ type AdminUsecase interface {
 	DeactivateUser(id uint) (*models.UserResponse, error)
 	ResetUserPassword(id uint, newPassword string) error
 	UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARequest) (*models.UserResponse, error)
+	ImportUsersFromCSV(csvRows []models.CSVUserRow) (*models.ImportUsersResponse, error)
 }
 
 // adminUsecase implements AdminUsecase interface
@@ -280,6 +281,138 @@ func (a *adminUsecase) UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARe
 
 	// Update local user object
 	user.TwoFactorEnabled = req.TwoFactorEnabled
+
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
+}
+
+// ImportUsersFromCSV imports users from CSV rows with validation
+func (a *adminUsecase) ImportUsersFromCSV(csvRows []models.CSVUserRow) (*models.ImportUsersResponse, error) {
+	response := &models.ImportUsersResponse{
+		TotalRows:    len(csvRows),
+		SuccessCount: 0,
+		ErrorCount:   0,
+		SuccessUsers: []*models.UserResponse{},
+		Errors:       []models.ImportError{},
+	}
+
+	for i, row := range csvRows {
+		rowNum := i + 2 // +2 because row 1 is header, and array is 0-indexed
+
+		// Validate and create user
+		user, err := a.validateAndCreateUserFromCSV(row, rowNum)
+		if err != nil {
+			response.ErrorCount++
+			response.Errors = append(response.Errors, models.ImportError{
+				Row:     rowNum,
+				Email:   row.Email,
+				Message: err.Error(),
+			})
+			continue
+		}
+
+		response.SuccessCount++
+		response.SuccessUsers = append(response.SuccessUsers, user)
+	}
+
+	return response, nil
+}
+
+// validateAndCreateUserFromCSV validates a CSV row and creates a user
+func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNum int) (*models.UserResponse, error) {
+	// Trim all fields
+	email := strings.TrimSpace(row.Email)
+	name := strings.TrimSpace(row.Name)
+	password := strings.TrimSpace(row.Password)
+	role := strings.TrimSpace(row.Role)
+	phone := strings.TrimSpace(row.Phone)
+	position := strings.TrimSpace(row.Position)
+	departmentIDStr := strings.TrimSpace(row.DepartmentID)
+
+	// Validate required fields
+	if email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if password == "" {
+		return nil, fmt.Errorf("password is required")
+	}
+
+	// Validate email format
+	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return nil, fmt.Errorf("invalid email format")
+	}
+
+	// Check if user already exists
+	existingUser, err := a.userRepo.GetByEmail(email)
+	if err == nil && existingUser != nil {
+		return nil, fmt.Errorf("user with email %s already exists", email)
+	}
+
+	// Validate password strength
+	if err := validatePasswordStrength(password); err != nil {
+		return nil, fmt.Errorf("password validation failed: %w", err)
+	}
+
+	// Set default role if not provided
+	if role == "" {
+		role = string(sharedmodels.RoleEmployee)
+	}
+
+	// Validate role
+	if !isValidRole(role) {
+		return nil, fmt.Errorf("invalid role: %s (must be one of: employee, department_head, admin, super_admin)", role)
+	}
+
+	// Parse department ID if provided
+	var departmentID *uint
+	if departmentIDStr != "" {
+		var deptID uint
+		_, err := fmt.Sscanf(departmentIDStr, "%d", &deptID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid department_id: must be a number")
+		}
+
+		// Verify department exists
+		_, err = a.departmentRepo.GetByID(deptID)
+		if err != nil {
+			return nil, fmt.Errorf("department with ID %d not found", deptID)
+		}
+
+		departmentID = &deptID
+	}
+
+	// Hash password
+	hashedPassword, err := hashPasswordAdmin(password)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Create user
+	user := &models.User{
+		Email:          email,
+		Name:           name,
+		HashedPassword: &hashedPassword,
+		Role:           sharedmodels.Role(role),
+		Status:         sharedmodels.StatusOffline,
+		DepartmentID:   departmentID,
+		Phone:          phone,
+		Position:       position,
+		IsActive:       true,
+	}
+
+	// Save user
+	if err := a.userRepo.Create(user); err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
 
 	// Get user with department for response
 	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)

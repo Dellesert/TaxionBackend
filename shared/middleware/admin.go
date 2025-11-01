@@ -193,10 +193,14 @@ func ValidateAdminRequest() gin.HandlerFunc {
 
 		// Check Content-Type for POST/PUT requests
 		contentType := c.GetHeader("Content-Type")
-		if contentType != "application/json" && c.Request.Method != "DELETE" {
+		// Allow application/json and multipart/form-data (for file uploads)
+		isJSON := contentType == "application/json"
+		isMultipart := len(contentType) >= 19 && contentType[:19] == "multipart/form-data"
+
+		if !isJSON && !isMultipart && c.Request.Method != "DELETE" {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":      "Invalid Content-Type",
-				"message":    "Content-Type must be application/json for this request",
+				"message":    "Content-Type must be application/json or multipart/form-data for this request",
 				"request_id": requestID,
 			})
 			c.Abort()

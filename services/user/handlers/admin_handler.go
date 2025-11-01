@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/csv"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1024,4 +1026,164 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 		"message":    "Password reset successfully",
 		"request_id": requestID,
 	})
+}
+
+// parseCSVFile parses a CSV file and returns an array of CSVUserRow
+func parseCSVFile(file interface{ Read([]byte) (int, error) }) ([]models.CSVUserRow, error) {
+	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1 // Allow variable number of fields
+
+	// Read all records
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSV: %w", err)
+	}
+
+	if len(records) < 2 {
+		return nil, fmt.Errorf("CSV file must have at least a header row and one data row")
+	}
+
+	// Parse header to get column indices
+	header := records[0]
+	colIndices := make(map[string]int)
+	for i, col := range header {
+		colIndices[strings.ToLower(strings.TrimSpace(col))] = i
+	}
+
+	// Validate required columns
+	requiredCols := []string{"email", "name", "password"}
+	for _, reqCol := range requiredCols {
+		if _, exists := colIndices[reqCol]; !exists {
+			return nil, fmt.Errorf("missing required column: %s", reqCol)
+		}
+	}
+
+	// Parse data rows
+	var csvRows []models.CSVUserRow
+	for i := 1; i < len(records); i++ {
+		record := records[i]
+
+		// Skip empty rows
+		if len(record) == 0 || (len(record) == 1 && strings.TrimSpace(record[0]) == "") {
+			continue
+		}
+
+		row := models.CSVUserRow{}
+
+		// Get values by column name
+		if idx, ok := colIndices["email"]; ok && idx < len(record) {
+			row.Email = record[idx]
+		}
+		if idx, ok := colIndices["name"]; ok && idx < len(record) {
+			row.Name = record[idx]
+		}
+		if idx, ok := colIndices["password"]; ok && idx < len(record) {
+			row.Password = record[idx]
+		}
+		if idx, ok := colIndices["role"]; ok && idx < len(record) {
+			row.Role = record[idx]
+		}
+		if idx, ok := colIndices["department_id"]; ok && idx < len(record) {
+			row.DepartmentID = record[idx]
+		}
+		if idx, ok := colIndices["phone"]; ok && idx < len(record) {
+			row.Phone = record[idx]
+		}
+		if idx, ok := colIndices["position"]; ok && idx < len(record) {
+			row.Position = record[idx]
+		}
+
+		csvRows = append(csvRows, row)
+	}
+
+	if len(csvRows) == 0 {
+		return nil, fmt.Errorf("no valid data rows found in CSV")
+	}
+
+	return csvRows, nil
+}
+
+// ImportUsers handles bulk user import from CSV file
+func (h *AdminHandler) ImportUsers(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Log request details for debugging
+	logger.WithFields(map[string]interface{}{
+		"request_id":   requestID,
+		"content_type": c.ContentType(),
+		"method":       c.Request.Method,
+		"form_values":  c.Request.Form,
+	}).Info("Import users request received")
+
+	// Get admin ID from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Failed to get admin ID from context for user import")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse multipart form
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("No file uploaded for user import")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No file uploaded",
+			"request_id": requestID,
+		})
+		return
+	}
+	defer file.Close()
+
+	// Parse CSV
+	csvRows, err := parseCSVFile(file)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to parse CSV file")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Failed to parse CSV file: " + err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Import users
+	result, err := h.adminUsecase.ImportUsersFromCSV(csvRows)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Error("Failed to import users from CSV")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to import users",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":     requestID,
+		"admin_id":       adminID,
+		"total_rows":     result.TotalRows,
+		"success_count":  result.SuccessCount,
+		"error_count":    result.ErrorCount,
+	}).Info("Users imported from CSV")
+
+	c.JSON(http.StatusOK, result)
 }
