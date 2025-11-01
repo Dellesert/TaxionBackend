@@ -31,14 +31,16 @@ type AuthUsecase interface {
 type authUsecase struct {
 	userRepo       repository.UserRepository
 	departmentRepo repository.DepartmentRepository
+	settingsRepo   repository.SettingsRepository
 	jwtConfig      *middleware.JWTConfig
 }
 
 // NewAuthUsecase creates a new auth usecase
-func NewAuthUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository, jwtConfig *middleware.JWTConfig) AuthUsecase {
+func NewAuthUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository, settingsRepo repository.SettingsRepository, jwtConfig *middleware.JWTConfig) AuthUsecase {
 	return &authUsecase{
 		userRepo:       userRepo,
 		departmentRepo: departmentRepo,
+		settingsRepo:   settingsRepo,
 		jwtConfig:      jwtConfig,
 	}
 }
@@ -88,7 +90,7 @@ func (a *authUsecase) Register(req *models.CreateUserRequest) (*models.UserRespo
 	user := &models.User{
 		Email:          req.Email,
 		Name:           strings.TrimSpace(req.Name),
-		HashedPassword: hashedPassword,
+		HashedPassword: &hashedPassword,
 		DepartmentID:   req.DepartmentID,
 		Position:       strings.TrimSpace(req.Position),
 		Phone:          strings.TrimSpace(req.Phone),
@@ -129,6 +131,15 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 		return nil, fmt.Errorf("password is required")
 	}
 
+	// Check security settings to see if password login is allowed
+	settings, err := a.settingsRepo.GetOrCreate()
+	if err == nil && settings != nil {
+		// Check if password authentication is allowed
+		if settings.AuthMode == models.AuthModePasskey {
+			return nil, fmt.Errorf("password login is disabled. Please use Passkey authentication")
+		}
+	}
+
 	// Normalize email
 	email = strings.ToLower(strings.TrimSpace(email))
 
@@ -151,8 +162,15 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 	}
 
 	// Verify password
-	if err := a.verifyPassword(user.HashedPassword, password); err != nil {
+	if err := a.verifyPassword(stringValue(user.HashedPassword), password); err != nil {
 		return nil, fmt.Errorf("invalid email or password")
+	}
+
+	// Check if 2FA is globally required OR enabled for this specific user
+	if settings != nil {
+		if settings.SecondFactorMode == models.SecondFactorMode2FARequired || user.TwoFactorEnabled {
+			return nil, fmt.Errorf("2FA is required for this user. Please use /api/v1/auth/2fa/send to get verification code")
+		}
 	}
 
 	// Update user status to online and last active time
@@ -230,6 +248,15 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 		return nil, fmt.Errorf("password is required")
 	}
 
+	// Check security settings to see if password login is allowed
+	settings, err := a.settingsRepo.GetOrCreate()
+	if err == nil && settings != nil {
+		// Check if password authentication is allowed
+		if settings.AuthMode == models.AuthModePasskey {
+			return nil, fmt.Errorf("password login is disabled. Please use Passkey authentication")
+		}
+	}
+
 	// Normalize email
 	email = strings.ToLower(strings.TrimSpace(email))
 
@@ -251,13 +278,15 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 	}
 
 	// Verify password
-	if err := a.verifyPassword(user.HashedPassword, password); err != nil {
+	if err := a.verifyPassword(stringValue(user.HashedPassword), password); err != nil {
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
-	// Check if 2FA is enabled for this user
-	if user.TwoFactorEnabled {
-		return nil, fmt.Errorf("2FA is required for this user. Please use /api/v1/auth/2fa/send to get verification code")
+	// Check if 2FA is globally required OR enabled for this specific user
+	if settings != nil {
+		if settings.SecondFactorMode == models.SecondFactorMode2FARequired || user.TwoFactorEnabled {
+			return nil, fmt.Errorf("2FA is required for this user. Please use /api/v1/auth/2fa/send to get verification code")
+		}
 	}
 
 	// Update user status to online and last active time

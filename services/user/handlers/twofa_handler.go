@@ -241,7 +241,7 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 			c.SetCookie(
 				"session_id",
 				session.SessionID,
-				int(session.ExpiresAt.Unix()),
+				int(session.ExpiresAt.Unix()-session.CreatedAt.Unix()),
 				"/",
 				"",
 				false, // secure - set to true in production with HTTPS
@@ -252,6 +252,11 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 				"session_id": session.SessionID,
 				"expires_at": session.ExpiresAt.Unix(),
 			}
+		}
+
+		// Add must_change_password flag for super admin
+		if user.MustChangePassword {
+			response["must_change_password"] = true
 		}
 
 	case sharedmodels.AuthModeJWT:

@@ -137,7 +137,7 @@ func (p *profileUsecase) ChangePassword(id uint, req *models.ChangePasswordReque
 	}
 
 	// Verify current password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.HashedPassword), []byte(req.CurrentPassword)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(stringValue(user.HashedPassword)), []byte(req.CurrentPassword)); err != nil {
 		return fmt.Errorf("current password is incorrect")
 	}
 
@@ -148,7 +148,8 @@ func (p *profileUsecase) ChangePassword(id uint, req *models.ChangePasswordReque
 	}
 
 	// Update password
-	user.HashedPassword = string(hashedPassword)
+	hashedPwd := string(hashedPassword)
+	user.HashedPassword = &hashedPwd
 	if err := p.userRepo.Update(user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
@@ -197,7 +198,8 @@ func (p *profileUsecase) ChangeSuperAdminPassword(id uint, newPassword string) e
 	}
 
 	// Update password and reset must_change_password flag
-	user.HashedPassword = string(hashedPassword)
+	hashedPwd := string(hashedPassword)
+	user.HashedPassword = &hashedPwd
 	user.MustChangePassword = false
 
 	if err := p.userRepo.Update(user); err != nil {

@@ -69,11 +69,6 @@ func (u *twoFAUsecase) SendCode(email, password, ipAddress, userAgent string) er
 		return fmt.Errorf("user account is deactivated")
 	}
 
-	// Block super_admin from mobile app access
-	if user.Role == "super_admin" {
-		return fmt.Errorf("super admin access is restricted to web dashboard")
-	}
-
 	// Check if 2FA is enabled for this user
 	if !user.TwoFactorEnabled {
 		return fmt.Errorf("two factor authentication is not enabled for this account")
@@ -86,7 +81,11 @@ func (u *twoFAUsecase) SendCode(email, password, ipAddress, userAgent string) er
 
 	// Verify password hash (we need to expose this in auth usecase or recreate the logic)
 	// For now, we'll use a simple bcrypt check
-	if err := verifyPasswordHash(user.HashedPassword, password); err != nil {
+	hashedPwd := ""
+	if user.HashedPassword != nil {
+		hashedPwd = *user.HashedPassword
+	}
+	if err := verifyPasswordHash(hashedPwd, password); err != nil {
 		return fmt.Errorf("invalid email or password")
 	}
 

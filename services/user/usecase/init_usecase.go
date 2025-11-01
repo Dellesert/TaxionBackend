@@ -66,10 +66,11 @@ func (u *initUsecase) InitializeSuperAdmin() error {
 	}
 
 	// Create super admin user
+	hashedPwd := string(hashedPassword)
 	superAdmin := &models.User{
 		Email:              email,
 		Name:               name,
-		HashedPassword:     string(hashedPassword),
+		HashedPassword:     &hashedPwd,
 		Role:               sharedmodels.RoleSuperAdmin,
 		Status:             sharedmodels.StatusOffline,
 		IsActive:           true,

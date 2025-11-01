@@ -58,10 +58,11 @@ func (u *userUsecase) CreateUser(req *models.CreateUserRequest) (*models.UserRes
 	}
 
 	// Create user model
+	hashedPwd := string(hashedPassword)
 	user := &models.User{
 		Email:          req.Email,
 		Name:           req.Name,
-		HashedPassword: string(hashedPassword),
+		HashedPassword: &hashedPwd,
 		DepartmentID:   req.DepartmentID,
 		Position:       req.Position,
 		Phone:          req.Phone,

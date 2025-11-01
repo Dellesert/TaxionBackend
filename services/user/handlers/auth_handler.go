@@ -177,9 +177,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		if strings.Contains(err.Error(), "invalid email or password") {
 			statusCode = http.StatusUnauthorized
 			errorMessage = "Invalid email or password"
+		} else if strings.Contains(err.Error(), "2FA is required") ||
+			strings.Contains(err.Error(), "2FA") {
+			statusCode = http.StatusForbidden
+			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
 			errorMessage = "Account is deactivated"
+		} else if strings.Contains(err.Error(), "Passkey") ||
+			strings.Contains(err.Error(), "password login is disabled") {
+			statusCode = http.StatusForbidden
+			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "email is required") ||
 			strings.Contains(err.Error(), "password is required") {
 			statusCode = http.StatusBadRequest

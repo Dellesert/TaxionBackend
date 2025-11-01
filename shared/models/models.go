@@ -100,11 +100,12 @@ type RefreshTokenRequest struct {
 // Session Related Structures
 
 // AuthMode represents authentication mode
+// NOTE: Only session-based authentication is used (JWT support deprecated)
 type AuthMode string
 
 const (
-	AuthModeJWT     AuthMode = "jwt"     // Stateless JWT authentication
-	AuthModeSession AuthMode = "session" // Stateful session-based authentication
+	AuthModeJWT     AuthMode = "jwt"     // Deprecated: Use session instead
+	AuthModeSession AuthMode = "session" // Session-based authentication (default)
 )
 
 // Session represents user session in stateful authentication

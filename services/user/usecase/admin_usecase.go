@@ -224,7 +224,7 @@ func (a *adminUsecase) ResetUserPassword(id uint, newPassword string) error {
 	}
 
 	// Update password
-	user.HashedPassword = hashedPassword
+	user.HashedPassword = &hashedPassword
 
 	// Save updated user
 	if err := a.userRepo.Update(user); err != nil {

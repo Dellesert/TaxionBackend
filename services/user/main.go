@@ -67,8 +67,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA table)
-	if err := db.Migrate(&models.Department{}, &models.User{}, &models.TwoFactorCode{}); err != nil {
+	// Run database migrations (including 2FA, passkey, and system settings tables)
+	if err := db.Migrate(
+		&models.Department{},
+		&models.User{},
+		&models.TwoFactorCode{},
+		&models.PasskeyCredential{},
+		&models.SystemSettings{},
+	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -93,6 +99,8 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	departmentRepo := repository.NewDepartmentRepository(db)
 	twoFARepo := repository.NewTwoFARepository(db)
+	passkeyRepo := repository.NewPasskeyRepository(db)
+	settingsRepo := repository.NewSettingsRepository(db)
 
 	// Initialize email service for 2FA
 	emailConfig := email.LoadConfigFromEnv()
@@ -108,14 +116,22 @@ func main() {
 
 	log.Infof("Authentication initialized in %s mode", authMode)
 
+	// Initialize WebAuthn service
+	webAuthnService, err := usecase.NewWebAuthnService()
+	if err != nil {
+		log.Fatalf("Failed to initialize WebAuthn service: %v", err)
+	}
+
 	// Initialize usecases
 	userUsecase := usecase.NewUserUsecase(userRepo)
-	authUsecase := usecase.NewAuthUsecase(userRepo, departmentRepo, jwtConfig)
+	authUsecase := usecase.NewAuthUsecase(userRepo, departmentRepo, settingsRepo, jwtConfig)
 	profileUsecase := usecase.NewProfileUsecase(userRepo, departmentRepo)
 	adminUsecase := usecase.NewAdminUsecase(userRepo, departmentRepo)
 	departmentUsecase := usecase.NewDepartmentUsecase(departmentRepo, userRepo)
 	initUsecase := usecase.NewInitUsecase(userRepo)
 	twoFAUsecase := usecase.NewTwoFAUsecase(userRepo, twoFARepo, emailService, authUsecase)
+	settingsUsecase := usecase.NewSettingsUsecase(settingsRepo, userRepo, passkeyRepo)
+	passkeyUsecase := usecase.NewPasskeyUsecase(userRepo, passkeyRepo, settingsRepo, webAuthnService)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -129,9 +145,10 @@ func main() {
 	profileHandler := handlers.NewProfileHandler(profileUsecase)
 	departmentHandler := handlers.NewDepartmentHandler(departmentUsecase)
 	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)
-	settingsHandler := handlers.NewSettingsHandler()
+	settingsHandler := handlers.NewSettingsHandler(settingsUsecase)
 	sessionHandler := handlers.NewSessionHandler()
 	twoFAHandler := handlers.NewTwoFAHandler(twoFAUsecase, authUsecase, jwtConfig)
+	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase)
 
 	// Create Gin router
 	router := gin.New()
@@ -140,7 +157,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -175,7 +192,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -191,6 +208,21 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		// 2FA endpoints (public - no auth required)
 		auth.POST("/2fa/send", twoFAHandler.SendCode)
 		auth.POST("/2fa/verify", twoFAHandler.VerifyCode)
+
+		// Passkey endpoints
+		passkey := auth.Group("/passkey")
+		{
+			// Public endpoints (no auth required for login)
+			passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)
+			passkey.POST("/login/finish", passkeyHandler.FinishAuthentication)
+
+			// Protected endpoints (require auth for registration and management)
+			passkey.POST("/register/begin", middleware.AuthMiddleware(), passkeyHandler.BeginRegistration)
+			passkey.POST("/register/finish", middleware.AuthMiddleware(), passkeyHandler.FinishRegistration)
+			passkey.GET("", middleware.AuthMiddleware(), passkeyHandler.ListPasskeys)
+			passkey.DELETE("/:id", middleware.AuthMiddleware(), passkeyHandler.DeletePasskey)
+			passkey.PATCH("/:id", middleware.AuthMiddleware(), passkeyHandler.UpdatePasskeyName)
+		}
 	}
 
 	// Internal routes (for inter-service communication, no auth required)
@@ -220,6 +252,21 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			// 2FA endpoints (public - no auth required)
 			v1Auth.POST("/2fa/send", twoFAHandler.SendCode)
 			v1Auth.POST("/2fa/verify", twoFAHandler.VerifyCode)
+
+			// Passkey endpoints (v1)
+			v1Passkey := v1Auth.Group("/passkey")
+			{
+				// Public endpoints (no auth required for login)
+				v1Passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)
+				v1Passkey.POST("/login/finish", passkeyHandler.FinishAuthentication)
+
+				// Protected endpoints (require auth for registration and management)
+				v1Passkey.POST("/register/begin", middleware.AuthMiddleware(), passkeyHandler.BeginRegistration)
+				v1Passkey.POST("/register/finish", middleware.AuthMiddleware(), passkeyHandler.FinishRegistration)
+				v1Passkey.GET("", middleware.AuthMiddleware(), passkeyHandler.ListPasskeys)
+				v1Passkey.DELETE("/:id", middleware.AuthMiddleware(), passkeyHandler.DeletePasskey)
+				v1Passkey.PATCH("/:id", middleware.AuthMiddleware(), passkeyHandler.UpdatePasskeyName)
+			}
 		}
 
 		// Super admin password change endpoint (protected, super admin only)
@@ -308,9 +355,16 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			v1AdminSettings := v1Admin.Group("/settings")
 			v1AdminSettings.Use(middleware.SuperAdminOnlyMiddleware())
 			{
-				v1AdminSettings.GET("/auth", middleware.LogAdminAction("get_auth_settings"), settingsHandler.GetAuthSettings)
-				v1AdminSettings.GET("/auth/mode", middleware.LogAdminAction("get_auth_mode"), settingsHandler.GetAuthMode)
-				v1AdminSettings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode"), settingsHandler.SetAuthMode)
+				// New settings endpoints
+				v1AdminSettings.GET("/auth", middleware.LogAdminAction("get_auth_settings"), settingsHandler.GetSettings)
+				v1AdminSettings.GET("/auth/presets", middleware.LogAdminAction("get_security_presets"), settingsHandler.GetPresets)
+				v1AdminSettings.PUT("/auth/preset", middleware.LogAdminAction("apply_security_preset"), settingsHandler.ApplyPreset)
+				v1AdminSettings.PUT("/auth/custom", middleware.LogAdminAction("update_custom_settings"), settingsHandler.UpdateCustomSettings)
+				v1AdminSettings.GET("/auth/summary", middleware.LogAdminAction("get_security_summary"), settingsHandler.GetSummary)
+
+				// Legacy endpoints (deprecated but kept for backward compatibility)
+				v1AdminSettings.GET("/auth/mode", middleware.LogAdminAction("get_auth_mode_legacy"), settingsHandler.GetAuthMode)
+				v1AdminSettings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode_legacy"), settingsHandler.SetAuthMode)
 			}
 		}
 	}
@@ -359,9 +413,16 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		settings := admin.Group("/settings")
 		settings.Use(middleware.SuperAdminOnlyMiddleware())
 		{
-			settings.GET("/auth", middleware.LogAdminAction("get_auth_settings"), settingsHandler.GetAuthSettings)
-			settings.GET("/auth/mode", middleware.LogAdminAction("get_auth_mode"), settingsHandler.GetAuthMode)
-			settings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode"), settingsHandler.SetAuthMode)
+			// New settings endpoints
+			settings.GET("/auth", middleware.LogAdminAction("get_auth_settings"), settingsHandler.GetSettings)
+			settings.GET("/auth/presets", middleware.LogAdminAction("get_security_presets"), settingsHandler.GetPresets)
+			settings.PUT("/auth/preset", middleware.LogAdminAction("apply_security_preset"), settingsHandler.ApplyPreset)
+			settings.PUT("/auth/custom", middleware.LogAdminAction("update_custom_settings"), settingsHandler.UpdateCustomSettings)
+			settings.GET("/auth/summary", middleware.LogAdminAction("get_security_summary"), settingsHandler.GetSummary)
+
+			// Legacy endpoints (deprecated but kept for backward compatibility)
+			settings.GET("/auth/mode", middleware.LogAdminAction("get_auth_mode_legacy"), settingsHandler.GetAuthMode)
+			settings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode_legacy"), settingsHandler.SetAuthMode)
 		}
 	}
 }

@@ -21,11 +21,14 @@ type UserRepository interface {
 	Delete(id uint) error
 	Count() (int64, error)
 	CountWithFilters(departmentID *uint, isActive *bool) (int64, error)
+	CountByTwoFactorEnabled() (int64, error)
+	CountByPasskeyEnabled() (int64, error)
 	GetWithDepartment(id uint) (*models.User, error)
 	GetAllWithDepartments(limit, offset int) ([]*models.User, error)
 	GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error)
 	SuperAdminExists() (bool, error)
 	UpdateTwoFactorStatus(userID uint, enabled bool) error
+	UpdatePasskeyStatus(userID uint, enabled bool) error
 }
 
 // DepartmentRepository defines the interface for department data operations
@@ -317,4 +320,34 @@ func (r *userRepository) UpdateTwoFactorStatus(userID uint, enabled bool) error 
 		return fmt.Errorf("user not found")
 	}
 	return nil
+}
+
+// UpdatePasskeyStatus updates the passkey enabled status for a user
+func (r *userRepository) UpdatePasskeyStatus(userID uint, enabled bool) error {
+	result := r.db.Model(&models.User{}).Where("id = ?", userID).Update("passkey_enabled", enabled)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update passkey status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
+// CountByTwoFactorEnabled counts users with 2FA enabled
+func (r *userRepository) CountByTwoFactorEnabled() (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.User{}).Where("two_factor_enabled = ?", true).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed to count users with 2FA: %w", err)
+	}
+	return count, nil
+}
+
+// CountByPasskeyEnabled counts users with passkey enabled
+func (r *userRepository) CountByPasskeyEnabled() (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.User{}).Where("passkey_enabled = ?", true).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed to count users with passkey: %w", err)
+	}
+	return count, nil
 }
