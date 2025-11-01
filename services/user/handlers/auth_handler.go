@@ -8,6 +8,7 @@ import (
 	"tachyon-messenger/services/user/usecase"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -25,9 +26,25 @@ func NewAuthHandler(authUsecase usecase.AuthUsecase) *AuthHandler {
 	}
 }
 
-// Register handles user registration requests
+// Register handles user registration requests (DISABLED - use invitations instead)
+// This endpoint is now restricted to super_admin only for manual user creation
 func (h *AuthHandler) Register(c *gin.Context) {
 	requestID := requestid.Get(c)
+
+	// Check if user is authenticated and has super_admin role
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      "Free registration is disabled. Use invitation system.",
+		}).Warn("Unauthorized registration attempt")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Free registration is disabled. Please use the invitation system.",
+			"request_id": requestID,
+		})
+		return
+	}
 
 	var req models.CreateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

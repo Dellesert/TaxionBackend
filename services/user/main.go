@@ -67,13 +67,14 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA, passkey, and system settings tables)
+	// Run database migrations (including 2FA, passkey, system settings, and invitations tables)
 	if err := db.Migrate(
 		&models.Department{},
 		&models.User{},
 		&models.TwoFactorCode{},
 		&models.PasskeyCredential{},
 		&models.SystemSettings{},
+		&models.Invitation{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -101,6 +102,7 @@ func main() {
 	twoFARepo := repository.NewTwoFARepository(db)
 	passkeyRepo := repository.NewPasskeyRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
+	invitationRepo := repository.NewInvitationRepository(db.DB)
 
 	// Initialize email service for 2FA
 	emailConfig := email.LoadConfigFromEnv()
@@ -132,6 +134,7 @@ func main() {
 	twoFAUsecase := usecase.NewTwoFAUsecase(userRepo, twoFARepo, emailService, authUsecase)
 	settingsUsecase := usecase.NewSettingsUsecase(settingsRepo, userRepo, passkeyRepo)
 	passkeyUsecase := usecase.NewPasskeyUsecase(userRepo, passkeyRepo, settingsRepo, webAuthnService)
+	invitationUsecase := usecase.NewInvitationUsecase(invitationRepo, userRepo, departmentRepo, emailService, authUsecase)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -149,6 +152,7 @@ func main() {
 	sessionHandler := handlers.NewSessionHandler()
 	twoFAHandler := handlers.NewTwoFAHandler(twoFAUsecase, authUsecase, jwtConfig)
 	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase)
+	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)
 
 	// Create Gin router
 	router := gin.New()
@@ -160,7 +164,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -195,7 +199,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -243,6 +247,13 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		// Public authentication routes (alternative paths)
 		v1.POST("/register", authHandler.Register)
 		v1.POST("/login", authHandler.Login)
+
+		// Public invitation routes (no auth required)
+		invitations := v1.Group("/invitations")
+		{
+			invitations.GET("/validate/:token", invitationHandler.ValidateInvitation)
+			invitations.POST("/accept/:token", invitationHandler.AcceptInvitation)
+		}
 
 		v1Auth := v1.Group("/auth")
 		{
@@ -375,6 +386,18 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				// Legacy endpoints (deprecated but kept for backward compatibility)
 				v1AdminSettings.GET("/auth/mode", middleware.LogAdminAction("get_auth_mode_legacy"), settingsHandler.GetAuthMode)
 				v1AdminSettings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode_legacy"), settingsHandler.SetAuthMode)
+			}
+
+			// Invitation management endpoints (super admin only)
+			v1AdminInvitations := v1Admin.Group("/invitations")
+			v1AdminInvitations.Use(middleware.SuperAdminOnlyMiddleware())
+			{
+				v1AdminInvitations.POST("", middleware.LogAdminAction("create_invitation"), invitationHandler.CreateInvitation)
+				v1AdminInvitations.GET("", middleware.LogAdminAction("list_invitations"), invitationHandler.ListInvitations)
+				v1AdminInvitations.GET("/stats", middleware.LogAdminAction("get_invitation_stats"), invitationHandler.GetStats)
+				v1AdminInvitations.GET("/:id", middleware.LogAdminAction("get_invitation"), invitationHandler.GetInvitation)
+				v1AdminInvitations.POST("/:id/resend", middleware.LogAdminAction("resend_invitation"), invitationHandler.ResendInvitation)
+				v1AdminInvitations.DELETE("/:id", middleware.LogAdminAction("cancel_invitation"), invitationHandler.CancelInvitation)
 			}
 		}
 	}

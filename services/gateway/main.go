@@ -212,6 +212,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// WebSocket endpoint - proxy to chat service for real-time communication
 		v1.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 
+		// Invitation routes (public) - proxy to user service
+		invitations := v1.Group("/invitations")
+		{
+			invitations.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Admin routes within /api/v1 - proxy to user service
 		admin := v1.Group("/admin")
 		{
