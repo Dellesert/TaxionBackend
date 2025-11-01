@@ -21,6 +21,7 @@ type ProfileUsecase interface {
 	ChangePassword(id uint, req *models.ChangePasswordRequest) error
 	ChangeSuperAdminPassword(id uint, newPassword string) error
 	UpdateStatus(id uint, status sharedmodels.UserStatus) (*models.UserResponse, error)
+	UpdateUser2FAStatus(id uint, enabled bool) (*models.UserResponse, error)
 }
 
 // profileUsecase implements ProfileUsecase interface
@@ -329,4 +330,38 @@ func (p *profileUsecase) validateChangePasswordRequest(req *models.ChangePasswor
 	}
 
 	return nil
+}
+
+// UpdateUser2FAStatus enables or disables 2FA for the user
+func (p *profileUsecase) UpdateUser2FAStatus(id uint, enabled bool) (*models.UserResponse, error) {
+	// Get user
+	user, err := p.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		return nil, fmt.Errorf("user is deactivated")
+	}
+
+	// Update 2FA status
+	user.TwoFactorEnabled = enabled
+
+	// Save updated user
+	if err := p.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to update 2FA status: %w", err)
+	}
+
+	// Get user with department for response
+	userWithDept, err := p.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
 }

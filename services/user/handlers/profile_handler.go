@@ -380,6 +380,84 @@ func (h *ProfileHandler) ChangeSuperAdminPassword(c *gin.Context) {
 	})
 }
 
+// UpdateSuperAdmin2FAStatus handles enabling/disabling 2FA for super admin
+func (h *ProfileHandler) UpdateSuperAdmin2FAStatus(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Extract user ID from JWT token or session
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req struct {
+		TwoFactorEnabled bool `json:"two_factor_enabled"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for update super admin 2FA status")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Update 2FA status for the user
+	user, err := h.profileUsecase.UpdateUser2FAStatus(userID, req.TwoFactorEnabled)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to update super admin 2FA status")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to update 2FA status"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "User not found"
+		} else if strings.Contains(err.Error(), "unauthorized") || strings.Contains(err.Error(), "forbidden") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Unauthorized to change 2FA status"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":         requestID,
+		"user_id":            userID,
+		"two_factor_enabled": req.TwoFactorEnabled,
+	}).Info("Super admin 2FA status updated successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "2FA status updated successfully",
+		"user":       user,
+		"request_id": requestID,
+	})
+}
+
 // UpdateStatus handles updating current user's status
 func (h *ProfileHandler) UpdateStatus(c *gin.Context) {
 	requestID := requestid.Get(c)

@@ -183,7 +183,7 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 		},
 		{
 			Level:       SecurityLevelMedium,
-			Name:        "Средний (Рекомендуется)",
+			Name:        "Средний",
 			Description: "Оптимальный баланс между безопасностью и удобством для большинства организаций",
 			Recommended: true,
 			Features: []string{

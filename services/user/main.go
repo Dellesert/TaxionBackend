@@ -275,6 +275,12 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			middleware.RequireRole("super_admin"),
 			profileHandler.ChangeSuperAdminPassword)
 
+		// Super admin 2FA status update endpoint (protected, super admin only)
+		v1.PUT("/superadmin/2fa/status",
+			middleware.AuthMiddleware(), // Use unified auth
+			middleware.RequireRole("super_admin"),
+			profileHandler.UpdateSuperAdmin2FAStatus)
+
 		// Protected user routes (require authentication)
 		users := v1.Group("/users")
 		users.Use(middleware.AuthMiddleware()) // Apply unified auth middleware
