@@ -35,7 +35,7 @@ type User struct {
 	Phone              string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
 	Position           string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
 	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
-	IsActive           bool              `gorm:"not null;default:true" json:"is_active"`
+	IsActive           bool              `gorm:"not null" json:"is_active"`
 	MustChangePassword bool              `gorm:"not null;default:false" json:"must_change_password"`
 
 	// Authentication settings

@@ -325,11 +325,12 @@ func (a *adminUsecase) ImportUsersFromCSV(csvRows []models.CSVUserRow) (*models.
 }
 
 // validateAndCreateUserFromCSV validates a CSV row and creates a user
+// Users are created as inactive without password - they will activate via invitation
 func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNum int) (*models.UserResponse, error) {
 	// Trim all fields
 	email := strings.TrimSpace(row.Email)
 	name := strings.TrimSpace(row.Name)
-	password := strings.TrimSpace(row.Password)
+	password := strings.TrimSpace(row.Password) // Optional now
 	role := strings.TrimSpace(row.Role)
 	phone := strings.TrimSpace(row.Phone)
 	position := strings.TrimSpace(row.Position)
@@ -341,9 +342,6 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 	}
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
-	}
-	if password == "" {
-		return nil, fmt.Errorf("password is required")
 	}
 
 	// Validate email format
@@ -357,9 +355,11 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 		return nil, fmt.Errorf("user with email %s already exists", email)
 	}
 
-	// Validate password strength
-	if err := validatePasswordStrength(password); err != nil {
-		return nil, fmt.Errorf("password validation failed: %w", err)
+	// Password is now optional - validate only if provided
+	if password != "" {
+		if err := validatePasswordStrength(password); err != nil {
+			return nil, fmt.Errorf("password validation failed: %w", err)
+		}
 	}
 
 	// Set default role if not provided
@@ -390,23 +390,27 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 		departmentID = &deptID
 	}
 
-	// Hash password
-	hashedPassword, err := hashPasswordAdmin(password)
-	if err != nil {
-		return nil, fmt.Errorf("failed to hash password: %w", err)
+	// Hash password only if provided, otherwise leave it nil
+	var hashedPassword *string
+	if password != "" {
+		hashed, err := hashPasswordAdmin(password)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", err)
+		}
+		hashedPassword = &hashed
 	}
 
-	// Create user
+	// Create user as inactive - they will activate via invitation
 	user := &models.User{
 		Email:          email,
 		Name:           name,
-		HashedPassword: &hashedPassword,
+		HashedPassword: hashedPassword, // nil if no password provided
 		Role:           sharedmodels.Role(role),
 		Status:         sharedmodels.StatusOffline,
 		DepartmentID:   departmentID,
 		Phone:          phone,
 		Position:       position,
-		IsActive:       true,
+		IsActive:       false, // Inactive until they accept invitation
 	}
 
 	// Save user

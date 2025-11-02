@@ -218,6 +218,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			invitations.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
+		// Password reset routes (public) - proxy to user service
+		passwordResets := v1.Group("/password-resets")
+		{
+			passwordResets.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Admin routes within /api/v1 - proxy to user service
 		admin := v1.Group("/admin")
 		{

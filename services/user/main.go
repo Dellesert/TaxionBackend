@@ -67,7 +67,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA, passkey, system settings, and invitations tables)
+	// Run database migrations (including 2FA, passkey, system settings, invitations, and password resets tables)
 	if err := db.Migrate(
 		&models.Department{},
 		&models.User{},
@@ -75,6 +75,7 @@ func main() {
 		&models.PasskeyCredential{},
 		&models.SystemSettings{},
 		&models.Invitation{},
+		&models.PasswordReset{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -103,6 +104,7 @@ func main() {
 	passkeyRepo := repository.NewPasskeyRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
 	invitationRepo := repository.NewInvitationRepository(db.DB)
+	passwordResetRepo := repository.NewPasswordResetRepository(db.DB)
 
 	// Initialize email service for 2FA
 	emailConfig := email.LoadConfigFromEnv()
@@ -135,6 +137,7 @@ func main() {
 	settingsUsecase := usecase.NewSettingsUsecase(settingsRepo, userRepo, passkeyRepo)
 	passkeyUsecase := usecase.NewPasskeyUsecase(userRepo, passkeyRepo, settingsRepo, webAuthnService)
 	invitationUsecase := usecase.NewInvitationUsecase(invitationRepo, userRepo, departmentRepo, emailService, authUsecase)
+	passwordResetUsecase := usecase.NewPasswordResetUsecase(passwordResetRepo, userRepo, emailService, authUsecase)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -153,6 +156,7 @@ func main() {
 	twoFAHandler := handlers.NewTwoFAHandler(twoFAUsecase, authUsecase, jwtConfig)
 	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase)
 	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)
+	passwordResetHandler := handlers.NewPasswordResetHandler(passwordResetUsecase)
 
 	// Create Gin router
 	router := gin.New()
@@ -164,7 +168,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -199,9 +203,22 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
+
+	// Apple App Site Association for Passkeys
+	wellKnown := router.Group("/.well-known")
+	{
+		wellKnown.GET("/apple-app-site-association", func(c *gin.Context) {
+			c.Header("Content-Type", "application/json")
+			c.JSON(200, gin.H{
+				"webcredentials": gin.H{
+					"apps": []string{"QNVQ55232N.com.anonymous.tachyon-messenger"},
+				},
+			})
+		})
+	}
 
 	// Public authentication routes (no auth required for login/register)
 	auth := router.Group("/auth")
@@ -253,6 +270,14 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		{
 			invitations.GET("/validate/:token", invitationHandler.ValidateInvitation)
 			invitations.POST("/accept/:token", invitationHandler.AcceptInvitation)
+		}
+
+		// Public password reset routes (no auth required)
+		passwordResets := v1.Group("/password-resets")
+		{
+			passwordResets.POST("/request", passwordResetHandler.RequestPasswordReset)
+			passwordResets.GET("/validate/:token", passwordResetHandler.ValidateResetToken)
+			passwordResets.POST("/reset/:token", passwordResetHandler.ResetPassword)
 		}
 
 		v1Auth := v1.Group("/auth")
@@ -398,6 +423,13 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminInvitations.GET("/:id", middleware.LogAdminAction("get_invitation"), invitationHandler.GetInvitation)
 				v1AdminInvitations.POST("/:id/resend", middleware.LogAdminAction("resend_invitation"), invitationHandler.ResendInvitation)
 				v1AdminInvitations.DELETE("/:id", middleware.LogAdminAction("cancel_invitation"), invitationHandler.CancelInvitation)
+				v1AdminInvitations.POST("/bulk-send", middleware.LogAdminAction("bulk_send_invitations"), invitationHandler.BulkSendInvitations)
+			}
+
+			// Password reset management endpoints (admin and super admin)
+			v1AdminPasswordResets := v1Admin.Group("/password-resets")
+			{
+				v1AdminPasswordResets.POST("/initiate", middleware.LogAdminAction("initiate_password_reset"), passwordResetHandler.InitiatePasswordReset)
 			}
 		}
 	}
@@ -419,8 +451,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			users.PUT("/:id/status", middleware.LogAdminAction("update_user_status"), adminHandler.UpdateUserStatus)
 			users.PUT("/:id/activate", middleware.LogAdminAction("activate_user"), adminHandler.ActivateUser)
 			users.PUT("/:id/deactivate", middleware.LogAdminAction("deactivate_user"), adminHandler.DeactivateUser)
-			users.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA)                         // Super admin only
-			users.POST("/:id/reset-password", middleware.LogAdminAction("reset_user_password"), adminHandler.ResetUserPassword) // Super admin only
+			users.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA) // Super admin only
+			// Removed old reset-password endpoint, use /api/v1/admin/password-resets/initiate instead
 		}
 
 		// Department management for admins

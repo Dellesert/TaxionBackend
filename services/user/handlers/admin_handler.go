@@ -1047,11 +1047,15 @@ func parseCSVFile(file interface{ Read([]byte) (int, error) }) ([]models.CSVUser
 	header := records[0]
 	colIndices := make(map[string]int)
 	for i, col := range header {
-		colIndices[strings.ToLower(strings.TrimSpace(col))] = i
+		// Remove BOM (Byte Order Mark) and other invisible characters
+		cleanCol := strings.TrimSpace(col)
+		cleanCol = strings.TrimPrefix(cleanCol, "\uFEFF") // Remove UTF-8 BOM
+		cleanCol = strings.TrimPrefix(cleanCol, "\xEF\xBB\xBF") // Remove UTF-8 BOM bytes
+		colIndices[strings.ToLower(cleanCol)] = i
 	}
 
-	// Validate required columns
-	requiredCols := []string{"email", "name", "password"}
+	// Validate required columns (password is now optional since users will set it via invitation)
+	requiredCols := []string{"email", "name"}
 	for _, reqCol := range requiredCols {
 		if _, exists := colIndices[reqCol]; !exists {
 			return nil, fmt.Errorf("missing required column: %s", reqCol)

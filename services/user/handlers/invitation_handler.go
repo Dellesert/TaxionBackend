@@ -463,6 +463,85 @@ func (h *InvitationHandler) ValidateInvitation(c *gin.Context) {
 	})
 }
 
+// BulkSendInvitations handles bulk sending invitations to selected users (super_admin only)
+func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID and role from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "Only super admin can send bulk invitations",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req models.BulkSendInvitationsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for bulk send invitations")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Validate user IDs list
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "At least one user ID is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Send invitations
+	response, err := h.invitationUsecase.BulkSendInvitations(req.UserIDs, userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"user_count": len(req.UserIDs),
+			"error":      err.Error(),
+		}).Error("Failed to send bulk invitations")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to send bulk invitations",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"total_users":   response.TotalUsers,
+		"success_count": response.SuccessCount,
+		"error_count":   response.ErrorCount,
+	}).Info("Bulk invitations sent")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Bulk invitations processed",
+		"data":       response,
+		"request_id": requestID,
+	})
+}
+
 // AcceptInvitation handles invitation acceptance (public endpoint)
 func (h *InvitationHandler) AcceptInvitation(c *gin.Context) {
 	requestID := requestid.Get(c)

@@ -368,6 +368,10 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 			"success": true,
 			"message": "Authentication successful",
 			"user":    user.ToResponse(),
+			"session": gin.H{
+				"session_id": session.SessionID,
+			},
+			"auth_mode": "session",
 		})
 	} else {
 		logger.WithField("user_id", user.ID).Error("Session store not configured")

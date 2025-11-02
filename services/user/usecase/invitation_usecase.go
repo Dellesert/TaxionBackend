@@ -31,6 +31,7 @@ type InvitationUsecase interface {
 	CancelInvitation(id uint, createdByID uint) error
 	GetStats() (*models.InvitationStatsResponse, error)
 	ExpireOldInvitations() (int64, error)
+	BulkSendInvitations(userIDs []uint, createdByID uint) (*models.BulkSendInvitationsResponse, error)
 }
 
 // invitationUsecase implements InvitationUsecase interface
@@ -217,13 +218,10 @@ func (u *invitationUsecase) AcceptInvitation(token string, req *models.AcceptInv
 		return nil, fmt.Errorf("invalid password: %w", err)
 	}
 
-	// Check if user already exists (double check)
+	// Check if user already exists
 	existingUser, err := u.userRepo.GetByEmail(invitation.Email)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return nil, fmt.Errorf("failed to check existing user: %w", err)
-	}
-	if existingUser != nil {
-		return nil, fmt.Errorf("user with this email already exists")
 	}
 
 	// Hash password
@@ -232,22 +230,46 @@ func (u *invitationUsecase) AcceptInvitation(token string, req *models.AcceptInv
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Create user
-	user := &models.User{
-		Email:          invitation.Email,
-		Name:           invitation.Name,
-		HashedPassword: &hashedPassword,
-		Role:           invitation.Role,
-		DepartmentID:   invitation.DepartmentID,
-		Position:       invitation.Position,
-		Phone:          invitation.Phone,
-		IsActive:       true,
-		Status:         sharedmodels.StatusOnline,
-	}
+	var user *models.User
 
-	// Save user
-	if err := u.userRepo.Create(user); err != nil {
-		return nil, fmt.Errorf("failed to create user: %w", err)
+	if existingUser != nil {
+		// User already exists
+		if existingUser.IsActive {
+			// User is already active - cannot reactivate
+			return nil, fmt.Errorf("account is already activated")
+		}
+
+		// User exists but is inactive - reactivate with new password
+		existingUser.HashedPassword = &hashedPassword
+		existingUser.IsActive = true
+		existingUser.Status = sharedmodels.StatusOnline
+		now := time.Now()
+		existingUser.PasswordChangedAt = &now
+
+		// Update user
+		if err := u.userRepo.Update(existingUser); err != nil {
+			return nil, fmt.Errorf("failed to activate user: %w", err)
+		}
+
+		user = existingUser
+	} else {
+		// Create new user
+		user = &models.User{
+			Email:          invitation.Email,
+			Name:           invitation.Name,
+			HashedPassword: &hashedPassword,
+			Role:           invitation.Role,
+			DepartmentID:   invitation.DepartmentID,
+			Position:       invitation.Position,
+			Phone:          invitation.Phone,
+			IsActive:       true,
+			Status:         sharedmodels.StatusOnline,
+		}
+
+		// Save user
+		if err := u.userRepo.Create(user); err != nil {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
 	}
 
 	// Update invitation status
@@ -374,13 +396,13 @@ func (u *invitationUsecase) ResendInvitation(id uint, createdByID uint) (*models
 		return nil, fmt.Errorf("can only resend pending or expired invitations")
 	}
 
-	// Check if user was already created (shouldn't happen, but just in case)
+	// Check if user was already created and is active
 	existingUser, err := u.userRepo.GetByEmail(invitation.Email)
 	if err != nil && !strings.Contains(err.Error(), "not found") {
 		return nil, fmt.Errorf("failed to check existing user: %w", err)
 	}
-	if existingUser != nil {
-		return nil, fmt.Errorf("user with email %s already exists", invitation.Email)
+	if existingUser != nil && existingUser.IsActive {
+		return nil, fmt.Errorf("user with email %s is already active", invitation.Email)
 	}
 
 	// Generate new token
@@ -661,8 +683,23 @@ func renderInvitationEmailTemplate(invitation *models.Invitation, inviteLink str
             <p style="text-align: center; margin: 30px 0 10px 0;"><strong>Выберите способ активации:</strong></p>
 
             <div style="text-align: center;">
-                <a href="%s" class="button">🔗 Открыть в приложении</a>
-                <a href="%s" class="button button-secondary">🌐 Открыть в браузере</a>
+                <a href="%s" class="button" target="_blank" rel="noopener">🔗 Открыть в приложении</a>
+                <a href="%s" class="button button-secondary" target="_blank" rel="noopener">🌐 Открыть в браузере</a>
+            </div>
+
+            <p style="text-align: center; font-size: 13px; color: #6c757d; margin-top: 10px;">
+                Нажмите на кнопку выше, чтобы открыть приложение
+            </p>
+
+            <div style="background-color: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #dee2e6;">
+                <p style="margin: 0 0 10px 0;"><strong>📱 Для мобильного приложения:</strong></p>
+                <p style="margin: 5px 0; font-size: 13px;">Скопируйте ссылку ниже и откройте её в приложении Tachyon Messenger:</p>
+                <div style="background: white; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; margin: 10px 0;">
+                    <code style="color: #E94444; word-break: break-all; font-size: 13px;">%s</code>
+                </div>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d;">
+                    Или используйте код приглашения выше
+                </p>
             </div>
 
             <div class="expiry-notice">
@@ -688,6 +725,7 @@ func renderInvitationEmailTemplate(invitation *models.Invitation, inviteLink str
 		token,
 		deepLink,
 		inviteLink,
+		deepLink,
 		invitation.ExpiresAt.Format("02.01.2006 15:04"))
 }
 
@@ -830,4 +868,130 @@ func hashPassword(password string) (string, error) {
 		return "", err
 	}
 	return string(bytes), nil
+}
+
+// BulkSendInvitations sends invitations to multiple inactive users
+func (u *invitationUsecase) BulkSendInvitations(userIDs []uint, createdByID uint) (*models.BulkSendInvitationsResponse, error) {
+	response := &models.BulkSendInvitationsResponse{
+		TotalUsers:      len(userIDs),
+		SuccessCount:    0,
+		ErrorCount:      0,
+		SentInvitations: []*models.InvitationResponse{},
+		Errors:          []models.BulkInvitationError{},
+	}
+
+	// Process each user
+	for _, userID := range userIDs {
+		// Get user
+		user, err := u.userRepo.GetByID(userID)
+		if err != nil {
+			response.ErrorCount++
+			response.Errors = append(response.Errors, models.BulkInvitationError{
+				UserID:  userID,
+				Message: fmt.Sprintf("User not found: %v", err),
+			})
+			continue
+		}
+
+		// Check if user is inactive (only send invitations to inactive users)
+		if user.IsActive {
+			response.ErrorCount++
+			response.Errors = append(response.Errors, models.BulkInvitationError{
+				UserID:  userID,
+				Email:   user.Email,
+				Message: "User is already active",
+			})
+			continue
+		}
+
+		// Check if there's already a pending invitation
+		hasPending, err := u.invitationRepo.HasPendingInvitation(user.Email)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"user_id": userID,
+				"email":   user.Email,
+				"error":   err.Error(),
+			}).Warn("Failed to check pending invitation, proceeding anyway")
+		}
+
+		// If there's already a pending invitation, skip
+		if hasPending {
+			response.ErrorCount++
+			response.Errors = append(response.Errors, models.BulkInvitationError{
+				UserID:  userID,
+				Email:   user.Email,
+				Message: "Pending invitation already exists",
+			})
+			continue
+		}
+
+		// Generate secure token
+		token, err := generateSecureToken()
+		if err != nil {
+			response.ErrorCount++
+			response.Errors = append(response.Errors, models.BulkInvitationError{
+				UserID:  userID,
+				Email:   user.Email,
+				Message: fmt.Sprintf("Failed to generate token: %v", err),
+			})
+			continue
+		}
+
+		// Calculate expiration time (7 days)
+		expiresAt := time.Now().Add(7 * 24 * time.Hour)
+
+		// Create invitation
+		invitation := &models.Invitation{
+			Token:        token,
+			Email:        user.Email,
+			Name:         user.Name,
+			Role:         user.Role,
+			DepartmentID: user.DepartmentID,
+			Position:     user.Position,
+			Phone:        user.Phone,
+			Status:       models.InvitationStatusPending,
+			ExpiresAt:    expiresAt,
+			CreatedByID:  createdByID,
+		}
+
+		// Save invitation
+		if err := u.invitationRepo.Create(invitation); err != nil {
+			response.ErrorCount++
+			response.Errors = append(response.Errors, models.BulkInvitationError{
+				UserID:  userID,
+				Email:   user.Email,
+				Message: fmt.Sprintf("Failed to create invitation: %v", err),
+			})
+			continue
+		}
+
+		// Get invitation with relations for response
+		invitationWithRelations, err := u.invitationRepo.GetWithRelations(invitation.ID)
+		if err != nil {
+			// Fallback to invitation without relations
+			invitationWithRelations = invitation
+		}
+
+		// Generate invite link
+		inviteLink := generateInviteLink(token)
+
+		// Send invitation email
+		if err := u.sendInvitationEmail(invitationWithRelations, inviteLink); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"invitation_id": invitation.ID,
+				"user_id":       userID,
+				"email":         user.Email,
+				"error":         err.Error(),
+			}).Error("Failed to send invitation email in bulk operation")
+			// Don't fail the operation, just log it
+		}
+
+		// Success
+		response.SuccessCount++
+		invitationResponse := invitationWithRelations.ToResponse()
+		invitationResponse.InviteLink = inviteLink
+		response.SentInvitations = append(response.SentInvitations, invitationResponse)
+	}
+
+	return response, nil
 }

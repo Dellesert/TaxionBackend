@@ -219,3 +219,24 @@ type ImportInvitationsResponse struct {
 	SuccessInvitations []*InvitationResponse  `json:"success_invitations"`
 	Errors             []ImportError          `json:"errors"`
 }
+
+// BulkSendInvitationsRequest represents request for sending invitations to selected users
+type BulkSendInvitationsRequest struct {
+	UserIDs []uint `json:"user_ids" binding:"required,min=1" validate:"required,min=1"`
+}
+
+// BulkSendInvitationsResponse represents response from bulk sending invitations
+type BulkSendInvitationsResponse struct {
+	TotalUsers       int                    `json:"total_users"`
+	SuccessCount     int                    `json:"success_count"`
+	ErrorCount       int                    `json:"error_count"`
+	SentInvitations  []*InvitationResponse  `json:"sent_invitations"`
+	Errors           []BulkInvitationError  `json:"errors"`
+}
+
+// BulkInvitationError represents error for a single user in bulk operation
+type BulkInvitationError struct {
+	UserID  uint   `json:"user_id"`
+	Email   string `json:"email,omitempty"`
+	Message string `json:"message"`
+}

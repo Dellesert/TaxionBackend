@@ -3,6 +3,7 @@ package usecase
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/shared/logger"
@@ -33,10 +34,16 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 		rpOrigin = "http://localhost:8081" // Default for development
 	}
 
+	// Parse comma-separated origins
+	rpOrigins := strings.Split(rpOrigin, ",")
+	for i, origin := range rpOrigins {
+		rpOrigins[i] = strings.TrimSpace(origin)
+	}
+
 	wconfig := &webauthn.Config{
 		RPDisplayName: rpDisplayName,
 		RPID:          rpID,
-		RPOrigins:     []string{rpOrigin},
+		RPOrigins:     rpOrigins,
 		AttestationPreference: protocol.PreferNoAttestation,
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
 			RequireResidentKey: protocol.ResidentKeyNotRequired(),
