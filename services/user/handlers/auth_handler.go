@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/usecase"
@@ -231,10 +232,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Set session cookie if in session mode
 	if loginResponse.Session != nil {
+		// Calculate MaxAge in seconds (time until expiration)
+		maxAge := int(loginResponse.Session.ExpiresAt - time.Now().Unix())
+		if maxAge < 0 {
+			maxAge = 0
+		}
+
 		c.SetCookie(
 			"session_id",
 			loginResponse.Session.SessionID,
-			int(loginResponse.Session.ExpiresAt),
+			maxAge,
 			"/",
 			"",
 			false, // secure - set to true in production with HTTPS
@@ -317,10 +324,16 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 
 	// Set session cookie if in session mode
 	if loginResponse.Session != nil {
+		// Calculate MaxAge in seconds (time until expiration)
+		maxAge := int(loginResponse.Session.ExpiresAt - time.Now().Unix())
+		if maxAge < 0 {
+			maxAge = 0
+		}
+
 		c.SetCookie(
 			"session_id",
 			loginResponse.Session.SessionID,
-			int(loginResponse.Session.ExpiresAt),
+			maxAge,
 			"/",
 			"",
 			false, // secure - set to true in production with HTTPS
