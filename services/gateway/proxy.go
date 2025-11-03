@@ -432,8 +432,11 @@ func proxyWebSocket(c *gin.Context, targetURL, serviceName, requestID string) {
 
 // shouldSkipWebSocketHeader determines if a header should be skipped for WebSocket proxying
 func shouldSkipWebSocketHeader(header string) bool {
-	// For WebSocket, we want to preserve most headers but skip some connection-specific ones
+	// For WebSocket, we want to preserve most headers but skip connection-specific ones
+	// that websocket.Dialer will set automatically
 	skipHeaders := []string{
+		"Connection",
+		"Upgrade",
 		"Sec-Websocket-Key",
 		"Sec-Websocket-Version",
 		"Sec-Websocket-Extensions",
