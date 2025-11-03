@@ -396,8 +396,15 @@ sudo nano /etc/nginx/sites-available/tachyon
 Пример конфигурации:
 
 ```nginx
+# WebSocket upgrade mapping (должен быть ПЕРЕД server блоками)
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 upstream tachyon_backend {
     server 127.0.0.1:8080;
+    keepalive 64;
 }
 
 server {
@@ -429,12 +436,34 @@ server {
     access_log /var/log/nginx/tachyon_access.log;
     error_log /var/log/nginx/tachyon_error.log;
 
-    # Proxy настройки
+    # WebSocket поддержка для /api/v1/ws (chat service) - ДОЛЖЕН БЫТЬ ПЕРЕД location /
+    location /api/v1/ws {
+        proxy_pass http://tachyon_backend;
+        proxy_http_version 1.1;
+
+        # WebSocket headers
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Увеличенные таймауты для WebSocket
+        proxy_connect_timeout 7d;
+        proxy_send_timeout 7d;
+        proxy_read_timeout 7d;
+
+        # Отключить буферизацию для WebSocket
+        proxy_buffering off;
+    }
+
+    # Proxy настройки для остальных запросов
     location / {
         proxy_pass http://tachyon_backend;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
         proxy_set_header X-Real-IP $remote_addr;
@@ -445,23 +474,6 @@ server {
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
-    }
-
-    # WebSocket поддержка
-    location /ws {
-        proxy_pass http://tachyon_backend;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        # Увеличенные таймауты для WebSocket
-        proxy_connect_timeout 7d;
-        proxy_send_timeout 7d;
-        proxy_read_timeout 7d;
     }
 
     # Health check endpoint

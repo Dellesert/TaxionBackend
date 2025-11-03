@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 // ServiceConfig holds configuration for a microservice
@@ -81,11 +82,27 @@ func getEnvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
+// WebSocket upgrader configuration
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		// Allow all origins for development, adjust for production
+		return true
+	},
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
 // proxyRequest handles proxying HTTP requests to microservices
 func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := requestid.Get(c)
 		startTime := time.Now()
+
+		// Check if this is a WebSocket upgrade request
+		if isWebSocketRequest(c.Request) {
+			proxyWebSocket(c, targetURL, serviceName, requestID)
+			return
+		}
 
 		// Parse target URL
 		target, err := url.Parse(targetURL)
@@ -251,7 +268,7 @@ func copyHeaders(src, dst http.Header) {
 
 // shouldSkipHeader determines if a header should be skipped during forwarding
 func shouldSkipHeader(header string) bool {
-	// Headers that should not be forwarded
+	// Headers that should not be forwarded (for HTTP requests, not WebSocket)
 	skipHeaders := []string{
 		"Connection",
 		"Keep-Alive",
@@ -268,6 +285,164 @@ func shouldSkipHeader(header string) bool {
 		"Access-Control-Allow-Credentials",
 		"Access-Control-Expose-Headers",
 		"Access-Control-Max-Age",
+	}
+
+	headerLower := strings.ToLower(header)
+	for _, skip := range skipHeaders {
+		if headerLower == strings.ToLower(skip) {
+			return true
+		}
+	}
+	return false
+}
+
+// isWebSocketRequest checks if the request is a WebSocket upgrade request
+func isWebSocketRequest(r *http.Request) bool {
+	return strings.ToLower(r.Header.Get("Connection")) == "upgrade" &&
+		strings.ToLower(r.Header.Get("Upgrade")) == "websocket"
+}
+
+// proxyWebSocket handles WebSocket connection proxying
+func proxyWebSocket(c *gin.Context, targetURL, serviceName, requestID string) {
+	// Parse target URL and convert to WebSocket URL
+	target, err := url.Parse(targetURL)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"service":    serviceName,
+			"error":      err.Error(),
+		}).Error("Failed to parse target URL for WebSocket")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Service configuration error"})
+		return
+	}
+
+	// Build WebSocket URL
+	wsScheme := "ws"
+	if target.Scheme == "https" {
+		wsScheme = "wss"
+	}
+
+	wsURL := fmt.Sprintf("%s://%s%s", wsScheme, target.Host, c.Request.URL.Path)
+	if c.Request.URL.RawQuery != "" {
+		wsURL += "?" + c.Request.URL.RawQuery
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"service":    serviceName,
+		"ws_url":     wsURL,
+		"client_ip":  c.ClientIP(),
+	}).Info("Proxying WebSocket connection")
+
+	// Prepare headers for backend WebSocket connection
+	backendHeaders := http.Header{}
+	for key, values := range c.Request.Header {
+		// Copy relevant headers
+		if !shouldSkipWebSocketHeader(key) {
+			for _, value := range values {
+				backendHeaders.Add(key, value)
+			}
+		}
+	}
+
+	// Add forwarding headers
+	backendHeaders.Set("X-Request-ID", requestID)
+	backendHeaders.Set("X-Forwarded-For", c.ClientIP())
+	backendHeaders.Set("X-Real-IP", c.ClientIP())
+
+	// Connect to backend WebSocket
+	backendConn, backendResp, err := websocket.DefaultDialer.Dial(wsURL, backendHeaders)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"service":    serviceName,
+			"error":      err.Error(),
+			"ws_url":     wsURL,
+		}).Error("Failed to connect to backend WebSocket")
+
+		statusCode := http.StatusBadGateway
+		if backendResp != nil {
+			statusCode = backendResp.StatusCode
+		}
+		c.JSON(statusCode, gin.H{"error": fmt.Sprintf("Failed to connect to %s WebSocket", serviceName)})
+		return
+	}
+	defer backendConn.Close()
+
+	// Upgrade client connection to WebSocket
+	clientConn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"service":    serviceName,
+			"error":      err.Error(),
+		}).Error("Failed to upgrade client connection to WebSocket")
+		return
+	}
+	defer clientConn.Close()
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"service":    serviceName,
+	}).Info("WebSocket proxy connection established")
+
+	// Proxy messages bidirectionally
+	errChan := make(chan error, 2)
+
+	// Client -> Backend
+	go func() {
+		for {
+			messageType, message, err := clientConn.ReadMessage()
+			if err != nil {
+				errChan <- fmt.Errorf("client read error: %w", err)
+				return
+			}
+
+			if err := backendConn.WriteMessage(messageType, message); err != nil {
+				errChan <- fmt.Errorf("backend write error: %w", err)
+				return
+			}
+		}
+	}()
+
+	// Backend -> Client
+	go func() {
+		for {
+			messageType, message, err := backendConn.ReadMessage()
+			if err != nil {
+				errChan <- fmt.Errorf("backend read error: %w", err)
+				return
+			}
+
+			if err := clientConn.WriteMessage(messageType, message); err != nil {
+				errChan <- fmt.Errorf("client write error: %w", err)
+				return
+			}
+		}
+	}()
+
+	// Wait for error or connection close
+	err = <-errChan
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"service":    serviceName,
+		"error":      err.Error(),
+	}).Info("WebSocket proxy connection closed")
+}
+
+// shouldSkipWebSocketHeader determines if a header should be skipped for WebSocket proxying
+func shouldSkipWebSocketHeader(header string) bool {
+	// For WebSocket, we want to preserve most headers but skip some connection-specific ones
+	skipHeaders := []string{
+		"Sec-Websocket-Key",
+		"Sec-Websocket-Version",
+		"Sec-Websocket-Extensions",
+		"Sec-Websocket-Accept",
+		// Skip CORS headers - gateway handles CORS
+		"Access-Control-Allow-Origin",
+		"Access-Control-Allow-Methods",
+		"Access-Control-Allow-Headers",
+		"Access-Control-Allow-Credentials",
 	}
 
 	headerLower := strings.ToLower(header)
