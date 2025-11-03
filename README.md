@@ -1,8 +1,31 @@
 # Tachyon Messenger Backend - Руководство по деплою
 
+## 🚀 Quick Links
+
+- **Development Setup**: См. ниже
+- **Configuration**:
+  - ⚙️ [Environment Configuration Guide](docs/ENV_CONFIGURATION.md) - Настройка .env файлов
+  - 🔄 [Environment Comparison](docs/ENVIRONMENT_COMPARISON.md) - Development vs Production
+- **Production Deployment**:
+  - 📖 [Quick Start Guide](docs/PRODUCTION_QUICKSTART.md) - Быстрый старт в production (20 минут)
+  - 📚 [Full Production Guide](docs/PRODUCTION_DEPLOYMENT.md) - Полная документация по production
+  - 🔒 [Security Checklist](docs/PRODUCTION_DEPLOYMENT.md#security-checklist)
+
+---
+
 ## Описание проекта
 
 Tachyon Messenger - это микросервисная платформа для обмена сообщениями с поддержкой чата, задач, календаря, опросов и уведомлений. Бекенд построен на Go с использованием фреймворка Gin и развернут через Docker Compose.
+
+**Ключевые возможности:**
+- 🔐 **Stateful Session Authentication** - Безопасная аутентификация на основе сессий
+- 🔑 **WebAuthn/Passkey Support** - Поддержка биометрической аутентификации
+- 💬 **Real-time Chat** - WebSocket для мгновенного обмена сообщениями
+- 📋 **Task Management** - Управление задачами и проектами
+- 📅 **Calendar** - Календарь событий и встреч
+- 📊 **Polls** - Создание и участие в опросах
+- 🔔 **Notifications** - Email уведомления
+- 📁 **File Storage** - Загрузка и хранение файлов
 
 ### Архитектура
 
@@ -95,26 +118,6 @@ sudo usermod -aG docker $USER
 newgrp docker
 ```
 
-### CentOS/RHEL
-
-```bash
-# Установка утилит
-sudo yum install -y yum-utils
-
-# Добавление репозитория Docker
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-
-# Установка Docker
-sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Запуск Docker
-sudo systemctl start docker
-sudo systemctl enable docker
-
-# Добавление пользователя в группу docker
-sudo usermod -aG docker $USER
-```
-
 ### Windows
 
 1. Скачайте [Docker Desktop для Windows](https://www.docker.com/products/docker-desktop)
@@ -148,9 +151,6 @@ cp .env.example .env
 **Важно!** Отредактируйте файл `.env` и измените следующие параметры:
 
 ```env
-# ОБЯЗАТЕЛЬНО измените в продакшене!
-JWT_SECRET=ваш-супер-секретный-ключ-минимум-32-символа
-
 # Пароли для баз данных
 POSTGRES_PASSWORD=надежный_пароль_postgres
 REDIS_PASSWORD=надежный_пароль_redis
@@ -262,21 +262,9 @@ REDIS_PORT=6379
 REDIS_URL=redis://:СЛОЖНЫЙ_ПАРОЛЬ_REDIS_ТУТ@redis:6379
 
 # ==============================================
-# JWT Configuration
-# ==============================================
-# ОБЯЗАТЕЛЬНО используйте криптографически стойкий ключ!
-JWT_SECRET=ВАШИХ_СУПЕР_СЕКРЕТНЫЙ_КЛЮЧ_МИНИМУМ_64_СИМВОЛА_ДЛЯ_ПРОДАКШЕНА
-
-# Время жизни токенов (в минутах)
-JWT_ACCESS_TOKEN_EXPIRE=15
-JWT_REFRESH_TOKEN_EXPIRE=10080
-
-# ==============================================
 # Authentication Configuration
 # ==============================================
-# Режим аутентификации: "session" или "jwt"
-# session - использует HTTP-only cookies (рекомендуется для веб-приложений)
-# jwt - использует JWT токены (рекомендуется для мобильных приложений)
+# Режим аутентификации: "session"
 AUTH_MODE=session
 
 # Длительность сессии в часах (только для session режима)
@@ -437,7 +425,7 @@ server {
     error_log /var/log/nginx/tachyon_error.log;
 
     # WebSocket поддержка для /api/v1/ws (chat service) - ДОЛЖЕН БЫТЬ ПЕРЕД location /
-    location /api/v1/ws {
+    location /ws {
         proxy_pass http://tachyon_backend;
         proxy_http_version 1.1;
 
@@ -513,10 +501,10 @@ sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
 cd /path/to/TaxionBack
 
 # Соберите образы для production
-docker-compose build --no-cache --parallel
+docker-compose up -d  --build --no-cache --parallel
 
-# Запустите сервисы
-docker-compose up -d
+# Для production
+docker compose -f docker-compose.prod.yml --env-file .env.production.local up -d --build
 
 # Проверьте статус
 docker-compose ps

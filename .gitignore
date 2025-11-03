@@ -21,6 +21,8 @@ go.work
 .env
 .env.local
 .env.*.local
+.env.production.local
+*.env.local
 
 # IDE
 .vscode/
@@ -58,3 +60,14 @@ NUL
 # Claude Code
 .claude/
 .env copy
+
+# Production files (НИКОГДА не коммитить в Git!)
+.env.production.local
+backups/
+*.sql
+*.sql.gz
+*.rdb
+
+# Uploads (в production)
+uploads/
+.env.production

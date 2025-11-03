@@ -1,0 +1,515 @@
+version: '3.8'
+
+services:
+  # ==============================================
+  # Infrastructure Services
+  # ==============================================
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: tachyon-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      # Production: добавляем бэкапы
+      - ./backups/postgres:/backups
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    # Production: ограничиваем ресурсы
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    # Production: не открываем порт наружу
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: tachyon-redis-prod
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data_prod:/data
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Production: не открываем порт наружу
+    # ports:
+    #   - "${REDIS_PORT:-6379}:6379"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==============================================
+  # Core Application Services
+  # ==============================================
+
+  # User Management Service
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user/Dockerfile
+    container_name: tachyon-user-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8081
+      - USER_SERVICE_PORT=8081
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/user:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Chat & Messaging Service
+  chat-service:
+    build:
+      context: .
+      dockerfile: services/chat/Dockerfile
+    container_name: tachyon-chat-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8082
+      - CHAT_SERVICE_PORT=8082
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/chat:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Task Management Service
+  task-service:
+    build:
+      context: .
+      dockerfile: services/task/Dockerfile
+    container_name: tachyon-task-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8083
+      - TASK_SERVICE_PORT=8083
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/task:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # File Storage Service
+  file-service:
+    build:
+      context: .
+      dockerfile: services/file/Dockerfile
+    container_name: tachyon-file-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8088
+      - FILE_SERVICE_PORT=8088
+      - PORT=8088
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+      - UPLOAD_DIR=/app/uploads
+      - BASE_URL=${BASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/file:/app/logs
+      - file_uploads_prod:/app/uploads
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Calendar & Events Service
+  calendar-service:
+    build:
+      context: .
+      dockerfile: services/calendar/Dockerfile
+    container_name: tachyon-calendar-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8084
+      - CALENDAR_SERVICE_PORT=8084
+      - PORT=8084
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/calendar:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Polls & Surveys Service
+  poll-service:
+    build:
+      context: .
+      dockerfile: services/poll/Dockerfile
+    container_name: tachyon-poll-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8085
+      - POLL_SERVICE_PORT=8085
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/poll:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Notification Service
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    container_name: tachyon-notification-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8087
+      - NOTIFICATION_SERVICE_PORT=8087
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+      # Email configuration
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
+      - SMTP_FROM_NAME=${SMTP_FROM_NAME}
+      # Production workers
+      - NOTIFICATION_CONCURRENT_WORKERS=${NOTIFICATION_CONCURRENT_WORKERS:-10}
+      - NOTIFICATION_QUEUE_SIZE=${NOTIFICATION_QUEUE_SIZE:-2000}
+      - NOTIFICATION_RETRY_ATTEMPTS=${NOTIFICATION_RETRY_ATTEMPTS:-3}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/notification:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # ==============================================
+  # API Gateway (Reverse Proxy)
+  # ==============================================
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: tachyon-gateway-prod
+    ports:
+      # Production: открываем только gateway
+      - "8080:8080"
+    env_file:
+      - .env.production
+    environment:
+      # Service URLs - используем внутренние Docker имена
+      - USER_SERVICE_URL=http://user-service:8081
+      - CHAT_SERVICE_URL=http://chat-service:8082
+      - TASK_SERVICE_URL=http://task-service:8083
+      - CALENDAR_SERVICE_URL=http://calendar-service:8084
+      - POLL_SERVICE_URL=http://poll-service:8085
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8087
+      - FILE_SERVICE_URL=http://file-service:8088
+
+      # Gateway configuration
+      - SERVER_PORT=8080
+      - GATEWAY_PORT=8080
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+
+      # Production CORS
+      - ENABLE_CORS=${ENABLE_CORS:-true}
+      - CORS_ORIGINS=${CORS_ORIGINS}
+    depends_on:
+      user-service:
+        condition: service_healthy
+      chat-service:
+        condition: service_healthy
+      task-service:
+        condition: service_healthy
+      file-service:
+        condition: service_healthy
+      poll-service:
+        condition: service_healthy
+      calendar-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/gateway:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+# ==============================================
+# Volumes
+# ==============================================
+
+volumes:
+  postgres_data_prod:
+    driver: local
+    name: tachyon_postgres_data_prod
+
+  redis_data_prod:
+    driver: local
+    name: tachyon_redis_data_prod
+
+  file_uploads_prod:
+    driver: local
+    name: tachyon_file_uploads_prod
+
+# ==============================================
+# Networks
+# ==============================================
+
+networks:
+  tachyon-network-prod:
+    driver: bridge
+    name: tachyon-network-prod
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.21.0.0/16
+          gateway: 172.21.0.1
