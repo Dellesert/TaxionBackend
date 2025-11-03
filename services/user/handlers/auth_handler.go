@@ -238,6 +238,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			maxAge = 0
 		}
 
+		// Set cookie with SameSite=Lax for local development
+		// For production with HTTPS, use SameSite=None with Secure=true
+		c.SetSameSite(http.SameSiteLaxMode)
 		c.SetCookie(
 			"session_id",
 			loginResponse.Session.SessionID,
@@ -245,7 +248,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			"/",
 			"",
 			false, // secure - set to true in production with HTTPS
-			true,  // httpOnly
+			false, // httpOnly - set to false to allow JS to read it for X-Session-ID header
 		)
 	}
 
@@ -330,6 +333,9 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			maxAge = 0
 		}
 
+		// Set cookie with SameSite=Lax for local development
+		// For production with HTTPS, use SameSite=None with Secure=true
+		c.SetSameSite(http.SameSiteLaxMode)
 		c.SetCookie(
 			"session_id",
 			loginResponse.Session.SessionID,
@@ -337,7 +343,7 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			"/",
 			"",
 			false, // secure - set to true in production with HTTPS
-			true,  // httpOnly
+			false, // httpOnly - set to false to allow JS to read it for X-Session-ID header
 		)
 	}
 
