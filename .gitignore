@@ -57,3 +57,4 @@ NUL
 
 # Claude Code
 .claude/
+.env copy
