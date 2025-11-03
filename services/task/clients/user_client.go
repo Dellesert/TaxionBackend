@@ -10,16 +10,18 @@ import (
 	"time"
 
 	"tachyon-messenger/shared/logger"
+	sharedmodels "tachyon-messenger/shared/models"
 )
 
 // UserInfo represents basic user information from user-service
 type UserInfo struct {
-	ID           uint   `json:"id"`
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	Avatar       string `json:"avatar,omitempty"`
-	Position     string `json:"position,omitempty"`
-	DepartmentID *uint  `json:"department_id,omitempty"`
+	ID           uint               `json:"id"`
+	Name         string             `json:"name"`
+	Email        string             `json:"email"`
+	Role         sharedmodels.Role  `json:"role"`
+	Avatar       string             `json:"avatar,omitempty"`
+	Position     string             `json:"position,omitempty"`
+	DepartmentID *uint              `json:"department_id,omitempty"`
 }
 
 // UserClient is HTTP client for user-service
@@ -32,7 +34,7 @@ type UserClient struct {
 func NewUserClient() *UserClient {
 	userServiceURL := os.Getenv("USER_SERVICE_URL")
 	if userServiceURL == "" {
-		userServiceURL = "http://user-service:8080"
+		userServiceURL = "http://user-service:8081"
 	}
 
 	return &UserClient{

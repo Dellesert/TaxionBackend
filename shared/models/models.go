@@ -114,6 +114,7 @@ type Session struct {
 	UserID       uint      `json:"user_id" redis:"user_id"`
 	Email        string    `json:"email" redis:"email"`
 	Role         Role      `json:"role" redis:"role"`
+	DepartmentID *uint     `json:"department_id,omitempty" redis:"department_id"`
 	IPAddress    string    `json:"ip_address" redis:"ip_address"`
 	UserAgent    string    `json:"user_agent" redis:"user_agent"`
 	CreatedAt    time.Time `json:"created_at" redis:"created_at"`

@@ -258,9 +258,11 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 		return nil
 	}
 
-	// Department head can assign to any employee in their department (not just other department heads)
+	// Department head can assign to:
+	// 1. Any employee in their department
+	// 2. Other department heads (from any department)
 	if userRole == sharedmodels.RoleDepartmentHead {
-		// Check if all assignees are from department head's department
+		// Check if all assignees are valid
 		if len(req.AssigneeIDs) > 0 {
 			// If assigning only to self, allow
 			if len(req.AssigneeIDs) == 1 && req.AssigneeIDs[0] == userID {
@@ -280,23 +282,30 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 
 			userDeptID := *currentUser.DepartmentID
 
-			// Fetch user information to validate department membership
+			// Fetch user information to validate assignees
 			users, err := u.userClient.GetUsersByIDs(req.AssigneeIDs)
 			if err != nil {
 				return fmt.Errorf("failed to validate assignees: %w", err)
 			}
 
-			// Check each assignee belongs to the department head's department
-			// Department head can assign to ANY user in their department (employee, department_head, etc.)
+			// Check each assignee:
+			// - Can assign to anyone in their own department (any role)
+			// - Can assign to other department heads (from any department)
 			for _, assigneeID := range req.AssigneeIDs {
 				user, exists := users[assigneeID]
 				if !exists {
 					return fmt.Errorf("access denied: user %d not found", assigneeID)
 				}
-				if user.DepartmentID == nil || *user.DepartmentID != userDeptID {
-					return fmt.Errorf("access denied: you can only assign tasks to members of your department")
+
+				// Check if user is a department head (can assign to any department head)
+				if user.Role == sharedmodels.RoleDepartmentHead {
+					continue // Allow assignment to any department head
 				}
-				// No restriction on user role - can assign to employee, department_head, etc.
+
+				// For non-department heads, must be in the same department
+				if user.DepartmentID == nil || *user.DepartmentID != userDeptID {
+					return fmt.Errorf("access denied: you can only assign tasks to members of your department or to other department heads")
+				}
 			}
 			return nil
 		}

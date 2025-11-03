@@ -47,6 +47,7 @@ func (s *SessionStore) CreateSession(ctx context.Context, userID uint, email str
 		UserID:       userID,
 		Email:        email,
 		Role:         role,
+		DepartmentID: nil, // Will be set by middleware on retrieval
 		IPAddress:    ipAddress,
 		UserAgent:    userAgent,
 		CreatedAt:    now,
