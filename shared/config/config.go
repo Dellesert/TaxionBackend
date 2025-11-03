@@ -101,22 +101,6 @@ func LoadConfig() (*Config, error) {
 	authMode := os.Getenv("AUTH_MODE")
 	sessionDuration := os.Getenv("SESSION_DURATION_HOURS")
 
-	// DEBUG: показываем что загрузилось
-	if jwtSecret != "" {
-		if len(jwtSecret) > 10 {
-			fmt.Printf("JWT_SECRET loaded: %s...%s (length: %d)\n",
-				jwtSecret[:5], jwtSecret[len(jwtSecret)-5:], len(jwtSecret))
-		} else {
-			fmt.Printf("JWT_SECRET is short: '%s' (length: %d)\n", jwtSecret, len(jwtSecret))
-		}
-	} else {
-		fmt.Println("❌ JWT_SECRET is empty!")
-	}
-
-	fmt.Printf("DATABASE_URL: %s\n", maskURL(databaseURL))
-	fmt.Printf("REDIS_URL: %s\n", maskURL(redisURL))
-	fmt.Printf("SERVER_PORT: %s\n", serverPort)
-
 	// Parse session duration
 	sessionDurationHours := 168 // Default 7 days
 	if sessionDuration != "" {
@@ -128,6 +112,30 @@ func LoadConfig() (*Config, error) {
 	// Default auth mode
 	if authMode == "" {
 		authMode = "jwt" // Default to JWT
+	}
+
+	// DEBUG: показываем что загрузилось
+	if jwtSecret != "" {
+		if len(jwtSecret) > 10 {
+			fmt.Printf("JWT_SECRET loaded: %s...%s (length: %d)\n",
+				jwtSecret[:5], jwtSecret[len(jwtSecret)-5:], len(jwtSecret))
+		} else {
+			fmt.Printf("JWT_SECRET is short: '%s' (length: %d)\n", jwtSecret, len(jwtSecret))
+		}
+	} else {
+		if authMode == "jwt" {
+			fmt.Println("❌ JWT_SECRET is empty! (required for JWT mode)")
+		} else {
+			fmt.Println("ℹ️  JWT_SECRET not set (not required for session mode)")
+		}
+	}
+
+	fmt.Printf("DATABASE_URL: %s\n", maskURL(databaseURL))
+	fmt.Printf("REDIS_URL: %s\n", maskURL(redisURL))
+	fmt.Printf("SERVER_PORT: %s\n", serverPort)
+	fmt.Printf("AUTH_MODE: %s\n", authMode)
+	if authMode == "session" {
+		fmt.Printf("SESSION_DURATION: %d hours\n", sessionDurationHours)
 	}
 
 	config := &Config{
@@ -182,8 +190,9 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("REDIS_URL is required")
 	}
 
-	if config.JWT.Secret == "" {
-		return fmt.Errorf("JWT_SECRET is required")
+	// JWT_SECRET is only required in JWT mode
+	if config.Auth.Mode == "jwt" && config.JWT.Secret == "" {
+		return fmt.Errorf("JWT_SECRET is required when AUTH_MODE=jwt")
 	}
 
 	if config.Server.Port == "" {
