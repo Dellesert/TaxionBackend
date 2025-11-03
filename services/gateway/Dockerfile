@@ -63,6 +63,9 @@ COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 # Copy the binary from builder stage
 COPY --from=builder /build/services/gateway/gateway-service .
 
+# Copy .well-known directory for iOS/Android Universal Links and Passkeys
+COPY .well-known/ ./.well-known/
+
 # Change ownership of the application to non-root user
 RUN chown -R appuser:appgroup /app
 

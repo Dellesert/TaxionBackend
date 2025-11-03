@@ -39,14 +39,26 @@ type MessageAttachmentResponse struct {
 }
 
 // ToResponse converts MessageAttachment to MessageAttachmentResponse
-func (ma *MessageAttachment) ToResponse() *MessageAttachmentResponse {
+// If baseURL is provided, it will be used to construct the file URL
+// Otherwise, the stored FileURL will be used
+func (ma *MessageAttachment) ToResponse(baseURL ...string) *MessageAttachmentResponse {
+	fileURL := ma.FileURL
+
+	// If baseURL is provided, construct the URL dynamically
+	// This ensures the URL is always current (important after domain changes)
+	if len(baseURL) > 0 && baseURL[0] != "" {
+		// Extract filename from the stored URL or use FileID
+		// Format: {baseURL}/api/v1/files/public/{filename}
+		fileURL = baseURL[0] + "/api/v1/files/public/" + ma.FileName
+	}
+
 	return &MessageAttachmentResponse{
 		ID:           ma.ID,
 		MessageID:    ma.MessageID,
 		FileID:       ma.FileID,
 		FileName:     ma.FileName,
 		FileSize:     ma.FileSize,
-		FileURL:      ma.FileURL,
+		FileURL:      fileURL,
 		ThumbnailURL: ma.ThumbnailURL,
 		MimeType:     ma.MimeType,
 		FileType:     ma.FileType,

@@ -3,5 +3,16 @@
     "apps": [
       "QNVQ55232N.com.anonymous.tachyon-messenger"
     ]
+  },
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "QNVQ55232N.com.anonymous.tachyon-messenger",
+        "paths": [
+          "/.well-known/*"
+        ]
+      }
+    ]
   }
 }

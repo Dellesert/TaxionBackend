@@ -91,6 +91,10 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 	router.GET("/health/ready", readinessHandler)
 	router.GET("/health/live", livenessHandler)
 
+	// .well-known endpoints for iOS/Android Universal Links and Passkeys
+	router.GET("/.well-known/apple-app-site-association", serveAppleAppSiteAssociation)
+	router.GET("/.well-known/assetlinks.json", serveAssetLinks)
+
 	// API v1 routes
 	v1 := router.Group("/api/v1")
 	{
@@ -262,4 +266,16 @@ func placeholderHandler(action string) gin.HandlerFunc {
 			"path":    c.Request.URL.Path,
 		})
 	}
+}
+
+// serveAppleAppSiteAssociation serves the apple-app-site-association file with correct Content-Type
+func serveAppleAppSiteAssociation(c *gin.Context) {
+	c.Header("Content-Type", "application/json")
+	c.File("./.well-known/apple-app-site-association")
+}
+
+// serveAssetLinks serves the assetlinks.json file with correct Content-Type
+func serveAssetLinks(c *gin.Context) {
+	c.Header("Content-Type", "application/json")
+	c.File("./.well-known/assetlinks.json")
 }

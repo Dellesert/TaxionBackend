@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ type ChatUsecase interface {
 type chatUsecase struct {
 	chatRepo    repository.ChatRepository
 	messageRepo repository.MessageRepository
+	baseURL     string
 }
 
 func (uc *chatUsecase) CreatePersonalChat(userID, targetUserID uint) (*models.ChatResponse, error) {
@@ -96,10 +98,10 @@ func (uc *chatUsecase) CreatePersonalChat(userID, targetUserID uint) (*models.Ch
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(), nil // Return what we have
+		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(), nil
+	return chatWithMembers.ToResponse(uc.baseURL), nil
 }
 
 // CreateGroupChat creates a group chat with multiple users
@@ -149,10 +151,10 @@ func (uc *chatUsecase) CreateGroupChat(userID uint, req *models.CreateGroupChatR
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(), nil // Return what we have
+		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(), nil
+	return chatWithMembers.ToResponse(uc.baseURL), nil
 }
 
 // JoinChat allows a user to join an existing chat
@@ -324,9 +326,16 @@ func (uc *chatUsecase) validateCreateGroupChatRequest(req *models.CreateGroupCha
 
 // NewChatUsecase creates a new chat usecase
 func NewChatUsecase(chatRepo repository.ChatRepository, messageRepo repository.MessageRepository) ChatUsecase {
+	// Get base URL from environment
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+
 	return &chatUsecase{
 		chatRepo:    chatRepo,
 		messageRepo: messageRepo,
+		baseURL:     baseURL,
 	}
 }
 
@@ -409,10 +418,10 @@ func (uc *chatUsecase) CreateChat(userID uint, req *models.CreateChatRequest) (*
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(), nil // Return what we have
+		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(), nil
+	return chatWithMembers.ToResponse(uc.baseURL), nil
 }
 
 // GetUserChats retrieves all chats for a user
@@ -441,7 +450,7 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int) (*models.Cha
 		}
 
 		// Convert to response
-		response := chat.ToResponse()
+		response := chat.ToResponse(uc.baseURL)
 
 		// Get unread count for this chat
 		unreadCount, err := uc.messageRepo.GetUnreadCount(chat.ID, userID)
@@ -493,7 +502,7 @@ func (uc *chatUsecase) GetChat(userID, chatID uint) (*models.ChatResponse, error
 		return nil, fmt.Errorf("failed to get chat: %w", err)
 	}
 
-	return chat.ToResponse(), nil
+	return chat.ToResponse(uc.baseURL), nil
 }
 
 // UpdateChat updates a chat
@@ -531,10 +540,10 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 	// Get updated chat with members
 	updatedChat, err := uc.chatRepo.GetWithMembers(chatID)
 	if err != nil {
-		return chat.ToResponse(), nil // Return what we have
+		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return updatedChat.ToResponse(), nil
+	return updatedChat.ToResponse(uc.baseURL), nil
 }
 
 // DeleteChat deletes a chat

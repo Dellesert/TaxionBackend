@@ -156,7 +156,8 @@ type ChatMemberResponse struct {
 }
 
 // ToResponse converts Chat to ChatResponse
-func (c *Chat) ToResponse() *ChatResponse {
+// If baseURL is provided, it will be used to construct file URLs for message attachments
+func (c *Chat) ToResponse(baseURL ...string) *ChatResponse {
 	response := &ChatResponse{
 		ID:            c.ID,
 		Name:          c.Name,
@@ -190,7 +191,7 @@ func (c *Chat) ToResponse() *ChatResponse {
 
 	// Include last message if loaded
 	if len(c.Messages) > 0 {
-		response.LastMessage = c.Messages[0].ToResponse()
+		response.LastMessage = c.Messages[0].ToResponse(baseURL...)
 	}
 
 	return response

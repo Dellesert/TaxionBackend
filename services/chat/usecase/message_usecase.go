@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -45,15 +46,23 @@ type messageUsecase struct {
 	chatRepo    repository.ChatRepository
 	wsHub       WebSocketHub
 	fileClient  *client.FileClient
+	baseURL     string
 }
 
 // NewMessageUsecase creates a new message usecase
 func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo repository.ChatRepository) MessageUsecase {
+	// Get base URL from environment
+	baseURL := os.Getenv("BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+
 	return &messageUsecase{
 		messageRepo: messageRepo,
 		chatRepo:    chatRepo,
 		wsHub:       nil, // Will be set later to avoid circular dependency
 		fileClient:  client.NewFileClient(),
+		baseURL:     baseURL,
 	}
 }
 
@@ -167,10 +176,10 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	// Get message with relations for response
 	createdMessage, err := uc.messageRepo.GetWithReactions(message.ID)
 	if err != nil {
-		return message.ToResponse(), nil // Return what we have
+		return message.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	response := createdMessage.ToResponse()
+	response := createdMessage.ToResponse(uc.baseURL)
 
 	// Debug: Check wsHub status before broadcast
 	fmt.Printf("🔍 About to check wsHub - wsHub is nil: %v\n", uc.wsHub == nil)
@@ -256,7 +265,7 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 	// Convert to response format
 	messageResponses := make([]models.MessageResponse, len(messages))
 	for i, message := range messages {
-		messageResponses[i] = *message.ToResponse()
+		messageResponses[i] = *message.ToResponse(uc.baseURL)
 	}
 
 	// Debug: Check if sender is in response
@@ -301,7 +310,7 @@ func (uc *messageUsecase) GetMessage(userID, messageID uint) (*models.MessageRes
 		return nil, fmt.Errorf("user is not a member of this chat")
 	}
 
-	return message.ToResponse(), nil
+	return message.ToResponse(uc.baseURL), nil
 }
 
 // UpdateMessage updates a message
@@ -340,10 +349,10 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 	// Get updated message with relations
 	updatedMessage, err := uc.messageRepo.GetWithReactions(messageID)
 	if err != nil {
-		return message.ToResponse(), nil // Return what we have
+		return message.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return updatedMessage.ToResponse(), nil
+	return updatedMessage.ToResponse(uc.baseURL), nil
 }
 
 // DeleteMessage deletes a message
@@ -473,7 +482,7 @@ func (uc *messageUsecase) RestoreMessage(userID, messageID uint) error {
 
 	// Broadcast restore to WebSocket clients as message edit
 	if uc.wsHub != nil {
-		response := message.ToResponse()
+		response := message.ToResponse(uc.baseURL)
 		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
 	}
 
@@ -525,10 +534,10 @@ func (uc *messageUsecase) PinMessage(userID, messageID uint) (*models.MessageRes
 	// Get updated message with relations
 	pinnedMessage, err := uc.messageRepo.GetWithReactions(messageID)
 	if err != nil {
-		return message.ToResponse(), nil // Return what we have
+		return message.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	response := pinnedMessage.ToResponse()
+	response := pinnedMessage.ToResponse(uc.baseURL)
 
 	// Broadcast pin to WebSocket clients
 	if uc.wsHub != nil {
@@ -579,10 +588,10 @@ func (uc *messageUsecase) UnpinMessage(userID, messageID uint) (*models.MessageR
 	// Get updated message with relations
 	unpinnedMessage, err := uc.messageRepo.GetWithReactions(messageID)
 	if err != nil {
-		return message.ToResponse(), nil // Return what we have
+		return message.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	response := unpinnedMessage.ToResponse()
+	response := unpinnedMessage.ToResponse(uc.baseURL)
 
 	// Broadcast unpin to WebSocket clients
 	if uc.wsHub != nil {
@@ -745,7 +754,7 @@ func (uc *messageUsecase) GetMessagesByChat(userID, chatID uint, limit, offset i
 	// Convert to response format
 	messageResponses := make([]models.MessageResponse, len(messages))
 	for i, message := range messages {
-		messageResponses[i] = *message.ToResponse()
+		messageResponses[i] = *message.ToResponse(uc.baseURL)
 	}
 
 	hasMore := len(messages) == limit

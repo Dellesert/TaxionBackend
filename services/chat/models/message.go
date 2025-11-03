@@ -245,7 +245,8 @@ type MessageReadReceiptResponse struct {
 }
 
 // ToResponse converts Message to MessageResponse
-func (m *Message) ToResponse() *MessageResponse {
+// If baseURL is provided, it will be used to construct file URLs for attachments
+func (m *Message) ToResponse(baseURL ...string) *MessageResponse {
 	// Debug: check if Sender is loaded
 	if m.Sender != nil {
 		fmt.Printf("✅ Message %d: Sender loaded: ID=%d, Name=%s\n", m.ID, m.Sender.ID, m.Sender.Name)
@@ -284,7 +285,7 @@ func (m *Message) ToResponse() *MessageResponse {
 
 	// Include reply-to message if loaded
 	if m.ReplyTo != nil {
-		response.ReplyTo = m.ReplyTo.ToResponse()
+		response.ReplyTo = m.ReplyTo.ToResponse(baseURL...)
 	}
 
 	// Include reactions if loaded
@@ -324,7 +325,8 @@ func (m *Message) ToResponse() *MessageResponse {
 	if len(m.Attachments) > 0 {
 		response.Attachments = make([]MessageAttachmentResponse, len(m.Attachments))
 		for i, attachment := range m.Attachments {
-			response.Attachments[i] = *attachment.ToResponse()
+			// Pass baseURL to attachment ToResponse
+			response.Attachments[i] = *attachment.ToResponse(baseURL...)
 		}
 	}
 

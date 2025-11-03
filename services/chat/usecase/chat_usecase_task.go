@@ -40,7 +40,7 @@ func (uc *chatUsecase) GetOrCreateDirectChat(userID, targetUserID uint) (*models
 	// If chat exists, return it
 	if existingChat != nil {
 		// Get unread count for this chat
-		response := existingChat.ToResponse()
+		response := existingChat.ToResponse(uc.baseURL)
 		unreadCount, err := uc.messageRepo.GetUnreadCount(existingChat.ID, userID)
 		if err == nil {
 			response.UnreadCount = unreadCount
@@ -102,7 +102,7 @@ func (uc *chatUsecase) GetOrCreateTaskChat(userID, taskID uint) (*models.ChatRes
 		}
 
 		// Get unread count and return
-		response := existingChat.ToResponse()
+		response := existingChat.ToResponse(uc.baseURL)
 		unreadCount, err := uc.messageRepo.GetUnreadCount(existingChat.ID, userID)
 		if err == nil {
 			response.UnreadCount = unreadCount
@@ -199,10 +199,10 @@ func (uc *chatUsecase) GetOrCreateTaskChat(userID, taskID uint) (*models.ChatRes
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(), nil // Return what we have
+		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(), nil
+	return chatWithMembers.ToResponse(uc.baseURL), nil
 }
 
 // fetchTaskInfo fetches task information from task-service

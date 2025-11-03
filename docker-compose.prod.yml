@@ -469,6 +469,7 @@ services:
       retries: 3
     volumes:
       - ./logs/gateway:/app/logs
+      - ./.well-known:/app/.well-known:ro
     deploy:
       resources:
         limits:

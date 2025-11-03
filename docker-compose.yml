@@ -396,6 +396,7 @@ services:
       retries: 3
     volumes:
       - ./logs:/app/logs
+      - ./.well-known:/app/.well-known:ro
     labels:
       - "com.tachyon.service=gateway"
       - "com.tachyon.version=1.0.0"
