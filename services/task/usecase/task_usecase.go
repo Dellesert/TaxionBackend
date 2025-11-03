@@ -258,7 +258,7 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 		return nil
 	}
 
-	// Department head can assign to their department members
+	// Department head can assign to any employee in their department (not just other department heads)
 	if userRole == sharedmodels.RoleDepartmentHead {
 		// Check if all assignees are from department head's department
 		if len(req.AssigneeIDs) > 0 {
@@ -287,6 +287,7 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 			}
 
 			// Check each assignee belongs to the department head's department
+			// Department head can assign to ANY user in their department (employee, department_head, etc.)
 			for _, assigneeID := range req.AssigneeIDs {
 				user, exists := users[assigneeID]
 				if !exists {
@@ -295,6 +296,7 @@ func (u *taskUsecase) validateTaskAssignmentPermissions(userID uint, userRole sh
 				if user.DepartmentID == nil || *user.DepartmentID != userDeptID {
 					return fmt.Errorf("access denied: you can only assign tasks to members of your department")
 				}
+				// No restriction on user role - can assign to employee, department_head, etc.
 			}
 			return nil
 		}
