@@ -187,9 +187,10 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			chats.DELETE("/:id", chatHandler.DeleteChat)             // DELETE /api/v1/chats/:id
 
 			// Chat members
-			chats.GET("/:id/members", chatHandler.GetChatMembers)              // GET /api/v1/chats/:id/members
-			chats.POST("/:id/members", chatHandler.AddChatMember)              // POST /api/v1/chats/:id/members
-			chats.DELETE("/:id/members/:userId", chatHandler.RemoveChatMember) // DELETE /api/v1/chats/:id/members/:userId
+			chats.GET("/:id/members", chatHandler.GetChatMembers)                // GET /api/v1/chats/:id/members
+			chats.POST("/:id/members", chatHandler.AddChatMember)                // POST /api/v1/chats/:id/members
+			chats.PUT("/:id/members/:userId", chatHandler.UpdateChatMemberRole)  // PUT /api/v1/chats/:id/members/:userId
+			chats.DELETE("/:id/members/:userId", chatHandler.RemoveChatMember)   // DELETE /api/v1/chats/:id/members/:userId
 		}
 
 		// Message routes

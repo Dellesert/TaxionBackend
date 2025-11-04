@@ -22,6 +22,7 @@ type ChatUsecase interface {
 	DeleteChat(userID, chatID uint) error
 	AddMember(userID, chatID uint, req *models.AddChatMemberRequest) error
 	RemoveMember(userID, chatID, targetUserID uint) error
+	UpdateMemberRole(userID, chatID, targetUserID uint, req *models.UpdateChatMemberRequest) error
 	GetChatMembers(userID, chatID uint) ([]models.ChatMemberResponse, error)
 	LeaveChat(userID, chatID uint) error
 	CreatePersonalChat(userID, targetUserID uint) (*models.ChatResponse, error)
@@ -638,6 +639,47 @@ func (uc *chatUsecase) RemoveMember(userID, chatID, targetUserID uint) error {
 
 	if err := uc.chatRepo.RemoveMember(chatID, targetUserID); err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
+	}
+
+	return nil
+}
+
+// UpdateMemberRole updates the role of a chat member (promote/demote admin)
+func (uc *chatUsecase) UpdateMemberRole(userID, chatID, targetUserID uint, req *models.UpdateChatMemberRequest) error {
+	// Owner and admin can change member roles
+	role, err := uc.chatRepo.GetMemberRole(chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user role: %w", err)
+	}
+
+	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+		return fmt.Errorf("only chat owner or admin can change member roles")
+	}
+
+	// Get target user's current role
+	targetRole, err := uc.chatRepo.GetMemberRole(chatID, targetUserID)
+	if err != nil {
+		return fmt.Errorf("failed to get target user role: %w", err)
+	}
+
+	// Admin cannot change owner role
+	if targetRole == models.ChatMemberRoleOwner {
+		return fmt.Errorf("cannot change owner role")
+	}
+
+	// Admin cannot change another admin's role (only owner can)
+	if role == models.ChatMemberRoleAdmin && targetRole == models.ChatMemberRoleAdmin {
+		return fmt.Errorf("only chat owner can change admin roles")
+	}
+
+	// Cannot promote to owner (use transfer ownership instead)
+	if req.Role == models.ChatMemberRoleOwner {
+		return fmt.Errorf("cannot promote to owner, use transfer ownership")
+	}
+
+	// Update the role
+	if err := uc.chatRepo.UpdateMemberRole(chatID, targetUserID, req.Role); err != nil {
+		return fmt.Errorf("failed to update member role: %w", err)
 	}
 
 	return nil

@@ -586,6 +586,129 @@ func (h *ChatHandler) AddChatMember(c *gin.Context) {
 	})
 }
 
+// UpdateChatMemberRole handles updating a member's role in chat
+func (h *ChatHandler) UpdateChatMemberRole(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user ID from URL parameter
+	userIDStr := c.Param("userId")
+	targetUserID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"chat_id":     chatID,
+			"target_user": userIDStr,
+			"error":       err.Error(),
+		}).Warn("Invalid user ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req models.UpdateChatMemberRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"chat_id":     chatID,
+			"target_user": targetUserID,
+			"error":       err.Error(),
+		}).Warn("Invalid request body for update chat member role")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.chatUsecase.UpdateMemberRole(userID, uint(chatID), uint(targetUserID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"chat_id":     chatID,
+			"target_user": targetUserID,
+			"new_role":    req.Role,
+			"error":       err.Error(),
+		}).Error("Failed to update chat member role")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to update member role"
+
+		if strings.Contains(err.Error(), "only chat owner or admin") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Only chat owner or admin can change member roles"
+		} else if strings.Contains(err.Error(), "only chat owner can change admin") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Only chat owner can change admin roles"
+		} else if strings.Contains(err.Error(), "cannot change owner role") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Cannot change owner role"
+		} else if strings.Contains(err.Error(), "cannot promote to owner") {
+			statusCode = http.StatusBadRequest
+			errorMessage = "Cannot promote to owner"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":  requestID,
+		"user_id":     userID,
+		"chat_id":     chatID,
+		"target_user": targetUserID,
+		"new_role":    req.Role,
+	}).Info("Chat member role updated successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Member role updated successfully",
+		"request_id": requestID,
+	})
+}
+
 // RemoveChatMember handles removing a member from chat
 func (h *ChatHandler) RemoveChatMember(c *gin.Context) {
 	requestID := requestid.Get(c)
