@@ -31,14 +31,27 @@ func (uc *chatUsecase) GetOrCreateDirectChat(userID, targetUserID uint) (*models
 		return nil, fmt.Errorf("cannot create personal chat with yourself")
 	}
 
-	// Check if personal chat already exists between these users
+	// Check if personal chat already exists between these users (including hidden ones)
 	existingChat, err := uc.chatRepo.GetDirectChatBetweenUsers(userID, targetUserID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing direct chat: %w", err)
 	}
 
-	// If chat exists, return it
+	// If chat exists, unhide it for both users and return it
 	if existingChat != nil {
+		// Unhide the chat for both participants
+		// This ensures that when one user "recreates" the chat, it appears for both
+		if err := uc.chatRepo.UpdateHiddenStatus(existingChat.ID, userID, false); err != nil {
+			// Log error but continue - this is not critical
+			fmt.Printf("Warning: failed to unhide chat for user %d: %v\n", userID, err)
+		}
+
+		// Also unhide for the other participant
+		if err := uc.chatRepo.UpdateHiddenStatus(existingChat.ID, targetUserID, false); err != nil {
+			// Log error but continue - this is not critical
+			fmt.Printf("Warning: failed to unhide chat for user %d: %v\n", targetUserID, err)
+		}
+
 		// Get unread count for this chat
 		response := existingChat.ToResponse(uc.baseURL)
 		unreadCount, err := uc.messageRepo.GetUnreadCount(existingChat.ID, userID)

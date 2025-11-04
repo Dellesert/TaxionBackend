@@ -32,6 +32,7 @@ type ChatRepository interface {
 	UpdateMemberRole(chatID, userID uint, role models.ChatMemberRole) error
 	UpdateFavoriteStatus(chatID, userID uint, isFavorite bool) error
 	UpdatePinnedStatus(chatID, userID uint, isPinned bool) error
+	UpdateHiddenStatus(chatID, userID uint, isHidden bool) error
 
 	// Access control methods
 	HasReadAccess(chatID, userID uint) (bool, error)
@@ -149,10 +150,10 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int) ([]*models
 	var chats []*models.Chat
 	var total int64
 
-	// Get total count
+	// Get total count (exclude hidden chats)
 	err := r.db.Model(&models.Chat{}).
 		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
-		Where("chat_members.user_id = ? AND chat_members.is_active = ?", userID, true).
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
 		Where("chats.is_active = ?", true).
 		Count(&total).Error
 
@@ -160,14 +161,14 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int) ([]*models
 		return nil, 0, fmt.Errorf("failed to count user chats: %w", err)
 	}
 
-	// Get chats with members, sorted by last activity
+	// Get chats with members, sorted by last activity (exclude hidden chats)
 	err = r.db.
 		Preload("Members.User"). // Загружаем User для каждого Member
 		Preload("Members", func(db *gorm.DB) *gorm.DB {
 			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
 		}).
 		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
-		Where("chat_members.user_id = ? AND chat_members.is_active = ?", userID, true).
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
 		Where("chats.is_active = ?", true).
 		Limit(limit).
 		Offset(offset).
@@ -315,6 +316,21 @@ func (r *chatRepository) UpdatePinnedStatus(chatID, userID uint, isPinned bool) 
 	return nil
 }
 
+// UpdateHiddenStatus updates the hidden status of a chat for a user
+func (r *chatRepository) UpdateHiddenStatus(chatID, userID uint, isHidden bool) error {
+	result := r.db.Model(&models.ChatMember{}).
+		Where("chat_id = ? AND user_id = ? AND is_active = ?", chatID, userID, true).
+		Update("is_hidden", isHidden)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update hidden status: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("chat member not found")
+	}
+	return nil
+}
+
 // Access control methods
 
 // HasReadAccess checks if user can read messages in chat
@@ -420,10 +436,13 @@ func (r *chatRepository) CanPromoteMembers(chatID, userID uint) (bool, error) {
 }
 
 // GetDirectChatBetweenUsers finds an existing private chat between two users
+// Note: This includes hidden chats - they can be unhidden when a new message is sent
 func (r *chatRepository) GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error) {
 	var chat models.Chat
 
-	// Find a private chat where both users are members
+	// Find a private chat where both users are members (including hidden chats)
+	// We don't filter by is_hidden here because we want to find existing chats
+	// even if they're hidden - they'll be unhidden when reopened
 	err := r.db.
 		Joins("JOIN chat_members cm1 ON chats.id = cm1.chat_id AND cm1.user_id = ? AND cm1.is_active = ?", user1ID, true).
 		Joins("JOIN chat_members cm2 ON chats.id = cm2.chat_id AND cm2.user_id = ? AND cm2.is_active = ?", user2ID, true).

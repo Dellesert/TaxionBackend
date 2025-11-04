@@ -139,6 +139,37 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 		}
 	}
 
+	// Create checklists if provided
+	if len(req.Checklists) > 0 {
+		for i, checklistReq := range req.Checklists {
+			// Create checklist
+			checklist := &models.TaskChecklist{
+				TaskID:      task.ID,
+				Title:       strings.TrimSpace(checklistReq.Title),
+				Description: strings.TrimSpace(checklistReq.Description),
+				Position:    i,
+			}
+			if err := u.checklistRepo.CreateChecklist(checklist); err != nil {
+				return nil, fmt.Errorf("failed to create checklist: %w", err)
+			}
+
+			// Create checklist items if provided
+			if len(checklistReq.Items) > 0 {
+				for j, itemTitle := range checklistReq.Items {
+					item := &models.TaskChecklistItem{
+						ChecklistID: checklist.ID,
+						Title:       strings.TrimSpace(itemTitle),
+						IsCompleted: false,
+						Position:    j,
+					}
+					if err := u.checklistRepo.CreateChecklistItem(item); err != nil {
+						return nil, fmt.Errorf("failed to create checklist item: %w", err)
+					}
+				}
+			}
+		}
+	}
+
 	// Log activity: task created
 	u.logActivity(task.ID, userID, "task_created", "", "Task created", map[string]interface{}{
 		"title":       task.Title,
@@ -146,6 +177,19 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 		"assignees":   assigneeIDs,
 		"created_at":  time.Now(),
 	})
+
+	// Load checklists with items if any were created
+	if len(req.Checklists) > 0 {
+		checklistsPtr, err := u.checklistRepo.GetChecklistsWithItems(task.ID)
+		if err == nil {
+			// Convert []*TaskChecklist to []TaskChecklist
+			checklists := make([]models.TaskChecklist, len(checklistsPtr))
+			for i, checklistPtr := range checklistsPtr {
+				checklists[i] = *checklistPtr
+			}
+			task.Checklists = checklists
+		}
+	}
 
 	response := task.ToResponse()
 

@@ -225,7 +225,7 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 		// Get messages based on filters
 		if req.After > 0 {
 			fmt.Printf("📖 Loading messages AFTER ID %d\n", req.After)
-			messages, err = uc.messageRepo.GetMessagesAfter(req.ChatID, req.After, req.Limit)
+			messages, err = uc.messageRepo.GetMessagesAfter(req.ChatID, userID, req.After, req.Limit)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get messages: %w", err)
 			}
@@ -236,7 +236,7 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 			}
 		} else if req.Before > 0 {
 			fmt.Printf("📖 Loading messages BEFORE ID %d\n", req.Before)
-			messages, err = uc.messageRepo.GetMessagesBefore(req.ChatID, req.Before, req.Limit)
+			messages, err = uc.messageRepo.GetMessagesBefore(req.ChatID, userID, req.Before, req.Limit)
 			if err != nil {
 				return nil, fmt.Errorf("failed to get messages: %w", err)
 			}
@@ -506,13 +506,23 @@ func (uc *messageUsecase) PinMessage(userID, messageID uint) (*models.MessageRes
 		return nil, fmt.Errorf("user is not a member of this chat")
 	}
 
-	// Check if user has permission to pin (owner or admin)
-	role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+	// Get chat to check type
+	chat, err := uc.chatRepo.GetByID(message.ChatID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user role: %w", err)
+		return nil, fmt.Errorf("failed to get chat: %w", err)
 	}
-	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
-		return nil, fmt.Errorf("only administrators can pin messages")
+
+	// Check if user has permission to pin
+	// In private chats, any member can pin messages
+	// In group chats, only owner or admin can pin messages
+	if chat.Type != models.ChatTypePrivate {
+		role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user role: %w", err)
+		}
+		if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+			return nil, fmt.Errorf("only administrators can pin messages in group chats")
+		}
 	}
 
 	// Check if message is deleted
@@ -565,13 +575,23 @@ func (uc *messageUsecase) UnpinMessage(userID, messageID uint) (*models.MessageR
 		return nil, fmt.Errorf("user is not a member of this chat")
 	}
 
-	// Check if user has permission to unpin (owner or admin)
-	role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+	// Get chat to check type
+	chat, err := uc.chatRepo.GetByID(message.ChatID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user role: %w", err)
+		return nil, fmt.Errorf("failed to get chat: %w", err)
 	}
-	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
-		return nil, fmt.Errorf("only administrators can unpin messages")
+
+	// Check if user has permission to unpin
+	// In private chats, any member can unpin messages
+	// In group chats, only owner or admin can unpin messages
+	if chat.Type != models.ChatTypePrivate {
+		role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user role: %w", err)
+		}
+		if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+			return nil, fmt.Errorf("only administrators can unpin messages in group chats")
+		}
 	}
 
 	// Check if already unpinned

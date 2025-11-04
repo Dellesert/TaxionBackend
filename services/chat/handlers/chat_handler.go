@@ -377,13 +377,17 @@ func (h *ChatHandler) DeleteChat(c *gin.Context) {
 		return
 	}
 
-	err = h.chatUsecase.DeleteChat(userID, uint(chatID))
+	// Parse optional query parameter for clearing history
+	clearHistory := c.Query("clear_history") == "true"
+
+	err = h.chatUsecase.DeleteChat(userID, uint(chatID), clearHistory)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
-			"request_id": requestID,
-			"user_id":    userID,
-			"chat_id":    chatID,
-			"error":      err.Error(),
+			"request_id":    requestID,
+			"user_id":       userID,
+			"chat_id":       chatID,
+			"clear_history": clearHistory,
+			"error":         err.Error(),
 		}).Error("Failed to delete chat")
 
 		statusCode := http.StatusInternalServerError

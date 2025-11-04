@@ -19,7 +19,7 @@ type ChatUsecase interface {
 	GetUserChats(userID uint, limit, offset int) (*models.ChatListResponse, error)
 	GetChat(userID, chatID uint) (*models.ChatResponse, error)
 	UpdateChat(userID, chatID uint, req *models.UpdateChatRequest) (*models.ChatResponse, error)
-	DeleteChat(userID, chatID uint) error
+	DeleteChat(userID, chatID uint, clearHistory bool) error
 	AddMember(userID, chatID uint, req *models.AddChatMemberRequest) error
 	RemoveMember(userID, chatID, targetUserID uint) error
 	UpdateMemberRole(userID, chatID, targetUserID uint, req *models.UpdateChatMemberRequest) error
@@ -255,9 +255,9 @@ func (uc *chatUsecase) LeaveChat(userID, chatID uint) error {
 			return fmt.Errorf("failed to get chat members: %w", err)
 		}
 
-		// If only owner left, delete the chat
+		// If only owner left, delete the chat (no history clearing)
 		if len(members) <= 1 {
-			return uc.DeleteChat(userID, chatID)
+			return uc.DeleteChat(userID, chatID, false)
 		}
 
 		// Find an admin to promote to owner, or promote the first member
@@ -547,19 +547,53 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 	return updatedChat.ToResponse(uc.baseURL), nil
 }
 
-// DeleteChat deletes a chat
-func (uc *chatUsecase) DeleteChat(userID, chatID uint) error {
-	// Check if user is the owner
+// DeleteChat deletes/hides a chat depending on chat type and user role
+// - For private chats: hides the chat for the user (doesn't delete it)
+// - For group/channel chats:
+//   - Owner can delete the entire chat
+//   - Non-owner members leave the chat
+// - clearHistory: if true, marks all messages as deleted for the user
+func (uc *chatUsecase) DeleteChat(userID, chatID uint, clearHistory bool) error {
+	// Get chat to check type
+	chat, err := uc.chatRepo.GetByID(chatID)
+	if err != nil {
+		return fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	// Check user's role
 	role, err := uc.chatRepo.GetMemberRole(chatID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user role: %w", err)
 	}
-	if role != models.ChatMemberRoleOwner {
-		return fmt.Errorf("only chat owner can delete the chat")
+
+	// Clear history for the user if requested
+	if clearHistory {
+		if err := uc.messageRepo.ClearChatHistoryForUser(chatID, userID); err != nil {
+			return fmt.Errorf("failed to clear chat history: %w", err)
+		}
 	}
 
-	if err := uc.chatRepo.Delete(chatID); err != nil {
-		return fmt.Errorf("failed to delete chat: %w", err)
+	// For private chats: hide the chat for the user
+	if chat.Type == models.ChatTypePrivate {
+		if err := uc.chatRepo.UpdateHiddenStatus(chatID, userID, true); err != nil {
+			return fmt.Errorf("failed to hide chat: %w", err)
+		}
+		return nil
+	}
+
+	// For group/channel chats:
+	// - Owner can delete the entire chat
+	// - Non-owner members leave the chat
+	if role == models.ChatMemberRoleOwner {
+		// Owner deletes the entire chat
+		if err := uc.chatRepo.Delete(chatID); err != nil {
+			return fmt.Errorf("failed to delete chat: %w", err)
+		}
+	} else {
+		// Non-owner leaves the chat
+		if err := uc.chatRepo.RemoveMember(chatID, userID); err != nil {
+			return fmt.Errorf("failed to leave chat: %w", err)
+		}
 	}
 
 	return nil

@@ -24,8 +24,8 @@ type MessageRepository interface {
 	Count() (int64, error)
 	CountByChatID(chatID uint) (int64, error)
 	GetWithReactions(id uint) (*models.Message, error)
-	GetMessagesAfter(chatID uint, after uint, limit int) ([]*models.Message, error)
-	GetMessagesBefore(chatID uint, before uint, limit int) ([]*models.Message, error)
+	GetMessagesAfter(chatID, userID, after uint, limit int) ([]*models.Message, error)
+	GetMessagesBefore(chatID, userID, before uint, limit int) ([]*models.Message, error)
 	GetMessagesByTimeRange(chatID uint, startTime, endTime time.Time, limit, offset int) ([]*models.Message, error)
 	GetLatestMessage(chatID uint) (*models.Message, error)
 
@@ -157,7 +157,9 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 	var total int64
 
 	// Subquery to get message IDs deleted by this user
+	// IMPORTANT: Use Unscoped() because MessageDeletion has a DeletedAt field that should not trigger soft delete behavior
 	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
 		Select("message_id").
 		Where("user_id = ?", userID)
 
@@ -270,14 +272,23 @@ func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 }
 
 // GetMessagesAfter retrieves messages after a specific message ID (for real-time updates)
-func (r *messageRepository) GetMessagesAfter(chatID uint, after uint, limit int) ([]*models.Message, error) {
+func (r *messageRepository) GetMessagesAfter(chatID, userID, after uint, limit int) ([]*models.Message, error) {
 	var messages []*models.Message
+
+	// Subquery to get message IDs deleted by this user
+	// IMPORTANT: Use Unscoped() because MessageDeletion has a DeletedAt field that should not trigger soft delete behavior
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
 	err := r.db.
 		Preload("ReplyTo").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
 		Where("chat_id = ? AND id > ? AND is_deleted = ?", chatID, after, false).
+		Where("id NOT IN (?)", deletedSubquery).
 		Limit(limit).
 		Order("created_at ASC").
 		Find(&messages).Error
@@ -289,8 +300,16 @@ func (r *messageRepository) GetMessagesAfter(chatID uint, after uint, limit int)
 }
 
 // GetMessagesBefore retrieves messages before a specific message ID (for loading history)
-func (r *messageRepository) GetMessagesBefore(chatID uint, before uint, limit int) ([]*models.Message, error) {
+func (r *messageRepository) GetMessagesBefore(chatID, userID, before uint, limit int) ([]*models.Message, error) {
 	var messages []*models.Message
+
+	// Subquery to get message IDs deleted by this user
+	// IMPORTANT: Use Unscoped() because MessageDeletion has a DeletedAt field that should not trigger soft delete behavior
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
 	err := r.db.
 		Preload("ReplyTo").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -300,6 +319,7 @@ func (r *messageRepository) GetMessagesBefore(chatID uint, before uint, limit in
 			return db.Order("read_at DESC")
 		}).
 		Where("chat_id = ? AND id < ? AND is_deleted = ?", chatID, before, false).
+		Where("id NOT IN (?)", deletedSubquery).
 		Limit(limit).
 		Order("created_at DESC").
 		Find(&messages).Error
@@ -505,6 +525,7 @@ func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, erro
 // GetMessagesForUser retrieves messages that a user can see (respects chat access)
 func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offset int) ([]*models.Message, error) {
 	// First verify user has access to the chat through a join with chat_members
+	// Also exclude messages that were deleted by this user (from message_deletions table)
 	var messages []*models.Message
 	err := r.db.
 		Preload("ReplyTo").
@@ -512,8 +533,10 @@ func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offse
 			return db.Order("created_at ASC")
 		}).
 		Joins("JOIN chat_members ON chat_members.chat_id = messages.chat_id").
+		Joins("LEFT JOIN message_deletions ON message_deletions.message_id = messages.id AND message_deletions.user_id = ?", userID).
 		Where("messages.chat_id = ? AND messages.is_deleted = ?", chatID, false).
 		Where("chat_members.user_id = ? AND chat_members.is_active = ?", userID, true).
+		Where("message_deletions.id IS NULL"). // Exclude messages deleted by this user
 		Limit(limit).
 		Offset(offset).
 		Order("messages.created_at DESC").

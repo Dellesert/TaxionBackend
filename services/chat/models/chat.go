@@ -50,6 +50,7 @@ type ChatMember struct {
 	IsActive   bool           `gorm:"not null;default:true" json:"is_active"`
 	IsFavorite bool           `gorm:"not null;default:false" json:"is_favorite"`
 	IsPinned   bool           `gorm:"not null;default:false" json:"is_pinned"`
+	IsHidden   bool           `gorm:"not null;default:false" json:"is_hidden"` // Allows user to hide chat without leaving
 
 	// Associations
 	Chat *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`

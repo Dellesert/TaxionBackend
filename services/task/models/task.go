@@ -198,14 +198,15 @@ func (t *Task) AfterFind(tx *gorm.DB) error {
 
 // CreateTaskRequest represents request for creating a task
 type CreateTaskRequest struct {
-	Title                string        `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
-	Description          string        `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Priority             *TaskPriority `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
-	AssignedToUserID     *uint         `json:"assigned_to_user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
-	AssigneeIDs          []uint        `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`
-	AssignedToDepartment *uint         `json:"assigned_to_department_id,omitempty" validate:"omitempty,min=1"`
-	ParentTaskID         *uint         `json:"parent_task_id,omitempty" validate:"omitempty,min=1"`
-	DueDate              *time.Time    `json:"due_date,omitempty"`
+	Title                string                    `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
+	Description          string                    `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Priority             *TaskPriority             `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
+	AssignedToUserID     *uint                     `json:"assigned_to_user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	AssigneeIDs          []uint                    `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`
+	AssignedToDepartment *uint                     `json:"assigned_to_department_id,omitempty" validate:"omitempty,min=1"`
+	ParentTaskID         *uint                     `json:"parent_task_id,omitempty" validate:"omitempty,min=1"`
+	DueDate              *time.Time                `json:"due_date,omitempty"`
+	Checklists           []CreateChecklistRequest  `json:"checklists,omitempty" validate:"omitempty,dive"`
 
 	// Backward compatibility
 	AssignedTo           *uint   `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"` // Deprecated
