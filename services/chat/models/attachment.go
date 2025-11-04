@@ -1,6 +1,8 @@
 package models
 
 import (
+	"strings"
+
 	"tachyon-messenger/shared/models"
 )
 
@@ -47,9 +49,17 @@ func (ma *MessageAttachment) ToResponse(baseURL ...string) *MessageAttachmentRes
 	// If baseURL is provided, construct the URL dynamically
 	// This ensures the URL is always current (important after domain changes)
 	if len(baseURL) > 0 && baseURL[0] != "" {
-		// Extract filename from the stored URL or use FileID
-		// Format: {baseURL}/api/v1/files/public/{filename}
-		fileURL = baseURL[0] + "/api/v1/files/public/" + ma.FileName
+		// Extract the actual filename from the stored FileURL
+		// ma.FileURL format: http://host/api/v1/files/public/{actual_filename.ext}
+		// We need to extract {actual_filename.ext} and use it with the new baseURL
+		parts := strings.Split(ma.FileURL, "/")
+		if len(parts) > 0 {
+			actualFilename := parts[len(parts)-1]
+			fileURL = baseURL[0] + "/api/v1/files/public/" + actualFilename
+		} else {
+			// Fallback: keep the original FileURL if parsing fails
+			fileURL = ma.FileURL
+		}
 	}
 
 	return &MessageAttachmentResponse{
