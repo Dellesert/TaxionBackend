@@ -133,12 +133,6 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		}
 	}
 
-	logger.WithFields(map[string]interface{}{
-		"request_id":       requestID,
-		"user_role_exists": exists,
-		"user_role_value":  userRole,
-		"user_role_string": currentUserRole,
-	}).Info("GetUsers - extracted user role from context")
 
 	// Get current user's department ID for filtering
 	var currentUserDeptID *uint
@@ -193,15 +187,6 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 
 	// Check if this is for task assignment
 	forTaskAssignment := c.Query("for_task_assignment") == "true"
-
-	logger.WithFields(map[string]interface{}{
-		"request_id":            requestID,
-		"for_task_assignment":   forTaskAssignment,
-		"current_user_role":     currentUserRole,
-		"current_user_dept_id":  currentUserDeptID,
-		"explicit_dept_filter":  departmentID,
-	}).Info("GetUsers - checking filters")
-
 	if forTaskAssignment {
 		departmentID = nil // Clear explicit department filter for task assignment
 	}
@@ -225,43 +210,21 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 
 	// Apply task assignment filtering for department heads
 	if forTaskAssignment && currentUserRole == "department_head" && currentUserDeptID != nil {
-		logger.WithFields(map[string]interface{}{
-			"request_id":         requestID,
-			"current_user_role":  currentUserRole,
-			"current_dept_id":    *currentUserDeptID,
-			"total_users_before": len(users),
-		}).Info("Applying department head filtering for task assignment")
-
 		filteredUsers := make([]*models.UserResponse, 0)
 		for _, user := range users {
 			// Include users from own department
 			if user.DepartmentID != nil && *user.DepartmentID == *currentUserDeptID {
 				filteredUsers = append(filteredUsers, user)
-				logger.WithFields(map[string]interface{}{
-					"user_id":   user.ID,
-					"user_name": user.Name,
-					"reason":    "same_department",
-				}).Debug("Including user")
 				continue
 			}
 			// Include only department heads from other departments (not admin/super_admin)
 			if user.Role == "department_head" {
 				filteredUsers = append(filteredUsers, user)
-				logger.WithFields(map[string]interface{}{
-					"user_id":   user.ID,
-					"user_name": user.Name,
-					"reason":    "department_head",
-				}).Debug("Including user")
 				continue
 			}
 		}
 		users = filteredUsers
 		total = int64(len(filteredUsers))
-
-		logger.WithFields(map[string]interface{}{
-			"request_id":        requestID,
-			"total_users_after": len(filteredUsers),
-		}).Info("Department head filtering applied")
 	}
 
 	c.JSON(http.StatusOK, gin.H{
