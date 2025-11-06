@@ -374,7 +374,9 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			{
 				v1AdminUsers.GET("", middleware.LogAdminAction("list_users"), adminHandler.GetUsers)
 				v1AdminUsers.POST("", middleware.LogAdminAction("create_user"), adminHandler.CreateUser)
-				v1AdminUsers.POST("/import", middleware.LogAdminAction("import_users"), adminHandler.ImportUsers) // Import users from CSV
+				v1AdminUsers.POST("/import", middleware.LogAdminAction("import_users"), adminHandler.ImportUsers)                         // Import users from CSV
+				v1AdminUsers.POST("/bulk-activate", middleware.LogAdminAction("bulk_activate_users"), adminHandler.BulkActivateUsers)     // Bulk activate users
+				v1AdminUsers.POST("/bulk-deactivate", middleware.LogAdminAction("bulk_deactivate_users"), adminHandler.BulkDeactivateUsers) // Bulk deactivate users
 				v1AdminUsers.PUT("/:id", middleware.LogAdminAction("update_user"), adminHandler.UpdateUser)
 				v1AdminUsers.GET("/stats", middleware.LogAdminAction("get_user_stats"), adminHandler.GetUserStats)
 				v1AdminUsers.PUT("/:id/role", middleware.LogAdminAction("update_user_role"), adminHandler.UpdateUserRole)

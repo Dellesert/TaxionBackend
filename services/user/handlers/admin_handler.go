@@ -1107,6 +1107,194 @@ func parseCSVFile(file interface{ Read([]byte) (int, error) }) ([]models.CSVUser
 	return csvRows, nil
 }
 
+// BulkActivateUsers handles bulk user activation (admin only)
+func (h *AdminHandler) BulkActivateUsers(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin user info from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for bulk activate users")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No user IDs provided",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Activate users one by one
+	var successCount, errorCount int
+	var updatedUsers []*models.UserResponse
+	var errors []map[string]interface{}
+
+	for _, userID := range req.UserIDs {
+		user, err := h.adminUsecase.ActivateUser(userID)
+		if err != nil {
+			errorCount++
+			errors = append(errors, map[string]interface{}{
+				"user_id": userID,
+				"error":   err.Error(),
+			})
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"admin_id":   adminID,
+				"user_id":    userID,
+				"error":      err.Error(),
+			}).Warn("Failed to activate user in bulk operation")
+		} else {
+			successCount++
+			updatedUsers = append(updatedUsers, user)
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"admin_id":      adminID,
+		"total":         len(req.UserIDs),
+		"success_count": successCount,
+		"error_count":   errorCount,
+	}).Info("Bulk user activation completed")
+
+	response := gin.H{
+		"success_count":  successCount,
+		"error_count":    errorCount,
+		"updated_users":  updatedUsers,
+		"request_id":     requestID,
+	}
+
+	if len(errors) > 0 {
+		response["errors"] = errors
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// BulkDeactivateUsers handles bulk user deactivation (admin only)
+func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin user info from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		UserIDs []uint `json:"user_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for bulk deactivate users")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No user IDs provided",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Deactivate users one by one
+	var successCount, errorCount int
+	var updatedUsers []*models.UserResponse
+	var errors []map[string]interface{}
+
+	for _, userID := range req.UserIDs {
+		user, err := h.adminUsecase.DeactivateUser(userID)
+		if err != nil {
+			errorCount++
+			errors = append(errors, map[string]interface{}{
+				"user_id": userID,
+				"error":   err.Error(),
+			})
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"admin_id":   adminID,
+				"user_id":    userID,
+				"error":      err.Error(),
+			}).Warn("Failed to deactivate user in bulk operation")
+		} else {
+			successCount++
+			updatedUsers = append(updatedUsers, user)
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"admin_id":      adminID,
+		"total":         len(req.UserIDs),
+		"success_count": successCount,
+		"error_count":   errorCount,
+	}).Info("Bulk user deactivation completed")
+
+	response := gin.H{
+		"success_count":  successCount,
+		"error_count":    errorCount,
+		"updated_users":  updatedUsers,
+		"request_id":     requestID,
+	}
+
+	if len(errors) > 0 {
+		response["errors"] = errors
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
 // ImportUsers handles bulk user import from CSV file
 func (h *AdminHandler) ImportUsers(c *gin.Context) {
 	requestID := requestid.Get(c)
