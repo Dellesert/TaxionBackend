@@ -499,10 +499,16 @@ func (u *invitationUsecase) sendInvitationEmail(invitation *models.Invitation, i
 		return fmt.Errorf("email service not configured")
 	}
 
-	subject := "Приглашение в Tachyon Messenger"
-	htmlBody := renderInvitationEmailTemplate(invitation, inviteLink)
+	// Generate deep link
+	deepLink := fmt.Sprintf("tachyon://invite/%s", invitation.Token)
 
-	return u.emailService.SendEmail(invitation.Email, subject, htmlBody)
+	// Use new email template method
+	return u.emailService.SendInvitationEmail(
+		invitation.Email,
+		invitation.Name,
+		invitation.Token,
+		deepLink,
+	)
 }
 
 // sendActivationNotificationToSuperAdmin sends notification to super admin when user activates account

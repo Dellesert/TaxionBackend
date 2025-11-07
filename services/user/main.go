@@ -67,7 +67,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA, passkey, system settings, invitations, and password resets tables)
+	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, and SMTP settings tables)
 	if err := db.Migrate(
 		&models.Department{},
 		&models.User{},
@@ -76,6 +76,7 @@ func main() {
 		&models.SystemSettings{},
 		&models.Invitation{},
 		&models.PasswordReset{},
+		&models.SMTPSettings{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -105,10 +106,29 @@ func main() {
 	settingsRepo := repository.NewSettingsRepository(db)
 	invitationRepo := repository.NewInvitationRepository(db.DB)
 	passwordResetRepo := repository.NewPasswordResetRepository(db.DB)
+	smtpRepo := repository.NewSMTPRepository(db.DB)
 
-	// Initialize email service for 2FA
-	emailConfig := email.LoadConfigFromEnv()
-	emailService := email.NewEmailService(emailConfig)
+	// Initialize email service with dynamic config loader
+	// This allows the email service to reload SMTP settings from database on each send
+	emailService := email.NewEmailServiceWithLoader(func() *email.EmailConfig {
+		// Try to load SMTP settings from database first, fallback to env
+		smtpSettings, err := smtpRepo.GetSettings()
+		if err == nil && smtpSettings != nil {
+			// Use database settings if available
+			log.Debug("Loading SMTP settings from database")
+			return email.LoadConfigFromDB(
+				smtpSettings.Host,
+				smtpSettings.Port,
+				smtpSettings.Username,
+				smtpSettings.Password,
+				smtpSettings.FromEmail,
+				smtpSettings.FromName,
+			)
+		}
+		// Fallback to environment variables
+		log.Debug("Loading SMTP settings from environment variables")
+		return email.LoadConfigFromEnv()
+	})
 
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
@@ -138,6 +158,7 @@ func main() {
 	passkeyUsecase := usecase.NewPasskeyUsecase(userRepo, passkeyRepo, settingsRepo, webAuthnService)
 	invitationUsecase := usecase.NewInvitationUsecase(invitationRepo, userRepo, departmentRepo, emailService, authUsecase)
 	passwordResetUsecase := usecase.NewPasswordResetUsecase(passwordResetRepo, userRepo, emailService, authUsecase)
+	smtpUsecase := usecase.NewSMTPUsecase(smtpRepo)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -157,6 +178,8 @@ func main() {
 	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase)
 	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)
 	passwordResetHandler := handlers.NewPasswordResetHandler(passwordResetUsecase)
+	smtpHandler := handlers.NewSMTPHandler(smtpUsecase)
+	metricsHandler := handlers.NewMetricsHandler(db, redisClient)
 
 	// Create Gin router
 	router := gin.New()
@@ -168,7 +191,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, metricsHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -203,9 +226,16 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, metricsHandler *handlers.MetricsHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
+
+	// Internal metrics endpoints (no auth required - only accessible from internal network)
+	internalMetrics := router.Group("/internal/metrics")
+	{
+		internalMetrics.GET("/database", metricsHandler.GetDatabaseMetrics)
+		internalMetrics.GET("/redis", metricsHandler.GetRedisMetrics)
+	}
 
 	// Apple App Site Association for Passkeys
 	wellKnown := router.Group("/.well-known")
@@ -415,6 +445,15 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminSettings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode_legacy"), settingsHandler.SetAuthMode)
 			}
 
+			// SMTP settings endpoints (super admin only)
+			v1AdminSMTP := v1Admin.Group("/smtp-settings")
+			v1AdminSMTP.Use(middleware.SuperAdminOnlyMiddleware())
+			{
+				v1AdminSMTP.GET("", middleware.LogAdminAction("get_smtp_settings"), smtpHandler.GetSettings)
+				v1AdminSMTP.PUT("", middleware.LogAdminAction("update_smtp_settings"), smtpHandler.UpdateSettings)
+				v1AdminSMTP.POST("/test", middleware.LogAdminAction("test_smtp_connection"), smtpHandler.TestConnection)
+			}
+
 			// Invitation management endpoints (super admin only)
 			v1AdminInvitations := v1Admin.Group("/invitations")
 			v1AdminInvitations.Use(middleware.SuperAdminOnlyMiddleware())
@@ -490,6 +529,15 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			// Legacy endpoints (deprecated but kept for backward compatibility)
 			settings.GET("/auth/mode", middleware.LogAdminAction("get_auth_mode_legacy"), settingsHandler.GetAuthMode)
 			settings.PUT("/auth/mode", middleware.LogAdminAction("set_auth_mode_legacy"), settingsHandler.SetAuthMode)
+		}
+
+		// SMTP settings endpoints (super admin only)
+		smtp := admin.Group("/smtp-settings")
+		smtp.Use(middleware.SuperAdminOnlyMiddleware())
+		{
+			smtp.GET("", middleware.LogAdminAction("get_smtp_settings"), smtpHandler.GetSettings)
+			smtp.PUT("", middleware.LogAdminAction("update_smtp_settings"), smtpHandler.UpdateSettings)
+			smtp.POST("/test", middleware.LogAdminAction("test_smtp_connection"), smtpHandler.TestConnection)
 		}
 	}
 }

@@ -134,6 +134,7 @@ func main() {
 
 	// Initialize handlers
 	notificationHandler := handlers.NewNotificationHandler(notificationUC)
+	metricsHandler := handlers.NewMetricsHandler(notificationWorker, redisClient, workerConfig)
 
 	// Create Gin router
 	router := gin.New()
@@ -142,7 +143,7 @@ func main() {
 	setupCommonMiddleware(router)
 
 	// Setup routes
-	setupRoutes(router, notificationHandler, jwtConfig, notificationWorker, redisClient, workerConfig, notificationUC)
+	setupRoutes(router, notificationHandler, metricsHandler, jwtConfig, notificationWorker, redisClient, workerConfig, notificationUC)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -213,6 +214,7 @@ func setupCommonMiddleware(router *gin.Engine) {
 func setupRoutes(
 	router *gin.Engine,
 	notificationHandler *handlers.NotificationHandler,
+	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 	notificationWorker *worker.Worker,
 	redisClient *redis.Client,
@@ -221,6 +223,12 @@ func setupRoutes(
 ) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
+
+	// Internal metrics endpoints (no auth required - only accessible from internal network)
+	internalMetrics := router.Group("/internal/metrics")
+	{
+		internalMetrics.GET("/worker", metricsHandler.GetWorkerMetrics)
+	}
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")

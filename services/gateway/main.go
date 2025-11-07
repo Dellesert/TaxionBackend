@@ -228,10 +228,22 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			passwordResets.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
-		// Admin routes within /api/v1 - proxy to user service
+		// Admin routes within /api/v1
 		admin := v1.Group("/admin")
 		{
-			admin.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			// System metrics endpoint - specific route handled by gateway
+			admin.GET("/system/metrics", systemMetricsHandler)
+
+			// All other specific admin patterns that should be proxied to user service
+			// (we can't use wildcard /*path here because it conflicts with /system/metrics)
+			admin.Any("/users", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/users/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/departments", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/departments/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/invitations", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/invitations/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/settings", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/settings/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
 		// Super Admin routes within /api/v1 - proxy to user service

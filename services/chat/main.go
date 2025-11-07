@@ -115,6 +115,7 @@ func main() {
 	chatHandler := handlers.NewChatHandler(chatUsecase)
 	messageHandler := handlers.NewMessageHandler(messageUsecase)
 	wsHandler := handlers.NewWebSocketHandler(wsHub, messageUsecase)
+	metricsHandler := handlers.NewMetricsHandler(wsHub)
 
 	// Create Gin router
 	router := gin.New()
@@ -123,7 +124,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, chatHandler, messageHandler, wsHandler, jwtConfig)
+	setupRoutes(router, chatHandler, messageHandler, wsHandler, metricsHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -161,9 +162,15 @@ func main() {
 }
 
 // setupRoutes configures all routes for the chat service
-func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageHandler *handlers.MessageHandler, wsHandler *handlers.WebSocketHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageHandler *handlers.MessageHandler, wsHandler *handlers.WebSocketHandler, metricsHandler *handlers.MetricsHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.Any("/health", healthHandler)
+
+	// Internal metrics endpoints (no auth required - only accessible from internal network)
+	internal := router.Group("/internal/metrics")
+	{
+		internal.GET("/websocket", metricsHandler.GetWebSocketMetrics)
+	}
 
 	// WebSocket endpoint БЕЗ JWT middleware (обрабатывает аутентификацию самостоятельно)
 	router.GET("/api/v1/ws", wsHandler.HandleWebSocket) // GET /api/v1/ws

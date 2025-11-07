@@ -21,17 +21,27 @@ type EmailConfig struct {
 
 // EmailService handles email operations
 type EmailService struct {
-	config *EmailConfig
+	config       *EmailConfig
+	configLoader func() *EmailConfig // Optional: dynamic config loader
 }
 
-// NewEmailService creates a new email service
+// NewEmailService creates a new email service with static config
 func NewEmailService(config *EmailConfig) *EmailService {
 	return &EmailService{
 		config: config,
 	}
 }
 
+// NewEmailServiceWithLoader creates a new email service with dynamic config loading
+func NewEmailServiceWithLoader(configLoader func() *EmailConfig) *EmailService {
+	return &EmailService{
+		config:       configLoader(), // Load initial config
+		configLoader: configLoader,
+	}
+}
+
 // LoadConfigFromEnv loads email configuration from environment variables
+// This is used as fallback if database config is not available
 func LoadConfigFromEnv() *EmailConfig {
 	return &EmailConfig{
 		SMTPHost:     os.Getenv("SMTP_HOST"),
@@ -43,8 +53,26 @@ func LoadConfigFromEnv() *EmailConfig {
 	}
 }
 
+// LoadConfigFromDB loads email configuration from database settings
+func LoadConfigFromDB(host string, port int, user, password, fromEmail, fromName string) *EmailConfig {
+	return &EmailConfig{
+		SMTPHost:     host,
+		SMTPPort:     fmt.Sprintf("%d", port),
+		SMTPUser:     user,
+		SMTPPassword: password,
+		FromEmail:    fromEmail,
+		FromName:     fromName,
+	}
+}
+
 // SendEmail sends an email
 func (s *EmailService) SendEmail(to, subject, htmlBody string) error {
+	// Reload config if dynamic loader is available
+	if s.configLoader != nil {
+		s.config = s.configLoader()
+		fmt.Printf("DEBUG: Reloaded SMTP config - Host: %s, User: %s\n", s.config.SMTPHost, s.config.SMTPUser)
+	}
+
 	// Check if we're in development mode (log emails instead of sending)
 	if os.Getenv("EMAIL_MODE") == "log" || (os.Getenv("ENVIRONMENT") == "development" && s.config.SMTPHost == "") {
 		fmt.Printf("\n========== EMAIL (NOT SENT - LOG MODE) ==========\n")
@@ -282,6 +310,18 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return defaultValue
 	}
 	return value
+}
+
+// SendInvitationEmail sends an invitation email with app store links and deep link
+func (s *EmailService) SendInvitationEmail(to, userName, inviteToken, deepLink string) error {
+	subject := "Приглашение в Tachyon Messenger"
+
+	htmlBody, err := s.renderInvitationTemplate(userName, inviteToken, deepLink)
+	if err != nil {
+		return fmt.Errorf("failed to render template: %w", err)
+	}
+
+	return s.SendEmail(to, subject, htmlBody)
 }
 
 // SendPasswordResetEmail sends a password reset email
