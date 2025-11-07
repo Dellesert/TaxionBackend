@@ -32,12 +32,13 @@ func (h *MetricsHandler) GetDatabaseMetrics(c *gin.Context) {
 
 	logger.WithField("request_id", requestID).Debug("Fetching database metrics")
 
-	stats, err := h.db.Stats()
+	// Use new GetMetrics function for detailed metrics
+	metrics, err := h.db.GetMetrics()
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
 			"error":      err.Error(),
-		}).Error("Failed to get database stats")
+		}).Error("Failed to get database metrics")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to get database metrics",
@@ -45,17 +46,30 @@ func (h *MetricsHandler) GetDatabaseMetrics(c *gin.Context) {
 		return
 	}
 
-	// Transform to consistent format
+	// Determine status based on health
+	status := "healthy"
+	if !metrics.IsHealthy {
+		status = "unhealthy"
+	}
+
+	// Return detailed metrics
 	response := gin.H{
-		"status":                "healthy",
-		"max_open_connections":  stats["max_open_connections"],
-		"open_connections":      stats["open_connections"],
-		"in_use":                stats["in_use"],
-		"idle":                  stats["idle"],
-		"wait_count":            stats["wait_count"],
-		"wait_duration":         stats["wait_duration"],
-		"max_idle_closed":       stats["max_idle_closed"],
-		"max_lifetime_closed":   stats["max_lifetime_closed"],
+		"status":                   status,
+		"max_open_connections":     metrics.MaxOpenConnections,
+		"open_connections":         metrics.OpenConnections,
+		"in_use":                   metrics.InUse,
+		"idle":                     metrics.Idle,
+		"wait_count":               metrics.WaitCount,
+		"wait_duration":            metrics.WaitDuration.String(),
+		"wait_duration_ms":         metrics.WaitDurationMs,
+		"avg_wait_duration_ms":     metrics.AvgWaitDurationMs,
+		"max_idle_closed":          metrics.MaxIdleClosed,
+		"max_idle_time_closed":     metrics.MaxIdleTimeClosed,
+		"max_lifetime_closed":      metrics.MaxLifetimeClosed,
+		"total_connections_closed": metrics.TotalConnectionsClosed,
+		"utilization_percent":      metrics.UtilizationPercent,
+		"is_healthy":               metrics.IsHealthy,
+		"timestamp":                metrics.Timestamp,
 	}
 
 	c.JSON(http.StatusOK, response)
