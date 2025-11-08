@@ -2,10 +2,12 @@ package usecase
 
 import (
 	"fmt"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
 	"tachyon-messenger/shared/logger"
+	"tachyon-messenger/shared/middleware"
 )
 
 // SettingsUsecase defines interface for settings business logic
@@ -98,9 +100,17 @@ func (u *settingsUsecase) ApplyPreset(preset models.SecurityLevel, adminID uint)
 		return nil, fmt.Errorf("failed to apply security preset")
 	}
 
+	// Update session duration in runtime
+	newDuration := time.Duration(settings.SessionDurationHours) * time.Hour
+	if err := middleware.UpdateSessionDuration(newDuration); err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to update session duration in runtime")
+		// Don't fail the whole operation, just log the warning
+	}
+
 	logger.WithFields(map[string]interface{}{
-		"preset":   preset,
-		"admin_id": adminID,
+		"preset":               preset,
+		"admin_id":             adminID,
+		"session_duration_hrs": settings.SessionDurationHours,
 	}).Info("Security preset applied successfully")
 
 	return settings.ToResponse(), nil
@@ -156,8 +166,18 @@ func (u *settingsUsecase) UpdateCustomSettings(req *models.UpdateCustomSettingsR
 		return nil, fmt.Errorf("failed to update custom settings")
 	}
 
+	// Update session duration in runtime if it was changed
+	if req.SessionDurationHours != nil {
+		newDuration := time.Duration(settings.SessionDurationHours) * time.Hour
+		if err := middleware.UpdateSessionDuration(newDuration); err != nil {
+			logger.WithField("error", err.Error()).Warn("Failed to update session duration in runtime")
+			// Don't fail the whole operation, just log the warning
+		}
+	}
+
 	logger.WithFields(map[string]interface{}{
-		"admin_id": adminID,
+		"admin_id":             adminID,
+		"session_duration_hrs": settings.SessionDurationHours,
 	}).Info("Custom security settings updated successfully")
 
 	return settings.ToResponse(), nil
@@ -274,8 +294,13 @@ func (u *settingsUsecase) buildFeatureList(settings *models.SystemSettings) []st
 		features = append(features, fmt.Sprintf("Простые требования к паролю (минимум %d символов)", settings.MinPasswordLength))
 	}
 
-	// Session duration
-	features = append(features, fmt.Sprintf("Сессии %d часов", settings.SessionDurationHours))
+	// Session duration - convert hours to days for better readability
+	sessionDays := settings.SessionDurationHours / 24
+	if sessionDays > 0 {
+		features = append(features, fmt.Sprintf("Сессии %d дней неактивности", sessionDays))
+	} else {
+		features = append(features, fmt.Sprintf("Сессии %d часов неактивности", settings.SessionDurationHours))
+	}
 
 	// Password expiration
 	if settings.PasswordExpirationDays > 0 {

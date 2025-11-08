@@ -269,6 +269,10 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			admin.Any("/invitations/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/settings", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/settings/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/smtp-settings", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/smtp-settings/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/password-resets", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/password-resets/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
 		// Super Admin routes within /api/v1 - proxy to user service

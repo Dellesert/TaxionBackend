@@ -125,10 +125,10 @@ func GetSecurityPresets() map[SecurityLevel]SystemAuthSettings {
 			PasskeyAsSecondFactor:     false,
 			AllowMultiplePasskeys:     false,
 			MaxPasskeysPerUser:        0,
-			SessionDurationHours:      168, // 7 days
+			SessionDurationHours:      4320, // 180 days (6 months)
 			MinPasswordLength:         6,
 			RequirePasswordComplexity: false,
-			PasswordExpirationDays:    0, // never
+			PasswordExpirationDays:    0, // never expire
 			UpdatedAt:                 now,
 		},
 
@@ -139,10 +139,10 @@ func GetSecurityPresets() map[SecurityLevel]SystemAuthSettings {
 			PasskeyAsSecondFactor:     true,
 			AllowMultiplePasskeys:     true,
 			MaxPasskeysPerUser:        5,
-			SessionDurationHours:      72, // 3 days
+			SessionDurationHours:      2160, // 90 days (3 months)
 			MinPasswordLength:         8,
 			RequirePasswordComplexity: true,
-			PasswordExpirationDays:    90, // 3 months
+			PasswordExpirationDays:    0, // never expire (optional for medium)
 			UpdatedAt:                 now,
 		},
 
@@ -153,10 +153,10 @@ func GetSecurityPresets() map[SecurityLevel]SystemAuthSettings {
 			PasskeyAsSecondFactor:     true,
 			AllowMultiplePasskeys:     true,
 			MaxPasskeysPerUser:        10,
-			SessionDurationHours:      24, // 1 day
+			SessionDurationHours:      720, // 30 days (1 month)
 			MinPasswordLength:         12,
 			RequirePasswordComplexity: true,
-			PasswordExpirationDays:    30, // 1 month
+			PasswordExpirationDays:    90, // 90 days for maximum security
 			UpdatedAt:                 now,
 		},
 	}
@@ -170,13 +170,13 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 		{
 			Level:       SecurityLevelMinimal,
 			Name:        "Минимальный",
-			Description: "Базовая защита для небольших команд с низкими требованиями к безопасности",
+			Description: "Максимальное удобство для небольших команд с низкими требованиями к безопасности",
 			Recommended: false,
 			Features: []string{
 				"Вход только по паролю",
 				"Без обязательной двухфакторной аутентификации",
 				"Простые требования к паролю (минимум 6 символов)",
-				"Длительные сессии (7 дней)",
+				"Длительные сессии (180 дней неактивности)",
 				"Пароли не истекают",
 			},
 			Settings: presets[SecurityLevelMinimal],
@@ -192,8 +192,8 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 				"Passkey может использоваться как второй фактор",
 				"До 5 passkey на пользователя",
 				"Средние требования к паролю (минимум 8 символов, сложность)",
-				"Сессии 3 дня",
-				"Смена пароля каждые 90 дней",
+				"Сессии 90 дней неактивности",
+				"Пароли не истекают",
 			},
 			Settings: presets[SecurityLevelMedium],
 		},
@@ -208,8 +208,8 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 				"Три фактора: пароль + passkey + email код",
 				"До 10 passkey на пользователя",
 				"Строгие требования к паролю (минимум 12 символов, сложность)",
-				"Короткие сессии (24 часа)",
-				"Обязательная смена пароля каждые 30 дней",
+				"Сессии 30 дней неактивности",
+				"Обязательная смена пароля каждые 90 дней",
 			},
 			Settings: presets[SecurityLevelMaximum],
 		},

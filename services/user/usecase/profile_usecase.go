@@ -180,9 +180,11 @@ func (p *profileUsecase) ChangePassword(id uint, req *models.ChangePasswordReque
 		return fmt.Errorf("failed to hash new password: %w", err)
 	}
 
-	// Update password
+	// Update password and password change timestamp
 	hashedPwd := string(hashedPassword)
+	now := time.Now()
 	user.HashedPassword = &hashedPwd
+	user.PasswordChangedAt = &now
 	if err := p.userRepo.Update(user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)
 	}
@@ -230,10 +232,12 @@ func (p *profileUsecase) ChangeSuperAdminPassword(id uint, newPassword string) e
 		return fmt.Errorf("failed to hash new password: %w", err)
 	}
 
-	// Update password and reset must_change_password flag
+	// Update password, reset must_change_password flag, and set password change timestamp
 	hashedPwd := string(hashedPassword)
+	now := time.Now()
 	user.HashedPassword = &hashedPwd
 	user.MustChangePassword = false
+	user.PasswordChangedAt = &now
 
 	if err := p.userRepo.Update(user); err != nil {
 		return fmt.Errorf("failed to update password: %w", err)

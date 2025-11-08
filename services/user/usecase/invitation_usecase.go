@@ -254,16 +254,18 @@ func (u *invitationUsecase) AcceptInvitation(token string, req *models.AcceptInv
 		user = existingUser
 	} else {
 		// Create new user
+		now := time.Now()
 		user = &models.User{
-			Email:          invitation.Email,
-			Name:           invitation.Name,
-			HashedPassword: &hashedPassword,
-			Role:           invitation.Role,
-			DepartmentID:   invitation.DepartmentID,
-			Position:       invitation.Position,
-			Phone:          invitation.Phone,
-			IsActive:       true,
-			Status:         sharedmodels.StatusOnline,
+			Email:             invitation.Email,
+			Name:              invitation.Name,
+			HashedPassword:    &hashedPassword,
+			PasswordChangedAt: &now,
+			Role:              invitation.Role,
+			DepartmentID:      invitation.DepartmentID,
+			Position:          invitation.Position,
+			Phone:             invitation.Phone,
+			IsActive:          true,
+			Status:            sharedmodels.StatusOnline,
 		}
 
 		// Save user

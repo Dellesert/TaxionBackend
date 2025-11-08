@@ -3,6 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
@@ -25,13 +26,15 @@ type UserUsecase interface {
 
 // userUsecase implements UserUsecase interface
 type userUsecase struct {
-	userRepo repository.UserRepository
+	userRepo     repository.UserRepository
+	settingsRepo repository.SettingsRepository
 }
 
 // NewUserUsecase creates a new user usecase
-func NewUserUsecase(userRepo repository.UserRepository) UserUsecase {
+func NewUserUsecase(userRepo repository.UserRepository, settingsRepo repository.SettingsRepository) UserUsecase {
 	return &userUsecase{
-		userRepo: userRepo,
+		userRepo:     userRepo,
+		settingsRepo: settingsRepo,
 	}
 }
 
@@ -51,6 +54,11 @@ func (u *userUsecase) CreateUser(req *models.CreateUserRequest) (*models.UserRes
 		return nil, fmt.Errorf("user with email %s already exists", req.Email)
 	}
 
+	// Validate password based on security settings
+	if err := u.validatePassword(req.Password); err != nil {
+		return nil, fmt.Errorf("invalid password: %w", err)
+	}
+
 	// Hash password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -59,18 +67,20 @@ func (u *userUsecase) CreateUser(req *models.CreateUserRequest) (*models.UserRes
 
 	// Create user model
 	hashedPwd := string(hashedPassword)
+	now := time.Now()
 	user := &models.User{
-		Email:           req.Email,
-		Name:            req.Name,
-		FirstName:       req.FirstName,
-		LastName:        req.LastName,
-		MiddleName:      req.MiddleName,
-		BirthDate:       req.BirthDate,
-		HashedPassword:  &hashedPwd,
-		DepartmentID:    req.DepartmentID,
-		SubdepartmentID: req.SubdepartmentID,
-		Position:        req.Position,
-		Phone:           req.Phone,
+		Email:             req.Email,
+		Name:              req.Name,
+		FirstName:         req.FirstName,
+		LastName:          req.LastName,
+		MiddleName:        req.MiddleName,
+		BirthDate:         req.BirthDate,
+		HashedPassword:    &hashedPwd,
+		PasswordChangedAt: &now,
+		DepartmentID:      req.DepartmentID,
+		SubdepartmentID:   req.SubdepartmentID,
+		Position:          req.Position,
+		Phone:             req.Phone,
 	}
 
 	// Set role if provided, otherwise use default
@@ -301,4 +311,58 @@ func (u *userUsecase) GetUsersByIDs(ids []uint, currentUserRole string) ([]*mode
 	}
 
 	return responses, nil
+}
+
+// validatePassword validates password strength based on system settings
+func (u *userUsecase) validatePassword(password string) error {
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+
+	// Get security settings from database
+	settings, err := u.settingsRepo.GetOrCreate()
+	if err != nil {
+		// Fallback to reasonable defaults
+		settings = &models.SystemSettings{
+			MinPasswordLength:         8,
+			RequirePasswordComplexity: true,
+		}
+	}
+
+	// Check minimum length based on security settings
+	if len(password) < settings.MinPasswordLength {
+		return fmt.Errorf("password must be at least %d characters long", settings.MinPasswordLength)
+	}
+
+	// Check maximum length
+	if len(password) > 100 {
+		return fmt.Errorf("password too long (max 100 characters)")
+	}
+
+	// If complexity is required, enforce additional rules
+	if settings.RequirePasswordComplexity {
+		// Check for at least one letter
+		hasLetter := false
+		hasNumber := false
+		hasSymbol := false
+
+		for _, char := range password {
+			if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') {
+				hasLetter = true
+			} else if char >= '0' && char <= '9' {
+				hasNumber = true
+			} else {
+				hasSymbol = true
+			}
+		}
+
+		if !hasLetter {
+			return fmt.Errorf("password must contain at least one letter")
+		}
+		if !hasNumber && !hasSymbol {
+			return fmt.Errorf("password must contain at least one number or symbol")
+		}
+	}
+
+	return nil
 }

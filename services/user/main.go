@@ -144,9 +144,19 @@ func main() {
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
+	// Get session duration from database settings, fallback to env
+	sessionDuration := time.Duration(cfg.Auth.SessionDuration) * time.Hour // Default from env
+	dbSettings, err := settingsRepo.GetOrCreate()
+	if err == nil && dbSettings.SessionDurationHours > 0 {
+		// Use database settings if available
+		sessionDuration = time.Duration(dbSettings.SessionDurationHours) * time.Hour
+		log.Infof("Using session duration from database: %d hours", dbSettings.SessionDurationHours)
+	} else {
+		log.Infof("Using session duration from environment: %d hours", cfg.Auth.SessionDuration)
+	}
+
 	// Initialize authentication configuration (supports both JWT and session modes)
 	authMode := sharedmodels.AuthMode(cfg.Auth.Mode)
-	sessionDuration := time.Duration(cfg.Auth.SessionDuration) * time.Hour
 	middleware.InitAuthConfig(authMode, jwtConfig, redisClient.Client, sessionDuration)
 
 	log.Infof("Authentication initialized in %s mode", authMode)
@@ -158,10 +168,10 @@ func main() {
 	}
 
 	// Initialize usecases
-	userUsecase := usecase.NewUserUsecase(userRepo)
+	userUsecase := usecase.NewUserUsecase(userRepo, settingsRepo)
 	authUsecase := usecase.NewAuthUsecase(userRepo, departmentRepo, settingsRepo, jwtConfig)
 	profileUsecase := usecase.NewProfileUsecase(userRepo, departmentRepo)
-	adminUsecase := usecase.NewAdminUsecase(userRepo, departmentRepo)
+	adminUsecase := usecase.NewAdminUsecase(userRepo, departmentRepo, settingsRepo)
 	departmentUsecase := usecase.NewDepartmentUsecase(departmentRepo, userRepo)
 	subdepartmentUsecase := usecase.NewSubdepartmentUsecase(subdepartmentRepo, departmentRepo, userRepo)
 	initUsecase := usecase.NewInitUsecase(userRepo)

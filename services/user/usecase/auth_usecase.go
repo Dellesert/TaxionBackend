@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
+	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 
@@ -87,13 +89,15 @@ func (a *authUsecase) Register(req *models.CreateUserRequest) (*models.UserRespo
 	}
 
 	// Create user model
+	now := time.Now()
 	user := &models.User{
-		Email:          req.Email,
-		Name:           strings.TrimSpace(req.Name),
-		HashedPassword: &hashedPassword,
-		DepartmentID:   req.DepartmentID,
-		Position:       strings.TrimSpace(req.Position),
-		Phone:          strings.TrimSpace(req.Phone),
+		Email:             req.Email,
+		Name:              strings.TrimSpace(req.Name),
+		HashedPassword:    &hashedPassword,
+		PasswordChangedAt: &now,
+		DepartmentID:      req.DepartmentID,
+		Position:          strings.TrimSpace(req.Position),
+		Phone:             strings.TrimSpace(req.Phone),
 	}
 
 	// Set role if provided, otherwise use default (employee)
@@ -166,6 +170,19 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
+	// Check if password has expired (only if password expiration is enabled in settings)
+	passwordExpired := false
+	if settings != nil && settings.PasswordExpirationDays > 0 {
+		if user.IsPasswordExpired(settings.PasswordExpirationDays) {
+			passwordExpired = true
+			// Set must_change_password flag
+			user.MustChangePassword = true
+			if err := a.userRepo.Update(user); err != nil {
+				// Log error but continue with login
+			}
+		}
+	}
+
 	// Check if 2FA is globally required OR enabled for this specific user
 	if settings != nil {
 		if settings.SecondFactorMode == models.SecondFactorMode2FARequired || user.TwoFactorEnabled {
@@ -194,8 +211,9 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 
 	// Create response based on auth mode
 	response := &sharedmodels.LoginResponse{
-		User:     *responseUser,
-		AuthMode: authMode,
+		User:                *responseUser,
+		AuthMode:            authMode,
+		MustChangePassword:  passwordExpired || user.MustChangePassword,
 	}
 
 	switch authMode {
@@ -282,6 +300,29 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
+	// Check if password has expired (only if password expiration is enabled in settings)
+	passwordExpired := false
+	if settings != nil && settings.PasswordExpirationDays > 0 {
+		if user.IsPasswordExpired(settings.PasswordExpirationDays) {
+			passwordExpired = true
+			// Set must_change_password flag
+			user.MustChangePassword = true
+			if err := a.userRepo.Update(user); err != nil {
+				// Log error but continue with login
+				logger.WithFields(map[string]interface{}{
+					"user_id": user.ID,
+					"error":   err.Error(),
+				}).Error("Failed to set must_change_password flag after password expiration")
+			}
+
+			logger.WithFields(map[string]interface{}{
+				"user_id":                 user.ID,
+				"email":                   user.Email,
+				"password_expiration_days": settings.PasswordExpirationDays,
+			}).Warn("Password expired for user during super admin login")
+		}
+	}
+
 	// Check if 2FA is globally required OR enabled for this specific user
 	if settings != nil {
 		if settings.SecondFactorMode == models.SecondFactorMode2FARequired || user.TwoFactorEnabled {
@@ -310,7 +351,7 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 	// Create login response with must_change_password flag
 	response := &sharedmodels.LoginResponse{
 		User:               *responseUser,
-		MustChangePassword: user.MustChangePassword, // Important: send the flag to frontend
+		MustChangePassword: passwordExpired || user.MustChangePassword, // Important: send the flag to frontend
 		AuthMode:           authMode,
 	}
 
@@ -450,15 +491,26 @@ func (a *authUsecase) ValidateEmail(email string) error {
 	return nil
 }
 
-// ValidatePassword validates password strength
+// ValidatePassword validates password strength based on system security settings
 func (a *authUsecase) ValidatePassword(password string) error {
 	if password == "" {
 		return fmt.Errorf("password is required")
 	}
 
-	// Check minimum length
-	if len(password) < 6 {
-		return fmt.Errorf("password must be at least 6 characters long")
+	// Get security settings from database
+	settings, err := a.settingsRepo.GetOrCreate()
+	if err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to get security settings, using defaults")
+		// Fallback to reasonable defaults
+		settings = &models.SystemSettings{
+			MinPasswordLength:         8,
+			RequirePasswordComplexity: true,
+		}
+	}
+
+	// Check minimum length based on security settings
+	if len(password) < settings.MinPasswordLength {
+		return fmt.Errorf("password must be at least %d characters long", settings.MinPasswordLength)
 	}
 
 	// Check maximum length
@@ -466,28 +518,31 @@ func (a *authUsecase) ValidatePassword(password string) error {
 		return fmt.Errorf("password too long (max 100 characters)")
 	}
 
-	// Check for at least one letter
-	hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(password)
-	if !hasLetter {
-		return fmt.Errorf("password must contain at least one letter")
-	}
+	// If complexity is required, enforce additional rules
+	if settings.RequirePasswordComplexity {
+		// Check for at least one letter
+		hasLetter := regexp.MustCompile(`[a-zA-Z]`).MatchString(password)
+		if !hasLetter {
+			return fmt.Errorf("password must contain at least one letter")
+		}
 
-	// Check for at least one number or symbol (optional but recommended)
-	hasNumberOrSymbol := regexp.MustCompile(`[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
-	if len(password) >= 8 && !hasNumberOrSymbol {
-		return fmt.Errorf("password should contain at least one number or symbol for better security")
-	}
+		// Check for at least one number or symbol
+		hasNumberOrSymbol := regexp.MustCompile(`[0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]`).MatchString(password)
+		if !hasNumberOrSymbol {
+			return fmt.Errorf("password must contain at least one number or symbol")
+		}
 
-	// Check for common weak passwords
-	weakPasswords := []string{
-		"password", "123456", "qwerty", "abc123", "password123",
-		"admin", "letmein", "welcome", "monkey", "dragon",
-	}
+		// Check for common weak passwords
+		weakPasswords := []string{
+			"password", "123456", "qwerty", "abc123", "password123",
+			"admin", "letmein", "welcome", "monkey", "dragon",
+		}
 
-	lowerPassword := strings.ToLower(password)
-	for _, weak := range weakPasswords {
-		if lowerPassword == weak {
-			return fmt.Errorf("password is too common, please choose a stronger password")
+		lowerPassword := strings.ToLower(password)
+		for _, weak := range weakPasswords {
+			if lowerPassword == weak {
+				return fmt.Errorf("password is too common, please choose a stronger password")
+			}
 		}
 	}
 

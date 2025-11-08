@@ -32,6 +32,18 @@ func NewSessionStore(client *redis.Client, sessionDuration time.Duration) *Sessi
 	}
 }
 
+// UpdateSessionDuration updates the session duration dynamically
+func (s *SessionStore) UpdateSessionDuration(newDuration time.Duration) {
+	if newDuration > 0 {
+		s.sessionDuration = newDuration
+	}
+}
+
+// GetSessionDuration returns current session duration
+func (s *SessionStore) GetSessionDuration() time.Duration {
+	return s.sessionDuration
+}
+
 // CreateSession creates a new session for a user
 func (s *SessionStore) CreateSession(ctx context.Context, userID uint, email string, role models.Role, ipAddress, userAgent string) (*models.Session, error) {
 	sessionID, err := generateSessionID()
@@ -114,14 +126,17 @@ func (s *SessionStore) GetSession(ctx context.Context, sessionID string) (*model
 	return &session, nil
 }
 
-// UpdateSessionActivity updates the last active time of a session
+// UpdateSessionActivity updates the last active time of a session and extends its expiration
 func (s *SessionStore) UpdateSessionActivity(ctx context.Context, sessionID string) error {
 	session, err := s.GetSession(ctx, sessionID)
 	if err != nil {
 		return err
 	}
 
-	session.LastActiveAt = time.Now()
+	now := time.Now()
+	session.LastActiveAt = now
+	// Продлить сессию на полный срок с момента последней активности
+	session.ExpiresAt = now.Add(s.sessionDuration)
 
 	sessionKey := sessionKey(sessionID)
 	sessionData, err := json.Marshal(session)
@@ -129,13 +144,8 @@ func (s *SessionStore) UpdateSessionActivity(ctx context.Context, sessionID stri
 		return fmt.Errorf("failed to marshal session: %w", err)
 	}
 
-	// Update session with remaining TTL
-	ttl := time.Until(session.ExpiresAt)
-	if ttl <= 0 {
-		return fmt.Errorf("session expired")
-	}
-
-	err = s.client.Set(ctx, sessionKey, sessionData, ttl).Err()
+	// Update session with full session duration (sliding window)
+	err = s.client.Set(ctx, sessionKey, sessionData, s.sessionDuration).Err()
 	if err != nil {
 		return fmt.Errorf("failed to update session: %w", err)
 	}

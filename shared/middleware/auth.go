@@ -87,6 +87,35 @@ func GetAuthMode() models.AuthMode {
 	return globalAuthConfig.Mode
 }
 
+// UpdateSessionDuration updates the session duration dynamically (called when settings change)
+func UpdateSessionDuration(newDuration time.Duration) error {
+	authConfigMutex.Lock()
+	defer authConfigMutex.Unlock()
+
+	if globalAuthConfig == nil {
+		return fmt.Errorf("auth config not initialized")
+	}
+
+	if globalAuthConfig.SessionStore == nil {
+		return fmt.Errorf("session store not available")
+	}
+
+	globalAuthConfig.SessionDuration = newDuration
+	globalAuthConfig.SessionStore.UpdateSessionDuration(newDuration)
+	return nil
+}
+
+// GetSessionDuration returns current session duration
+func GetSessionDuration() time.Duration {
+	authConfigMutex.RLock()
+	defer authConfigMutex.RUnlock()
+
+	if globalAuthConfig == nil || globalAuthConfig.SessionStore == nil {
+		return 7 * 24 * time.Hour // Default 7 days
+	}
+	return globalAuthConfig.SessionStore.GetSessionDuration()
+}
+
 // AuthMiddleware creates unified authentication middleware that supports both JWT and session
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

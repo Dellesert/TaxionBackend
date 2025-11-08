@@ -94,6 +94,43 @@ func (u *User) BeforeUpdate(tx *gorm.DB) error {
 	return nil
 }
 
+// IsPasswordExpired checks if the user's password has expired based on system settings
+func (u *User) IsPasswordExpired(passwordExpirationDays int) bool {
+	// If password expiration is disabled (0), password never expires
+	if passwordExpirationDays == 0 {
+		return false
+	}
+
+	// If PasswordChangedAt is not set, consider it expired for security
+	if u.PasswordChangedAt == nil {
+		return true
+	}
+
+	// Calculate expiration date
+	expirationDate := u.PasswordChangedAt.AddDate(0, 0, passwordExpirationDays)
+	return time.Now().After(expirationDate)
+}
+
+// DaysUntilPasswordExpires returns the number of days until password expires (-1 if already expired, 0 if disabled)
+func (u *User) DaysUntilPasswordExpires(passwordExpirationDays int) int {
+	if passwordExpirationDays == 0 {
+		return 0 // Expiration disabled
+	}
+
+	if u.PasswordChangedAt == nil {
+		return -1 // Already expired
+	}
+
+	expirationDate := u.PasswordChangedAt.AddDate(0, 0, passwordExpirationDays)
+	daysRemaining := int(time.Until(expirationDate).Hours() / 24)
+
+	if daysRemaining < 0 {
+		return -1 // Already expired
+	}
+
+	return daysRemaining
+}
+
 // CreateDepartmentRequest represents request for creating a department
 type CreateDepartmentRequest struct {
 	Name string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`

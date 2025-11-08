@@ -31,13 +31,15 @@ type AdminUsecase interface {
 type adminUsecase struct {
 	userRepo       repository.UserRepository
 	departmentRepo repository.DepartmentRepository
+	settingsRepo   repository.SettingsRepository
 }
 
 // NewAdminUsecase creates a new admin usecase
-func NewAdminUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository) AdminUsecase {
+func NewAdminUsecase(userRepo repository.UserRepository, departmentRepo repository.DepartmentRepository, settingsRepo repository.SettingsRepository) AdminUsecase {
 	return &adminUsecase{
 		userRepo:       userRepo,
 		departmentRepo: departmentRepo,
+		settingsRepo:   settingsRepo,
 	}
 }
 
@@ -247,7 +249,7 @@ func (a *adminUsecase) AssignDepartmentToUser(id uint, departmentID *uint) (*mod
 // ResetUserPassword resets a user's password (admin only)
 func (a *adminUsecase) ResetUserPassword(id uint, newPassword string) error {
 	// Validate password
-	if err := validatePasswordStrength(newPassword); err != nil {
+	if err := a.validatePasswordStrength(newPassword); err != nil {
 		return fmt.Errorf("invalid password: %w", err)
 	}
 
@@ -277,20 +279,55 @@ func (a *adminUsecase) ResetUserPassword(id uint, newPassword string) error {
 	return nil
 }
 
-// validatePasswordStrength validates password strength for admin operations
-func validatePasswordStrength(password string) error {
+// validatePasswordStrength validates password strength for admin operations based on system settings
+func (a *adminUsecase) validatePasswordStrength(password string) error {
 	if password == "" {
 		return fmt.Errorf("password is required")
 	}
 
-	// Check minimum length
-	if len(password) < 6 {
-		return fmt.Errorf("password must be at least 6 characters long")
+	// Get security settings from database
+	settings, err := a.settingsRepo.GetOrCreate()
+	if err != nil {
+		// Fallback to reasonable defaults
+		settings = &models.SystemSettings{
+			MinPasswordLength:         8,
+			RequirePasswordComplexity: true,
+		}
+	}
+
+	// Check minimum length based on security settings
+	if len(password) < settings.MinPasswordLength {
+		return fmt.Errorf("password must be at least %d characters long", settings.MinPasswordLength)
 	}
 
 	// Check maximum length
 	if len(password) > 100 {
 		return fmt.Errorf("password too long (max 100 characters)")
+	}
+
+	// If complexity is required, enforce additional rules
+	if settings.RequirePasswordComplexity {
+		// Check for at least one letter
+		hasLetter := false
+		hasNumber := false
+		hasSymbol := false
+
+		for _, char := range password {
+			if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') {
+				hasLetter = true
+			} else if char >= '0' && char <= '9' {
+				hasNumber = true
+			} else {
+				hasSymbol = true
+			}
+		}
+
+		if !hasLetter {
+			return fmt.Errorf("password must contain at least one letter")
+		}
+		if !hasNumber && !hasSymbol {
+			return fmt.Errorf("password must contain at least one number or symbol")
+		}
 	}
 
 	return nil
@@ -409,7 +446,7 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 
 	// Password is now optional - validate only if provided
 	if password != "" {
-		if err := validatePasswordStrength(password); err != nil {
+		if err := a.validatePasswordStrength(password); err != nil {
 			return nil, fmt.Errorf("password validation failed: %w", err)
 		}
 	}
@@ -459,29 +496,33 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 
 	// Hash password only if provided, otherwise leave it nil
 	var hashedPassword *string
+	var passwordChangedAt *time.Time
 	if password != "" {
 		hashed, err := hashPasswordAdmin(password)
 		if err != nil {
 			return nil, fmt.Errorf("failed to hash password: %w", err)
 		}
 		hashedPassword = &hashed
+		now := time.Now()
+		passwordChangedAt = &now
 	}
 
 	// Create user as inactive - they will activate via invitation
 	user := &models.User{
-		Email:          email,
-		Name:           name,
-		FirstName:      firstName,
-		LastName:       lastName,
-		MiddleName:     middleName,
-		BirthDate:      birthDate,
-		HashedPassword: hashedPassword, // nil if no password provided
-		Role:           sharedmodels.Role(role),
-		Status:         sharedmodels.StatusOffline,
-		DepartmentID:   departmentID,
-		Phone:          phone,
-		Position:       position,
-		IsActive:       false, // Inactive until they accept invitation
+		Email:             email,
+		Name:              name,
+		FirstName:         firstName,
+		LastName:          lastName,
+		MiddleName:        middleName,
+		BirthDate:         birthDate,
+		HashedPassword:    hashedPassword,    // nil if no password provided
+		PasswordChangedAt: passwordChangedAt, // nil if no password provided
+		Role:              sharedmodels.Role(role),
+		Status:            sharedmodels.StatusOffline,
+		DepartmentID:      departmentID,
+		Phone:             phone,
+		Position:          position,
+		IsActive:          false, // Inactive until they accept invitation
 	}
 
 	// Save user
