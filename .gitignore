@@ -71,3 +71,4 @@ backups/
 # Uploads (в production)
 uploads/
 .env.production
+.env copy
