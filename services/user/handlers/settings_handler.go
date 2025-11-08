@@ -276,3 +276,100 @@ func (h *SettingsHandler) GetAuthSettings(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// GetUserSettings retrieves user-specific settings
+// GET /user/settings
+func (h *SettingsHandler) GetUserSettings(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	settings, err := h.settingsUsecase.GetUserSettings(userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get user settings")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get user settings",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, settings)
+}
+
+// UpdateUserSettings updates user-specific settings
+// PUT /user/settings
+func (h *SettingsHandler) UpdateUserSettings(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req models.UpdateUserSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for update user settings")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	settings, err := h.settingsUsecase.UpdateUserSettings(userID, &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to update user settings")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to update user settings",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+	}).Info("User settings updated successfully")
+
+	c.JSON(http.StatusOK, settings)
+}

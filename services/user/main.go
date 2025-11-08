@@ -68,9 +68,10 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, and SMTP settings tables)
+	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, SMTP settings, and subdepartments tables)
 	if err := db.Migrate(
 		&models.Department{},
+		&models.Subdepartment{},
 		&models.User{},
 		&models.TwoFactorCode{},
 		&models.PasskeyCredential{},
@@ -110,6 +111,7 @@ func main() {
 	// Initialize repositories
 	userRepo := repository.NewUserRepository(db)
 	departmentRepo := repository.NewDepartmentRepository(db)
+	subdepartmentRepo := repository.NewSubdepartmentRepository(db)
 	twoFARepo := repository.NewTwoFARepository(db)
 	passkeyRepo := repository.NewPasskeyRepository(db)
 	settingsRepo := repository.NewSettingsRepository(db)
@@ -161,6 +163,7 @@ func main() {
 	profileUsecase := usecase.NewProfileUsecase(userRepo, departmentRepo)
 	adminUsecase := usecase.NewAdminUsecase(userRepo, departmentRepo)
 	departmentUsecase := usecase.NewDepartmentUsecase(departmentRepo, userRepo)
+	subdepartmentUsecase := usecase.NewSubdepartmentUsecase(subdepartmentRepo, departmentRepo, userRepo)
 	initUsecase := usecase.NewInitUsecase(userRepo)
 	twoFAUsecase := usecase.NewTwoFAUsecase(userRepo, twoFARepo, emailService, authUsecase)
 	settingsUsecase := usecase.NewSettingsUsecase(settingsRepo, userRepo, passkeyRepo)
@@ -180,6 +183,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authUsecase, analyticsClient)
 	profileHandler := handlers.NewProfileHandler(profileUsecase)
 	departmentHandler := handlers.NewDepartmentHandler(departmentUsecase)
+	subdepartmentHandler := handlers.NewSubdepartmentHandler(subdepartmentUsecase, departmentUsecase)
 	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)
 	settingsHandler := handlers.NewSettingsHandler(settingsUsecase)
 	sessionHandler := handlers.NewSessionHandler()
@@ -189,6 +193,7 @@ func main() {
 	passwordResetHandler := handlers.NewPasswordResetHandler(passwordResetUsecase)
 	smtpHandler := handlers.NewSMTPHandler(smtpUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient)
+	quickStartHandler := handlers.NewQuickStartHandler(departmentUsecase, subdepartmentUsecase, userUsecase)
 
 	// Create Gin router
 	router := gin.New()
@@ -200,7 +205,7 @@ func main() {
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, metricsHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, metricsHandler, quickStartHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -235,7 +240,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, metricsHandler *handlers.MetricsHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -381,6 +386,14 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			profile.GET("/:id", profileHandler.GetProfile)
 		}
 
+		// User settings routes (require authentication)
+		userSettings := v1.Group("/user")
+		userSettings.Use(middleware.AuthMiddleware())
+		{
+			userSettings.GET("/settings", settingsHandler.GetUserSettings)
+			userSettings.PUT("/settings", settingsHandler.UpdateUserSettings)
+		}
+
 		// Session management routes (require authentication)
 		sessions := v1.Group("/sessions")
 		sessions.Use(middleware.AuthMiddleware())
@@ -402,6 +415,17 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			departments.PUT("/:id", middleware.RequireAdminOrDepartmentHead("id"), departmentHandler.UpdateDepartment)
 		}
 
+		// Subdepartment management routes
+		subdepartments := v1.Group("/subdepartments")
+		subdepartments.Use(middleware.AuthMiddleware())
+		{
+			subdepartments.GET("", subdepartmentHandler.GetSubdepartments)              // GET /api/v1/subdepartments?department_id=1 - get all or filter by department
+			subdepartments.GET("/:id", subdepartmentHandler.GetSubdepartment)            // GET /api/v1/subdepartments/:id - get specific subdepartment
+			subdepartments.POST("", middleware.RequireAdminRole(), subdepartmentHandler.CreateSubdepartment)        // POST /api/v1/subdepartments - create new subdepartment (admin only)
+			subdepartments.PUT("/:id", middleware.RequireAdminRole(), subdepartmentHandler.UpdateSubdepartment)      // PUT /api/v1/subdepartments/:id - update subdepartment (admin only)
+			subdepartments.DELETE("/:id", middleware.RequireAdminRole(), subdepartmentHandler.DeleteSubdepartment)   // DELETE /api/v1/subdepartments/:id - delete subdepartment (admin only)
+		}
+
 		// Admin routes within /api/v1 for gateway compatibility
 		v1Admin := v1.Group("/admin")
 		v1Admin.Use(middleware.AuthMiddleware()) // Use unified auth
@@ -414,8 +438,9 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminUsers.GET("", middleware.LogAdminAction("list_users"), adminHandler.GetUsers)
 				v1AdminUsers.POST("", middleware.LogAdminAction("create_user"), adminHandler.CreateUser)
 				v1AdminUsers.POST("/import", middleware.LogAdminAction("import_users"), adminHandler.ImportUsers)                         // Import users from CSV
-				v1AdminUsers.POST("/bulk-activate", middleware.LogAdminAction("bulk_activate_users"), adminHandler.BulkActivateUsers)     // Bulk activate users
-				v1AdminUsers.POST("/bulk-deactivate", middleware.LogAdminAction("bulk_deactivate_users"), adminHandler.BulkDeactivateUsers) // Bulk deactivate users
+				v1AdminUsers.POST("/bulk-activate", middleware.LogAdminAction("bulk_activate_users"), adminHandler.BulkActivateUsers)           // Bulk activate users
+				v1AdminUsers.POST("/bulk-deactivate", middleware.LogAdminAction("bulk_deactivate_users"), adminHandler.BulkDeactivateUsers)   // Bulk deactivate users
+				v1AdminUsers.POST("/bulk-assign-department", middleware.LogAdminAction("bulk_assign_department"), adminHandler.BulkAssignDepartment) // Bulk assign department
 				v1AdminUsers.PUT("/:id", middleware.LogAdminAction("update_user"), adminHandler.UpdateUser)
 				v1AdminUsers.GET("/stats", middleware.LogAdminAction("get_user_stats"), adminHandler.GetUserStats)
 				v1AdminUsers.PUT("/:id/role", middleware.LogAdminAction("update_user_role"), adminHandler.UpdateUserRole)
@@ -432,10 +457,23 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			{
 				v1AdminDepartments.GET("", middleware.LogAdminAction("list_departments"), departmentHandler.GetDepartments)
 				v1AdminDepartments.POST("", middleware.LogAdminAction("create_department"), departmentHandler.CreateDepartment)
+				v1AdminDepartments.POST("/import", middleware.LogAdminAction("import_departments"), departmentHandler.ImportDepartments)
 				v1AdminDepartments.GET("/:id", middleware.LogAdminAction("get_department"), departmentHandler.GetDepartment)
 				v1AdminDepartments.PUT("/:id", middleware.LogAdminAction("update_department"), departmentHandler.UpdateDepartment)
 				v1AdminDepartments.DELETE("/:id", middleware.LogAdminAction("delete_department"), departmentHandler.DeleteDepartment)
 				v1AdminDepartments.GET("/:id/users", middleware.LogAdminAction("get_department_users"), departmentHandler.GetDepartmentWithUsers)
+			}
+
+			// Subdepartment management for admins
+			v1AdminSubdepartments := v1Admin.Group("/subdepartments")
+			{
+				v1AdminSubdepartments.POST("/import", middleware.LogAdminAction("import_subdepartments"), subdepartmentHandler.ImportSubdepartments)
+			}
+
+			// Quick Start import endpoint (admin only)
+			v1AdminQuickStart := v1Admin.Group("/quick-start")
+			{
+				v1AdminQuickStart.POST("/import", middleware.LogAdminAction("quick_start_import"), quickStartHandler.ImportQuickStart)
 			}
 
 			// System settings endpoints (super admin only)

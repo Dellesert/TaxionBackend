@@ -253,3 +253,33 @@ type SecurityStatistics struct {
 	ActiveSessions     int `json:"active_sessions"`
 	TotalPasskeys      int `json:"total_passkeys"`
 }
+
+// UserSettings represents individual user preferences and settings
+type UserSettings struct {
+	ID             uint      `gorm:"primarykey" json:"id"`
+	UserID         uint      `gorm:"uniqueIndex;not null" json:"user_id"`
+	ShowSetupGuide bool      `gorm:"not null;default:true" json:"show_setup_guide"`
+	Theme          string    `gorm:"size:20;default:'light'" json:"theme,omitempty"` // light, dark
+	Language       string    `gorm:"size:10;default:'ru'" json:"language,omitempty"` // ru, en
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// TableName returns the table name for UserSettings model
+func (UserSettings) TableName() string {
+	return "user_settings"
+}
+
+// UserSettingsResponse represents the API response for user settings
+type UserSettingsResponse struct {
+	ShowSetupGuide bool   `json:"show_setup_guide"`
+	Theme          string `json:"theme,omitempty"`
+	Language       string `json:"language,omitempty"`
+}
+
+// UpdateUserSettingsRequest represents the request to update user settings
+type UpdateUserSettingsRequest struct {
+	ShowSetupGuide *bool   `json:"show_setup_guide,omitempty"`
+	Theme          *string `json:"theme,omitempty" binding:"omitempty,oneof=light dark"`
+	Language       *string `json:"language,omitempty" binding:"omitempty,oneof=ru en"`
+}

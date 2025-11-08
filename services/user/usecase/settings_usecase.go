@@ -15,6 +15,8 @@ type SettingsUsecase interface {
 	ApplyPreset(preset models.SecurityLevel, adminID uint) (*models.SystemAuthSettings, error)
 	UpdateCustomSettings(req *models.UpdateCustomSettingsRequest, adminID uint) (*models.SystemAuthSettings, error)
 	GetSummary() (*models.SecuritySummaryResponse, error)
+	GetUserSettings(userID uint) (*models.UserSettingsResponse, error)
+	UpdateUserSettings(userID uint, req *models.UpdateUserSettingsRequest) (*models.UserSettingsResponse, error)
 }
 
 // settingsUsecase implements SettingsUsecase interface
@@ -283,4 +285,82 @@ func (u *settingsUsecase) buildFeatureList(settings *models.SystemSettings) []st
 	}
 
 	return features
+}
+
+// GetUserSettings retrieves user-specific settings
+func (u *settingsUsecase) GetUserSettings(userID uint) (*models.UserSettingsResponse, error) {
+	userSettings, err := u.settingsRepo.GetUserSettings(userID)
+	if err != nil {
+		// If not found, create default settings
+		userSettings = &models.UserSettings{
+			UserID:         userID,
+			ShowSetupGuide: true,
+			Theme:          "light",
+			Language:       "ru",
+		}
+
+		// Save default settings
+		if saveErr := u.settingsRepo.SaveUserSettings(userSettings); saveErr != nil {
+			logger.WithFields(map[string]interface{}{
+				"user_id": userID,
+				"error":   saveErr.Error(),
+			}).Error("Failed to create default user settings")
+			return nil, fmt.Errorf("failed to create default user settings: %w", saveErr)
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"user_id": userID,
+		}).Info("Created default user settings")
+	}
+
+	return &models.UserSettingsResponse{
+		ShowSetupGuide: userSettings.ShowSetupGuide,
+		Theme:          userSettings.Theme,
+		Language:       userSettings.Language,
+	}, nil
+}
+
+// UpdateUserSettings updates user-specific settings
+func (u *settingsUsecase) UpdateUserSettings(userID uint, req *models.UpdateUserSettingsRequest) (*models.UserSettingsResponse, error) {
+	// Get or create user settings
+	userSettings, err := u.settingsRepo.GetUserSettings(userID)
+	if err != nil {
+		// If not found, create new settings
+		userSettings = &models.UserSettings{
+			UserID:         userID,
+			ShowSetupGuide: true,
+			Theme:          "light",
+			Language:       "ru",
+		}
+	}
+
+	// Update only provided fields
+	if req.ShowSetupGuide != nil {
+		userSettings.ShowSetupGuide = *req.ShowSetupGuide
+	}
+	if req.Theme != nil {
+		userSettings.Theme = *req.Theme
+	}
+	if req.Language != nil {
+		userSettings.Language = *req.Language
+	}
+
+	// Save settings
+	if err := u.settingsRepo.SaveUserSettings(userSettings); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Error("Failed to save user settings")
+		return nil, fmt.Errorf("failed to save user settings: %w", err)
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"user_id": userID,
+	}).Info("User settings updated successfully")
+
+	return &models.UserSettingsResponse{
+		ShowSetupGuide: userSettings.ShowSetupGuide,
+		Theme:          userSettings.Theme,
+		Language:       userSettings.Language,
+	}, nil
 }

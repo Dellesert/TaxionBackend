@@ -13,6 +13,8 @@ type SettingsRepository interface {
 	Create(settings *models.SystemSettings) error
 	Update(settings *models.SystemSettings) error
 	GetOrCreate() (*models.SystemSettings, error)
+	GetUserSettings(userID uint) (*models.UserSettings, error)
+	SaveUserSettings(settings *models.UserSettings) error
 }
 
 // settingsRepository implements SettingsRepository interface
@@ -79,4 +81,23 @@ func (r *settingsRepository) GetOrCreate() (*models.SystemSettings, error) {
 		return newSettings, nil
 	}
 	return settings, nil
+}
+
+// GetUserSettings retrieves user-specific settings
+func (r *settingsRepository) GetUserSettings(userID uint) (*models.UserSettings, error) {
+	var settings models.UserSettings
+	err := r.db.DB.Where("user_id = ?", userID).First(&settings).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user settings: %w", err)
+	}
+	return &settings, nil
+}
+
+// SaveUserSettings creates or updates user-specific settings
+func (r *settingsRepository) SaveUserSettings(settings *models.UserSettings) error {
+	// Use Save which will create if not exists, or update if exists
+	if err := r.db.DB.Save(settings).Error; err != nil {
+		return fmt.Errorf("failed to save user settings: %w", err)
+	}
+	return nil
 }

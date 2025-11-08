@@ -212,6 +212,7 @@ func (h *ProfileHandler) UpdateMyProfile(c *gin.Context) {
 		"request_id": requestID,
 		"user_id":    userID,
 		"email":      profile.Email,
+		"birth_date": profile.BirthDate,
 	}).Info("Profile updated successfully")
 
 	c.JSON(http.StatusOK, gin.H{

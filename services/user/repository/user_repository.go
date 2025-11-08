@@ -36,9 +36,24 @@ type DepartmentRepository interface {
 	Create(department *models.Department) error
 	GetByID(id uint) (*models.Department, error)
 	GetByName(name string) (*models.Department, error)
+	GetByNameIncludingDeleted(name string) (*models.Department, error)
 	GetAll() ([]*models.Department, error)
 	Update(department *models.Department) error
 	Delete(id uint) error
+	Restore(id uint) error
+}
+
+// SubdepartmentRepository defines the interface for subdepartment data operations
+type SubdepartmentRepository interface {
+	Create(subdepartment *models.Subdepartment) error
+	GetByID(id uint) (*models.Subdepartment, error)
+	GetByDepartmentID(departmentID uint) ([]*models.Subdepartment, error)
+	GetByNameAndDepartmentIncludingDeleted(name string, departmentID uint) (*models.Subdepartment, error)
+	GetAll() ([]*models.Subdepartment, error)
+	Update(subdepartment *models.Subdepartment) error
+	Delete(id uint) error
+	Restore(id uint) error
+	GetWithDepartment(id uint) (*models.Subdepartment, error)
 }
 
 // userRepository implements UserRepository interface
@@ -48,6 +63,11 @@ type userRepository struct {
 
 // departmentRepository implements DepartmentRepository interface
 type departmentRepository struct {
+	db *database.DB
+}
+
+// subdepartmentRepository implements SubdepartmentRepository interface
+type subdepartmentRepository struct {
 	db *database.DB
 }
 
@@ -61,6 +81,13 @@ func NewUserRepository(db *database.DB) UserRepository {
 // NewDepartmentRepository creates a new department repository
 func NewDepartmentRepository(db *database.DB) DepartmentRepository {
 	return &departmentRepository{
+		db: db,
+	}
+}
+
+// NewSubdepartmentRepository creates a new subdepartment repository
+func NewSubdepartmentRepository(db *database.DB) SubdepartmentRepository {
+	return &subdepartmentRepository{
 		db: db,
 	}
 }
@@ -161,10 +188,10 @@ func (r *userRepository) Count() (int64, error) {
 	return count, nil
 }
 
-// GetWithDepartment retrieves a user by ID with department preloaded
+// GetWithDepartment retrieves a user by ID with department and subdepartment preloaded
 func (r *userRepository) GetWithDepartment(id uint) (*models.User, error) {
 	var user models.User
-	err := r.db.Preload("Department").First(&user, id).Error
+	err := r.db.Preload("Department").Preload("Subdepartment").Preload("Subdepartment.Department").First(&user, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("user not found")
@@ -174,20 +201,20 @@ func (r *userRepository) GetWithDepartment(id uint) (*models.User, error) {
 	return &user, nil
 }
 
-// GetAllWithDepartments retrieves all users with departments preloaded
+// GetAllWithDepartments retrieves all users with departments and subdepartments preloaded
 func (r *userRepository) GetAllWithDepartments(limit, offset int) ([]*models.User, error) {
 	var users []*models.User
-	err := r.db.Preload("Department").Limit(limit).Offset(offset).Order("created_at DESC").Find(&users).Error
+	err := r.db.Preload("Department").Preload("Subdepartment").Preload("Subdepartment.Department").Limit(limit).Offset(offset).Order("created_at DESC").Find(&users).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get users with departments: %w", err)
 	}
 	return users, nil
 }
 
-// GetAllWithDepartmentsFiltered retrieves users with departments preloaded, filtered by department ID and active status
+// GetAllWithDepartmentsFiltered retrieves users with departments and subdepartments preloaded, filtered by department ID and active status
 func (r *userRepository) GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error) {
 	var users []*models.User
-	query := r.db.Preload("Department")
+	query := r.db.Preload("Department").Preload("Subdepartment").Preload("Subdepartment.Department")
 
 	if departmentID != nil {
 		query = query.Where("department_id = ?", *departmentID)
@@ -310,6 +337,31 @@ func (r *departmentRepository) Delete(id uint) error {
 	return nil
 }
 
+// GetByNameIncludingDeleted retrieves a department by name including soft-deleted records
+func (r *departmentRepository) GetByNameIncludingDeleted(name string) (*models.Department, error) {
+	var department models.Department
+	err := r.db.Unscoped().Where("name = ?", name).First(&department).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("department not found")
+		}
+		return nil, fmt.Errorf("failed to get department by name: %w", err)
+	}
+	return &department, nil
+}
+
+// Restore restores a soft-deleted department
+func (r *departmentRepository) Restore(id uint) error {
+	result := r.db.Model(&models.Department{}).Unscoped().Where("id = ?", id).Update("deleted_at", nil)
+	if result.Error != nil {
+		return fmt.Errorf("failed to restore department: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("department not found")
+	}
+	return nil
+}
+
 // UpdateTwoFactorStatus updates the two-factor authentication status for a user
 func (r *userRepository) UpdateTwoFactorStatus(userID uint, enabled bool) error {
 	result := r.db.Model(&models.User{}).Where("id = ?", userID).Update("two_factor_enabled", enabled)
@@ -350,4 +402,115 @@ func (r *userRepository) CountByPasskeyEnabled() (int64, error) {
 		return 0, fmt.Errorf("failed to count users with passkey: %w", err)
 	}
 	return count, nil
+}
+
+// Subdepartment Repository Methods
+
+// Create creates a new subdepartment
+func (r *subdepartmentRepository) Create(subdepartment *models.Subdepartment) error {
+	if err := r.db.Create(subdepartment).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return fmt.Errorf("subdepartment with this name already exists in the department")
+		}
+		return fmt.Errorf("failed to create subdepartment: %w", err)
+	}
+	return nil
+}
+
+// GetByID retrieves a subdepartment by ID
+func (r *subdepartmentRepository) GetByID(id uint) (*models.Subdepartment, error) {
+	var subdepartment models.Subdepartment
+	err := r.db.First(&subdepartment, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("subdepartment not found")
+		}
+		return nil, fmt.Errorf("failed to get subdepartment: %w", err)
+	}
+	return &subdepartment, nil
+}
+
+// GetByDepartmentID retrieves all subdepartments by department ID
+func (r *subdepartmentRepository) GetByDepartmentID(departmentID uint) ([]*models.Subdepartment, error) {
+	var subdepartments []*models.Subdepartment
+	err := r.db.Where("department_id = ?", departmentID).Order("name ASC").Find(&subdepartments).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subdepartments by department ID: %w", err)
+	}
+	return subdepartments, nil
+}
+
+// GetAll retrieves all subdepartments
+func (r *subdepartmentRepository) GetAll() ([]*models.Subdepartment, error) {
+	var subdepartments []*models.Subdepartment
+	err := r.db.Preload("Department").Order("department_id ASC, name ASC").Find(&subdepartments).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subdepartments: %w", err)
+	}
+	return subdepartments, nil
+}
+
+// Update updates an existing subdepartment
+func (r *subdepartmentRepository) Update(subdepartment *models.Subdepartment) error {
+	result := r.db.Save(subdepartment)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+			return fmt.Errorf("subdepartment name already exists in the department")
+		}
+		return fmt.Errorf("failed to update subdepartment: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("subdepartment not found")
+	}
+	return nil
+}
+
+// Delete soft deletes a subdepartment by ID
+func (r *subdepartmentRepository) Delete(id uint) error {
+	result := r.db.Delete(&models.Subdepartment{}, id)
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete subdepartment: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("subdepartment not found")
+	}
+	return nil
+}
+
+// GetByNameAndDepartmentIncludingDeleted retrieves a subdepartment by name and department ID including soft-deleted records
+func (r *subdepartmentRepository) GetByNameAndDepartmentIncludingDeleted(name string, departmentID uint) (*models.Subdepartment, error) {
+	var subdepartment models.Subdepartment
+	err := r.db.Unscoped().Where("name = ? AND department_id = ?", name, departmentID).First(&subdepartment).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("subdepartment not found")
+		}
+		return nil, fmt.Errorf("failed to get subdepartment by name and department: %w", err)
+	}
+	return &subdepartment, nil
+}
+
+// Restore restores a soft-deleted subdepartment
+func (r *subdepartmentRepository) Restore(id uint) error {
+	result := r.db.Model(&models.Subdepartment{}).Unscoped().Where("id = ?", id).Update("deleted_at", nil)
+	if result.Error != nil {
+		return fmt.Errorf("failed to restore subdepartment: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("subdepartment not found")
+	}
+	return nil
+}
+
+// GetWithDepartment retrieves a subdepartment by ID with department preloaded
+func (r *subdepartmentRepository) GetWithDepartment(id uint) (*models.Subdepartment, error) {
+	var subdepartment models.Subdepartment
+	err := r.db.Preload("Department").First(&subdepartment, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("subdepartment not found")
+		}
+		return nil, fmt.Errorf("failed to get subdepartment with department: %w", err)
+	}
+	return &subdepartment, nil
 }

@@ -1055,7 +1055,7 @@ func parseCSVFile(file interface{ Read([]byte) (int, error) }) ([]models.CSVUser
 	}
 
 	// Validate required columns (password is now optional since users will set it via invitation)
-	requiredCols := []string{"email", "name"}
+	requiredCols := []string{"email", "name", "first_name", "last_name"}
 	for _, reqCol := range requiredCols {
 		if _, exists := colIndices[reqCol]; !exists {
 			return nil, fmt.Errorf("missing required column: %s", reqCol)
@@ -1080,6 +1080,18 @@ func parseCSVFile(file interface{ Read([]byte) (int, error) }) ([]models.CSVUser
 		}
 		if idx, ok := colIndices["name"]; ok && idx < len(record) {
 			row.Name = record[idx]
+		}
+		if idx, ok := colIndices["first_name"]; ok && idx < len(record) {
+			row.FirstName = record[idx]
+		}
+		if idx, ok := colIndices["last_name"]; ok && idx < len(record) {
+			row.LastName = record[idx]
+		}
+		if idx, ok := colIndices["middle_name"]; ok && idx < len(record) {
+			row.MiddleName = record[idx]
+		}
+		if idx, ok := colIndices["birth_date"]; ok && idx < len(record) {
+			row.BirthDate = record[idx]
 		}
 		if idx, ok := colIndices["password"]; ok && idx < len(record) {
 			row.Password = record[idx]
@@ -1286,6 +1298,103 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 		"error_count":    errorCount,
 		"updated_users":  updatedUsers,
 		"request_id":     requestID,
+	}
+
+	if len(errors) > 0 {
+		response["errors"] = errors
+	}
+
+	c.JSON(http.StatusOK, response)
+}
+
+// BulkAssignDepartment handles bulk department assignment to users (admin only)
+func (h *AdminHandler) BulkAssignDepartment(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin user info from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		UserIDs      []uint `json:"user_ids" binding:"required"`
+		DepartmentID *uint  `json:"department_id"` // Can be nil to remove department assignment
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for bulk assign department")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if len(req.UserIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No user IDs provided",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Assign department to users one by one
+	var successCount, errorCount int
+	var updatedUsers []*models.UserResponse
+	var errors []map[string]interface{}
+
+	for _, userID := range req.UserIDs {
+		user, err := h.adminUsecase.AssignDepartmentToUser(userID, req.DepartmentID)
+		if err != nil {
+			errorCount++
+			errors = append(errors, map[string]interface{}{
+				"user_id": userID,
+				"error":   err.Error(),
+			})
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"admin_id":      adminID,
+				"user_id":       userID,
+				"department_id": req.DepartmentID,
+				"error":         err.Error(),
+			}).Warn("Failed to assign department to user in bulk operation")
+		} else {
+			successCount++
+			updatedUsers = append(updatedUsers, user)
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"admin_id":      adminID,
+		"total":         len(req.UserIDs),
+		"success_count": successCount,
+		"error_count":   errorCount,
+		"department_id": req.DepartmentID,
+	}).Info("Bulk department assignment completed")
+
+	response := gin.H{
+		"success_count": successCount,
+		"error_count":   errorCount,
+		"updated_users": updatedUsers,
+		"request_id":    requestID,
 	}
 
 	if len(errors) > 0 {

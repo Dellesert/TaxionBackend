@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"encoding/csv"
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -385,5 +388,183 @@ func (h *DepartmentHandler) GetDepartmentWithUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"department": department,
 		"request_id": requestID,
+	})
+}
+
+// ImportDepartments handles CSV import of departments
+func (h *DepartmentHandler) ImportDepartments(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get CSV file from form data
+	file, err := c.FormFile("file")
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("No file provided for department import")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "CSV file is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Open the uploaded file
+	src, err := file.Open()
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to open uploaded file")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to read CSV file",
+			"request_id": requestID,
+		})
+		return
+	}
+	defer src.Close()
+
+	// Create CSV reader
+	reader := csv.NewReader(src)
+
+	// Read header row
+	headers, err := reader.Read()
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Failed to read CSV header")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid CSV format: unable to read header",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Remove BOM if present
+	if len(headers) > 0 && len(headers[0]) > 0 {
+		headers[0] = strings.TrimPrefix(headers[0], "\ufeff")
+	}
+
+	// Validate required columns
+	requiredColumns := []string{"name"}
+	headerMap := make(map[string]int)
+	for i, h := range headers {
+		cleaned := strings.TrimSpace(strings.ToLower(h))
+		headerMap[cleaned] = i
+	}
+
+	// Check for required columns and provide helpful error message
+	missingColumns := []string{}
+	for _, col := range requiredColumns {
+		if _, exists := headerMap[col]; !exists {
+			missingColumns = append(missingColumns, col)
+		}
+	}
+
+	if len(missingColumns) > 0 {
+		logger.WithFields(map[string]interface{}{
+			"request_id":       requestID,
+			"missing_columns":  missingColumns,
+			"received_headers": headers,
+		}).Warn("CSV missing required columns")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":            fmt.Sprintf("Required columns not found: %v", missingColumns),
+			"received_headers": headers,
+			"expected_headers": []string{"name"},
+			"hint":             "CSV file must have a 'name' column in the first row",
+			"request_id":       requestID,
+		})
+		return
+	}
+
+	// Track results
+	type ImportError struct {
+		Row     int    `json:"row"`
+		Name    string `json:"name"`
+		Message string `json:"message"`
+	}
+
+	var successDepartments []map[string]string
+	var errors []ImportError
+	rowNum := 1 // Start from 1 (header is row 0)
+
+	// Read and process each row
+	for {
+		rowNum++
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			errors = append(errors, ImportError{
+				Row:     rowNum,
+				Name:    "",
+				Message: fmt.Sprintf("Failed to parse row: %v", err),
+			})
+			continue
+		}
+
+		// Extract data from row
+		name := ""
+		if idx, ok := headerMap["name"]; ok && idx < len(row) {
+			name = strings.TrimSpace(row[idx])
+		}
+
+		// Note: description and head_id fields are not used in department creation
+		// Department model doesn't have description field
+		// head_id should be set after creating users via department update endpoint
+
+		// Validate required fields
+		if name == "" {
+			errors = append(errors, ImportError{
+				Row:     rowNum,
+				Name:    "",
+				Message: "Name is required",
+			})
+			continue
+		}
+
+		// Create department request
+		req := &models.CreateDepartmentRequest{
+			Name: name,
+		}
+
+		// Create department
+		_, err = h.departmentUsecase.CreateDepartment(req)
+		if err != nil {
+			errors = append(errors, ImportError{
+				Row:     rowNum,
+				Name:    name,
+				Message: err.Error(),
+			})
+			continue
+		}
+
+		successDepartments = append(successDepartments, map[string]string{"name": name})
+	}
+
+	totalRows := rowNum - 1 // Exclude header
+	successCount := len(successDepartments)
+	errorCount := len(errors)
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"total_rows":    totalRows,
+		"success_count": successCount,
+		"error_count":   errorCount,
+	}).Info("Department import completed")
+
+	c.JSON(http.StatusOK, gin.H{
+		"total_rows":          totalRows,
+		"success_count":       successCount,
+		"error_count":         errorCount,
+		"success_departments": successDepartments,
+		"errors":              errors,
+		"request_id":          requestID,
 	})
 }

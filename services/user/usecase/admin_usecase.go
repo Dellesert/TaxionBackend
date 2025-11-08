@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
@@ -20,6 +21,7 @@ type AdminUsecase interface {
 	UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest) (*models.UserResponse, error)
 	ActivateUser(id uint) (*models.UserResponse, error)
 	DeactivateUser(id uint) (*models.UserResponse, error)
+	AssignDepartmentToUser(id uint, departmentID *uint) (*models.UserResponse, error)
 	ResetUserPassword(id uint, newPassword string) error
 	UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARequest) (*models.UserResponse, error)
 	ImportUsersFromCSV(csvRows []models.CSVUserRow) (*models.ImportUsersResponse, error)
@@ -202,6 +204,46 @@ func (a *adminUsecase) DeactivateUser(id uint) (*models.UserResponse, error) {
 	return userWithDept.ToResponse(), nil
 }
 
+// AssignDepartmentToUser assigns or removes a department from a user
+func (a *adminUsecase) AssignDepartmentToUser(id uint, departmentID *uint) (*models.UserResponse, error) {
+	// Get user
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Validate department exists if departmentID is not nil
+	if departmentID != nil && *departmentID > 0 {
+		_, err := a.departmentRepo.GetByID(*departmentID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+				return nil, fmt.Errorf("department not found")
+			}
+			return nil, fmt.Errorf("failed to get department: %w", err)
+		}
+	}
+
+	// Assign or remove department
+	user.DepartmentID = departmentID
+
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to assign department to user: %w", err)
+	}
+
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
+}
+
 // ResetUserPassword resets a user's password (admin only)
 func (a *adminUsecase) ResetUserPassword(id uint, newPassword string) error {
 	// Validate password
@@ -330,6 +372,10 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 	// Trim all fields
 	email := strings.TrimSpace(row.Email)
 	name := strings.TrimSpace(row.Name)
+	firstName := strings.TrimSpace(row.FirstName)
+	lastName := strings.TrimSpace(row.LastName)
+	middleName := strings.TrimSpace(row.MiddleName)
+	birthDateStr := strings.TrimSpace(row.BirthDate)
 	password := strings.TrimSpace(row.Password) // Optional now
 	role := strings.TrimSpace(row.Role)
 	phone := strings.TrimSpace(row.Phone)
@@ -342,6 +388,12 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 	}
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
+	}
+	if firstName == "" {
+		return nil, fmt.Errorf("first_name is required")
+	}
+	if lastName == "" {
+		return nil, fmt.Errorf("last_name is required")
 	}
 
 	// Validate email format
@@ -372,22 +424,37 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 		return nil, fmt.Errorf("invalid role: %s (must be one of: employee, department_head, admin, super_admin)", role)
 	}
 
-	// Parse department ID if provided
+	// Parse birth date if provided (format: YYYY-MM-DD)
+	var birthDate *time.Time
+	if birthDateStr != "" {
+		parsedDate, err := time.Parse("2006-01-02", birthDateStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid birth_date format (expected YYYY-MM-DD): %s", birthDateStr)
+		}
+		birthDate = &parsedDate
+	}
+
+	// Parse department ID if provided (supports both numeric ID and department name)
 	var departmentID *uint
 	if departmentIDStr != "" {
+		// Try to parse as numeric ID first
 		var deptID uint
 		_, err := fmt.Sscanf(departmentIDStr, "%d", &deptID)
-		if err != nil {
-			return nil, fmt.Errorf("invalid department_id: must be a number")
+		if err == nil {
+			// It's a number - verify department exists by ID
+			_, err = a.departmentRepo.GetByID(deptID)
+			if err != nil {
+				return nil, fmt.Errorf("department with ID %d not found", deptID)
+			}
+			departmentID = &deptID
+		} else {
+			// Not a number - try to find by name
+			dept, err := a.departmentRepo.GetByName(departmentIDStr)
+			if err != nil {
+				return nil, fmt.Errorf("department '%s' not found (use numeric ID or exact department name)", departmentIDStr)
+			}
+			departmentID = &dept.ID
 		}
-
-		// Verify department exists
-		_, err = a.departmentRepo.GetByID(deptID)
-		if err != nil {
-			return nil, fmt.Errorf("department with ID %d not found", deptID)
-		}
-
-		departmentID = &deptID
 	}
 
 	// Hash password only if provided, otherwise leave it nil
@@ -404,6 +471,10 @@ func (a *adminUsecase) validateAndCreateUserFromCSV(row models.CSVUserRow, rowNu
 	user := &models.User{
 		Email:          email,
 		Name:           name,
+		FirstName:      firstName,
+		LastName:       lastName,
+		MiddleName:     middleName,
+		BirthDate:      birthDate,
 		HashedPassword: hashedPassword, // nil if no password provided
 		Role:           sharedmodels.Role(role),
 		Status:         sharedmodels.StatusOffline,

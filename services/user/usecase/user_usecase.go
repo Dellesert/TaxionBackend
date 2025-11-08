@@ -60,12 +60,17 @@ func (u *userUsecase) CreateUser(req *models.CreateUserRequest) (*models.UserRes
 	// Create user model
 	hashedPwd := string(hashedPassword)
 	user := &models.User{
-		Email:          req.Email,
-		Name:           req.Name,
-		HashedPassword: &hashedPwd,
-		DepartmentID:   req.DepartmentID,
-		Position:       req.Position,
-		Phone:          req.Phone,
+		Email:           req.Email,
+		Name:            req.Name,
+		FirstName:       req.FirstName,
+		LastName:        req.LastName,
+		MiddleName:      req.MiddleName,
+		BirthDate:       req.BirthDate,
+		HashedPassword:  &hashedPwd,
+		DepartmentID:    req.DepartmentID,
+		SubdepartmentID: req.SubdepartmentID,
+		Position:        req.Position,
+		Phone:           req.Phone,
 	}
 
 	// Set role if provided, otherwise use default
@@ -196,6 +201,18 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 	if req.Name != nil {
 		user.Name = *req.Name
 	}
+	if req.FirstName != nil {
+		user.FirstName = *req.FirstName
+	}
+	if req.LastName != nil {
+		user.LastName = *req.LastName
+	}
+	if req.MiddleName != nil {
+		user.MiddleName = *req.MiddleName
+	}
+	if req.BirthDate != nil {
+		user.BirthDate = req.BirthDate
+	}
 	if req.Status != nil {
 		user.Status = *req.Status
 	}
@@ -214,6 +231,14 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 			user.DepartmentID = nil
 		} else {
 			user.DepartmentID = req.DepartmentID
+		}
+	}
+	if req.SubdepartmentID != nil {
+		// If SubdepartmentID is 0, set to nil to remove from subdepartment
+		if *req.SubdepartmentID == 0 {
+			user.SubdepartmentID = nil
+		} else {
+			user.SubdepartmentID = req.SubdepartmentID
 		}
 	}
 	if req.IsActive != nil {

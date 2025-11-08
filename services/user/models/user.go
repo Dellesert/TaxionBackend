@@ -11,9 +11,20 @@ import (
 // Department represents a department in the organization
 type Department struct {
 	models.BaseModel
-	Name  string `gorm:"uniqueIndex;not null;size:100" json:"name" validate:"required,min=2,max=100"`
-	HeadID *uint  `gorm:"index" json:"head_id,omitempty"`
-	Users []User `gorm:"foreignKey:DepartmentID" json:"users,omitempty"`
+	Name           string          `gorm:"uniqueIndex;not null;size:100" json:"name" validate:"required,min=2,max=100"`
+	HeadID         *uint           `gorm:"index" json:"head_id,omitempty"`
+	Users          []User          `gorm:"foreignKey:DepartmentID" json:"users,omitempty"`
+	Subdepartments []Subdepartment `gorm:"foreignKey:DepartmentID" json:"subdepartments,omitempty"`
+}
+
+// Subdepartment represents a subdivision within a department
+type Subdepartment struct {
+	models.BaseModel
+	Name         string      `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
+	DepartmentID uint        `gorm:"not null;index" json:"department_id" validate:"required"`
+	Department   *Department `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
+	HeadID       *uint       `gorm:"index" json:"head_id,omitempty"`
+	Users        []User      `gorm:"foreignKey:SubdepartmentID" json:"users,omitempty"`
 }
 
 // TableName returns the table name for Department model
@@ -21,16 +32,27 @@ func (Department) TableName() string {
 	return "departments"
 }
 
+// TableName returns the table name for Subdepartment model
+func (Subdepartment) TableName() string {
+	return "subdepartments"
+}
+
 // User represents a user in the user service
 type User struct {
 	models.BaseModel
 	Email          string            `gorm:"uniqueIndex;not null;size:255" json:"email" validate:"required,email,max=255"`
 	Name           string            `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
+	FirstName      string            `gorm:"size:100" json:"first_name,omitempty" validate:"omitempty,max=100"`
+	LastName       string            `gorm:"size:100" json:"last_name,omitempty" validate:"omitempty,max=100"`
+	MiddleName     string            `gorm:"size:100" json:"middle_name,omitempty" validate:"omitempty,max=100"`
+	BirthDate      *time.Time        `gorm:"type:date" json:"birth_date,omitempty"`
 	HashedPassword *string           `gorm:"size:255" json:"-"` // Nullable for passkey-only users
 	Role           models.Role       `gorm:"not null;default:'employee';size:20" json:"role" validate:"required,oneof=super_admin admin department_head employee"`
 	Status         models.UserStatus `gorm:"not null;default:'offline';size:20" json:"status" validate:"oneof=online busy away offline"`
 	DepartmentID   *uint             `gorm:"index" json:"department_id,omitempty"`
 	Department     *Department       `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
+	SubdepartmentID *uint            `gorm:"index" json:"subdepartment_id,omitempty"`
+	Subdepartment   *Subdepartment   `gorm:"foreignKey:SubdepartmentID" json:"subdepartment,omitempty"`
 	Avatar         string            `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
 	Phone              string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
 	Position           string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
@@ -83,26 +105,49 @@ type UpdateDepartmentRequest struct {
 	Name *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
 }
 
+// CreateSubdepartmentRequest represents request for creating a subdepartment
+type CreateSubdepartmentRequest struct {
+	Name         string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
+	DepartmentID uint   `json:"department_id" binding:"required" validate:"required"`
+	HeadID       *uint  `json:"head_id,omitempty"`
+}
+
+// UpdateSubdepartmentRequest represents request for updating a subdepartment
+type UpdateSubdepartmentRequest struct {
+	Name   *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	HeadID *uint   `json:"head_id,omitempty"`
+}
+
 // CreateUserRequest represents request for creating a user
 type CreateUserRequest struct {
-	Email        string `json:"email" binding:"required,email,max=255" validate:"required,email,max=255"`
-	Name         string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
-	Password     string `json:"password" binding:"required,min=6,max=100" validate:"required,min=6,max=100"`
-	Role         string `json:"role,omitempty" binding:"omitempty,oneof=super_admin admin department_head employee" validate:"omitempty,oneof=super_admin admin department_head employee"`
-	DepartmentID *uint  `json:"department_id,omitempty"`
-	Phone        string `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
-	Position     string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	Email           string     `json:"email" binding:"required,email,max=255" validate:"required,email,max=255"`
+	Name            string     `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
+	FirstName       string     `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	LastName        string     `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	MiddleName      string     `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	BirthDate       *time.Time `json:"birth_date,omitempty"`
+	Password        string     `json:"password" binding:"required,min=6,max=100" validate:"required,min=6,max=100"`
+	Role            string     `json:"role,omitempty" binding:"omitempty,oneof=super_admin admin department_head employee" validate:"omitempty,oneof=super_admin admin department_head employee"`
+	DepartmentID    *uint      `json:"department_id,omitempty"`
+	SubdepartmentID *uint      `json:"subdepartment_id,omitempty"`
+	Phone           string     `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
+	Position        string     `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 }
 
 // UpdateUserRequest represents request for updating a user
 type UpdateUserRequest struct {
-	Name         *string            `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
-	Status       *models.UserStatus `json:"status,omitempty" binding:"omitempty,oneof=online busy away offline" validate:"omitempty,oneof=online busy away offline"`
-	Avatar       *string            `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	Phone        *string            `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
-	Position     *string            `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	DepartmentID *uint              `json:"department_id,omitempty"`
-	IsActive     *bool              `json:"is_active,omitempty"`
+	Name            *string            `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	FirstName       *string            `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	LastName        *string            `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	MiddleName      *string            `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	BirthDate       *time.Time         `json:"birth_date,omitempty"`
+	Status          *models.UserStatus `json:"status,omitempty" binding:"omitempty,oneof=online busy away offline" validate:"omitempty,oneof=online busy away offline"`
+	Avatar          *string            `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	Phone           *string            `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
+	Position        *string            `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	DepartmentID    *uint              `json:"department_id,omitempty"`
+	SubdepartmentID *uint              `json:"subdepartment_id,omitempty"`
+	IsActive        *bool              `json:"is_active,omitempty"`
 }
 
 // DepartmentResponse represents department response
@@ -115,16 +160,34 @@ type DepartmentResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+// SubdepartmentResponse represents subdepartment response
+type SubdepartmentResponse struct {
+	ID           uint                `json:"id"`
+	Name         string              `json:"name"`
+	DepartmentID uint                `json:"department_id"`
+	Department   *DepartmentResponse `json:"department,omitempty"`
+	HeadID       *uint               `json:"head_id,omitempty"`
+	UserCount    int                 `json:"user_count,omitempty"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
+}
+
 // UserResponse represents user response (without sensitive data)
 type UserResponse struct {
-	ID           uint                `json:"id"`
-	Email        string              `json:"email"`
-	Name         string              `json:"name"`
-	Role         models.Role         `json:"role"`
-	Status       models.UserStatus   `json:"status"`
-	DepartmentID *uint               `json:"department_id,omitempty"`
-	Department   *DepartmentResponse `json:"department,omitempty"`
-	Avatar       string              `json:"avatar,omitempty"`
+	ID              uint                   `json:"id"`
+	Email           string                 `json:"email"`
+	Name            string                 `json:"name"`
+	FirstName       string                 `json:"first_name,omitempty"`
+	LastName        string                 `json:"last_name,omitempty"`
+	MiddleName      string                 `json:"middle_name,omitempty"`
+	BirthDate       *string                `json:"birth_date,omitempty"`
+	Role            models.Role            `json:"role"`
+	Status          models.UserStatus      `json:"status"`
+	DepartmentID    *uint                  `json:"department_id,omitempty"`
+	Department      *DepartmentResponse    `json:"department,omitempty"`
+	SubdepartmentID *uint                  `json:"subdepartment_id,omitempty"`
+	Subdepartment   *SubdepartmentResponse `json:"subdepartment,omitempty"`
+	Avatar          string                 `json:"avatar,omitempty"`
 	Phone              string              `json:"phone,omitempty"`
 	Position           string              `json:"position,omitempty"`
 	LastActiveAt       *time.Time          `json:"last_active_at,omitempty"`
@@ -140,13 +203,25 @@ type UserResponse struct {
 
 // ToResponse converts User to UserResponse
 func (u *User) ToResponse() *UserResponse {
+	// Convert BirthDate from *time.Time to *string (YYYY-MM-DD format)
+	var birthDateStr *string
+	if u.BirthDate != nil {
+		formatted := u.BirthDate.Format("2006-01-02")
+		birthDateStr = &formatted
+	}
+
 	response := &UserResponse{
-		ID:           u.ID,
-		Email:        u.Email,
-		Name:         u.Name,
-		Role:         u.Role,
-		Status:       u.Status,
-		DepartmentID: u.DepartmentID,
+		ID:              u.ID,
+		Email:           u.Email,
+		Name:            u.Name,
+		FirstName:       u.FirstName,
+		LastName:        u.LastName,
+		MiddleName:      u.MiddleName,
+		BirthDate:       birthDateStr,
+		Role:            u.Role,
+		Status:          u.Status,
+		DepartmentID:    u.DepartmentID,
+		SubdepartmentID: u.SubdepartmentID,
 		Avatar:             u.Avatar,
 		Phone:              u.Phone,
 		Position:           u.Position,
@@ -171,6 +246,18 @@ func (u *User) ToResponse() *UserResponse {
 		}
 	}
 
+	// Include subdepartment if loaded
+	if u.Subdepartment != nil {
+		response.Subdepartment = &SubdepartmentResponse{
+			ID:           u.Subdepartment.ID,
+			Name:         u.Subdepartment.Name,
+			DepartmentID: u.Subdepartment.DepartmentID,
+			HeadID:       u.Subdepartment.HeadID,
+			CreatedAt:    u.Subdepartment.CreatedAt,
+			UpdatedAt:    u.Subdepartment.UpdatedAt,
+		}
+	}
+
 	return response
 }
 
@@ -185,15 +272,45 @@ func (d *Department) ToResponse() *DepartmentResponse {
 	}
 }
 
+// ToResponse converts Subdepartment to SubdepartmentResponse
+func (s *Subdepartment) ToResponse() *SubdepartmentResponse {
+	response := &SubdepartmentResponse{
+		ID:           s.ID,
+		Name:         s.Name,
+		DepartmentID: s.DepartmentID,
+		HeadID:       s.HeadID,
+		CreatedAt:    s.CreatedAt,
+		UpdatedAt:    s.UpdatedAt,
+	}
+
+	// Include department if loaded
+	if s.Department != nil {
+		response.Department = &DepartmentResponse{
+			ID:        s.Department.ID,
+			Name:      s.Department.Name,
+			HeadID:    s.Department.HeadID,
+			CreatedAt: s.Department.CreatedAt,
+			UpdatedAt: s.Department.UpdatedAt,
+		}
+	}
+
+	return response
+}
+
 // Profile related request structures
 
 // UpdateProfileRequest represents profile update request payload
 type UpdateProfileRequest struct {
-	Name         *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
-	Avatar       *string `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	Phone        *string `json:"phone,omitempty" binding:"omitempty,max=20" validate:"omitempty,max=20"`
-	Position     *string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	DepartmentID *uint   `json:"department_id,omitempty" validate:"omitempty,min=0"`
+	Name            *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	FirstName       *string `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	LastName        *string `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	MiddleName      *string `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	BirthDate       *string `json:"birth_date,omitempty" binding:"omitempty" validate:"omitempty"`
+	Avatar          *string `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	Phone           *string `json:"phone,omitempty" binding:"omitempty,max=20" validate:"omitempty,max=20"`
+	Position        *string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	DepartmentID    *uint   `json:"department_id,omitempty" validate:"omitempty,min=0"`
+	SubdepartmentID *uint   `json:"subdepartment_id,omitempty" validate:"omitempty,min=0"`
 }
 
 // ChangePasswordRequest represents password change request payload
@@ -244,6 +361,10 @@ type AdminUpdate2FARequest struct {
 type CSVUserRow struct {
 	Email        string `csv:"email"`
 	Name         string `csv:"name"`
+	FirstName    string `csv:"first_name"`
+	LastName     string `csv:"last_name"`
+	MiddleName   string `csv:"middle_name"`
+	BirthDate    string `csv:"birth_date"`
 	Password     string `csv:"password"`
 	Role         string `csv:"role"`
 	DepartmentID string `csv:"department_id"`

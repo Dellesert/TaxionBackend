@@ -118,6 +118,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			profile.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
+		// User settings routes - proxy to user service
+		user := v1.Group("/user")
+		{
+			user.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			user.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Session management routes - proxy to user service
 		sessions := v1.Group("/sessions")
 		{
@@ -130,6 +137,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		{
 			departments.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			departments.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
+		// Subdepartment routes - proxy to user service
+		subdepartments := v1.Group("/subdepartments")
+		{
+			subdepartments.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			subdepartments.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
 		// Chat routes - proxy to chat service
@@ -247,6 +261,10 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			admin.Any("/users/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/departments", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/departments/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/subdepartments", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/subdepartments/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/quick-start", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/quick-start/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/invitations", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/invitations/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/settings", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))

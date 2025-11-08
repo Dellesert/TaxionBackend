@@ -81,6 +81,32 @@ func (p *profileUsecase) UpdateProfile(id uint, req *models.UpdateProfileRequest
 	if req.Name != nil {
 		user.Name = strings.TrimSpace(*req.Name)
 	}
+	if req.FirstName != nil {
+		user.FirstName = strings.TrimSpace(*req.FirstName)
+	}
+	if req.LastName != nil {
+		user.LastName = strings.TrimSpace(*req.LastName)
+	}
+	if req.MiddleName != nil {
+		user.MiddleName = strings.TrimSpace(*req.MiddleName)
+	}
+	if req.BirthDate != nil {
+		// Parse date string (YYYY-MM-DD format) to time.Time
+		birthDateStr := strings.TrimSpace(*req.BirthDate)
+		fmt.Printf("📅 BirthDate received: '%s'\n", birthDateStr)
+		if birthDateStr != "" {
+			parsedDate, err := time.Parse("2006-01-02", birthDateStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid birth date format, expected YYYY-MM-DD: %w", err)
+			}
+			fmt.Printf("📅 BirthDate parsed: %v\n", parsedDate)
+			user.BirthDate = &parsedDate
+			fmt.Printf("📅 User.BirthDate set to: %v\n", user.BirthDate)
+		} else {
+			// If empty string, set to nil
+			user.BirthDate = nil
+		}
+	}
 	if req.Avatar != nil {
 		user.Avatar = strings.TrimSpace(*req.Avatar)
 	}
@@ -106,14 +132,20 @@ func (p *profileUsecase) UpdateProfile(id uint, req *models.UpdateProfileRequest
 		return nil, fmt.Errorf("failed to update profile: %w", err)
 	}
 
+	fmt.Printf("📅 After Update - user.BirthDate: %v\n", user.BirthDate)
+
 	// Get user with department for response
 	userWithDept, err := p.userRepo.GetWithDepartment(user.ID)
 	if err != nil {
 		// Fallback to user without department
+		fmt.Printf("📅 Returning user.BirthDate (fallback): %v\n", user.BirthDate)
 		return user.ToResponse(), nil
 	}
 
-	return userWithDept.ToResponse(), nil
+	fmt.Printf("📅 UserWithDept.BirthDate: %v\n", userWithDept.BirthDate)
+	response := userWithDept.ToResponse()
+	fmt.Printf("📅 Response.BirthDate: %v\n", response.BirthDate)
+	return response, nil
 }
 
 // ChangePassword changes a user's password

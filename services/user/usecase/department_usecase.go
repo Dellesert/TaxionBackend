@@ -15,9 +15,12 @@ import (
 type DepartmentUsecase interface {
 	GetAllDepartments() ([]*models.DepartmentResponse, error)
 	GetDepartment(id uint) (*models.DepartmentResponse, error)
+	GetByName(name string) (*models.DepartmentResponse, error)
+	GetDepartmentByNameIncludingDeleted(name string) (*models.Department, error)
 	CreateDepartment(req *models.CreateDepartmentRequest) (*models.DepartmentResponse, error)
 	UpdateDepartment(id uint, req *models.UpdateDepartmentRequest) (*models.DepartmentResponse, error)
 	DeleteDepartment(id uint) error
+	RestoreDepartment(id uint) error
 	GetDepartmentWithUsers(id uint) (*models.DepartmentWithUsersResponse, error)
 }
 
@@ -67,6 +70,19 @@ func (d *departmentUsecase) GetAllDepartments() ([]*models.DepartmentResponse, e
 // GetDepartment retrieves a department by ID
 func (d *departmentUsecase) GetDepartment(id uint) (*models.DepartmentResponse, error) {
 	department, err := d.departmentRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("department not found")
+		}
+		return nil, fmt.Errorf("failed to get department: %w", err)
+	}
+
+	return department.ToResponse(), nil
+}
+
+// GetByName retrieves a department by name
+func (d *departmentUsecase) GetByName(name string) (*models.DepartmentResponse, error) {
+	department, err := d.departmentRepo.GetByName(name)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
 			return nil, fmt.Errorf("department not found")
@@ -264,6 +280,16 @@ func (d *departmentUsecase) DeleteDepartment(id uint) error {
 	return nil
 }
 
+// GetDepartmentByNameIncludingDeleted retrieves a department by name including soft-deleted records
+func (d *departmentUsecase) GetDepartmentByNameIncludingDeleted(name string) (*models.Department, error) {
+	return d.departmentRepo.GetByNameIncludingDeleted(name)
+}
+
+// RestoreDepartment restores a soft-deleted department
+func (d *departmentUsecase) RestoreDepartment(id uint) error {
+	return d.departmentRepo.Restore(id)
+}
+
 // GetDepartmentWithUsers retrieves a department with its users
 func (d *departmentUsecase) GetDepartmentWithUsers(id uint) (*models.DepartmentWithUsersResponse, error) {
 	// Get department
@@ -339,6 +365,260 @@ func (d *departmentUsecase) validateUpdateDepartmentRequest(req *models.UpdateDe
 		}
 		if len(name) > 100 {
 			return fmt.Errorf("department name must be less than 100 characters")
+		}
+	}
+
+	return nil
+}
+
+// SubdepartmentUsecase defines the interface for subdepartment business logic
+type SubdepartmentUsecase interface {
+	GetAllSubdepartments() ([]*models.SubdepartmentResponse, error)
+	GetSubdepartment(id uint) (*models.SubdepartmentResponse, error)
+	GetSubdepartmentsByDepartment(departmentID uint) ([]*models.SubdepartmentResponse, error)
+	GetSubdepartmentByNameAndDepartmentIncludingDeleted(name string, departmentID uint) (*models.Subdepartment, error)
+	CreateSubdepartment(req *models.CreateSubdepartmentRequest) (*models.SubdepartmentResponse, error)
+	UpdateSubdepartment(id uint, req *models.UpdateSubdepartmentRequest) (*models.SubdepartmentResponse, error)
+	DeleteSubdepartment(id uint) error
+	RestoreSubdepartment(id uint) error
+}
+
+// subdepartmentUsecase implements SubdepartmentUsecase interface
+type subdepartmentUsecase struct {
+	subdepartmentRepo repository.SubdepartmentRepository
+	departmentRepo    repository.DepartmentRepository
+	userRepo          repository.UserRepository
+}
+
+// NewSubdepartmentUsecase creates a new subdepartment usecase
+func NewSubdepartmentUsecase(subdepartmentRepo repository.SubdepartmentRepository, departmentRepo repository.DepartmentRepository, userRepo repository.UserRepository) SubdepartmentUsecase {
+	return &subdepartmentUsecase{
+		subdepartmentRepo: subdepartmentRepo,
+		departmentRepo:    departmentRepo,
+		userRepo:          userRepo,
+	}
+}
+
+// GetAllSubdepartments retrieves all subdepartments
+func (s *subdepartmentUsecase) GetAllSubdepartments() ([]*models.SubdepartmentResponse, error) {
+	subdepartments, err := s.subdepartmentRepo.GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subdepartments: %w", err)
+	}
+
+	responses := make([]*models.SubdepartmentResponse, len(subdepartments))
+	for i, subdept := range subdepartments {
+		responses[i] = subdept.ToResponse()
+	}
+
+	return responses, nil
+}
+
+// GetSubdepartment retrieves a subdepartment by ID
+func (s *subdepartmentUsecase) GetSubdepartment(id uint) (*models.SubdepartmentResponse, error) {
+	subdepartment, err := s.subdepartmentRepo.GetWithDepartment(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("subdepartment not found")
+		}
+		return nil, fmt.Errorf("failed to get subdepartment: %w", err)
+	}
+
+	return subdepartment.ToResponse(), nil
+}
+
+// GetSubdepartmentsByDepartment retrieves all subdepartments for a department
+func (s *subdepartmentUsecase) GetSubdepartmentsByDepartment(departmentID uint) ([]*models.SubdepartmentResponse, error) {
+	// Verify department exists
+	_, err := s.departmentRepo.GetByID(departmentID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("department not found")
+		}
+		return nil, fmt.Errorf("failed to get department: %w", err)
+	}
+
+	subdepartments, err := s.subdepartmentRepo.GetByDepartmentID(departmentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subdepartments: %w", err)
+	}
+
+	responses := make([]*models.SubdepartmentResponse, len(subdepartments))
+	for i, subdept := range subdepartments {
+		responses[i] = subdept.ToResponse()
+	}
+
+	return responses, nil
+}
+
+// CreateSubdepartment creates a new subdepartment
+func (s *subdepartmentUsecase) CreateSubdepartment(req *models.CreateSubdepartmentRequest) (*models.SubdepartmentResponse, error) {
+	// Validate request
+	if err := s.validateCreateSubdepartmentRequest(req); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Verify department exists
+	_, err := s.departmentRepo.GetByID(req.DepartmentID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("department not found")
+		}
+		return nil, fmt.Errorf("failed to get department: %w", err)
+	}
+
+	// Verify head user exists if provided
+	if req.HeadID != nil && *req.HeadID > 0 {
+		_, err := s.userRepo.GetByID(*req.HeadID)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+				return nil, fmt.Errorf("user with ID %d not found", *req.HeadID)
+			}
+			return nil, fmt.Errorf("failed to get user: %w", err)
+		}
+	}
+
+	// Create subdepartment
+	subdepartment := &models.Subdepartment{
+		Name:         strings.TrimSpace(req.Name),
+		DepartmentID: req.DepartmentID,
+		HeadID:       req.HeadID,
+	}
+
+	if err := s.subdepartmentRepo.Create(subdepartment); err != nil {
+		return nil, fmt.Errorf("failed to create subdepartment: %w", err)
+	}
+
+	// Load department for response
+	subdepartment, err = s.subdepartmentRepo.GetWithDepartment(subdepartment.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get created subdepartment: %w", err)
+	}
+
+	return subdepartment.ToResponse(), nil
+}
+
+// UpdateSubdepartment updates an existing subdepartment
+func (s *subdepartmentUsecase) UpdateSubdepartment(id uint, req *models.UpdateSubdepartmentRequest) (*models.SubdepartmentResponse, error) {
+	// Validate request
+	if err := s.validateUpdateSubdepartmentRequest(req); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Get existing subdepartment
+	subdepartment, err := s.subdepartmentRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("subdepartment not found")
+		}
+		return nil, fmt.Errorf("failed to get subdepartment: %w", err)
+	}
+
+	// Update fields if provided
+	if req.Name != nil {
+		subdepartment.Name = strings.TrimSpace(*req.Name)
+	}
+
+	if req.HeadID != nil {
+		// Verify the user exists if HeadID is being set
+		if *req.HeadID > 0 {
+			_, err := s.userRepo.GetByID(*req.HeadID)
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+					return nil, fmt.Errorf("user with ID %d not found", *req.HeadID)
+				}
+				return nil, fmt.Errorf("failed to get user: %w", err)
+			}
+		}
+		subdepartment.HeadID = req.HeadID
+	}
+
+	// Save updated subdepartment
+	if err := s.subdepartmentRepo.Update(subdepartment); err != nil {
+		return nil, fmt.Errorf("failed to update subdepartment: %w", err)
+	}
+
+	// Load with department for response
+	subdepartment, err = s.subdepartmentRepo.GetWithDepartment(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated subdepartment: %w", err)
+	}
+
+	return subdepartment.ToResponse(), nil
+}
+
+// DeleteSubdepartment deletes a subdepartment by ID
+func (s *subdepartmentUsecase) DeleteSubdepartment(id uint) error {
+	// Check if subdepartment exists
+	_, err := s.subdepartmentRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return fmt.Errorf("subdepartment not found")
+		}
+		return fmt.Errorf("failed to get subdepartment: %w", err)
+	}
+
+	// Delete subdepartment (users' subdepartment_id will be set to NULL by foreign key constraint)
+	if err := s.subdepartmentRepo.Delete(id); err != nil {
+		return fmt.Errorf("failed to delete subdepartment: %w", err)
+	}
+
+	return nil
+}
+
+// GetSubdepartmentByNameAndDepartmentIncludingDeleted retrieves a subdepartment by name and department ID including soft-deleted records
+func (s *subdepartmentUsecase) GetSubdepartmentByNameAndDepartmentIncludingDeleted(name string, departmentID uint) (*models.Subdepartment, error) {
+	return s.subdepartmentRepo.GetByNameAndDepartmentIncludingDeleted(name, departmentID)
+}
+
+// RestoreSubdepartment restores a soft-deleted subdepartment
+func (s *subdepartmentUsecase) RestoreSubdepartment(id uint) error {
+	return s.subdepartmentRepo.Restore(id)
+}
+
+// validateCreateSubdepartmentRequest validates subdepartment creation request
+func (s *subdepartmentUsecase) validateCreateSubdepartmentRequest(req *models.CreateSubdepartmentRequest) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
+	}
+
+	// Validate name
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		return fmt.Errorf("subdepartment name is required")
+	}
+	if len(name) < 2 {
+		return fmt.Errorf("subdepartment name must be at least 2 characters long")
+	}
+	if len(name) > 100 {
+		return fmt.Errorf("subdepartment name must be less than 100 characters")
+	}
+
+	// Validate department ID
+	if req.DepartmentID == 0 {
+		return fmt.Errorf("department ID is required")
+	}
+
+	return nil
+}
+
+// validateUpdateSubdepartmentRequest validates subdepartment update request
+func (s *subdepartmentUsecase) validateUpdateSubdepartmentRequest(req *models.UpdateSubdepartmentRequest) error {
+	if req == nil {
+		return fmt.Errorf("request is required")
+	}
+
+	// Validate name if provided
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return fmt.Errorf("subdepartment name cannot be empty")
+		}
+		if len(name) < 2 {
+			return fmt.Errorf("subdepartment name must be at least 2 characters long")
+		}
+		if len(name) > 100 {
+			return fmt.Errorf("subdepartment name must be less than 100 characters")
 		}
 	}
 
