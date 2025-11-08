@@ -568,3 +568,63 @@ func (h *DepartmentHandler) ImportDepartments(c *gin.Context) {
 		"request_id":          requestID,
 	})
 }
+
+// BulkDeleteDepartments handles bulk deletion of departments
+func (h *DepartmentHandler) BulkDeleteDepartments(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	var req struct {
+		DepartmentIDs []uint `json:"department_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if len(req.DepartmentIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No department IDs provided",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	successCount := 0
+	errorCount := 0
+	errors := []map[string]interface{}{}
+
+	for _, id := range req.DepartmentIDs {
+		if err := h.departmentUsecase.DeleteDepartment(id); err != nil {
+			errorCount++
+			errors = append(errors, map[string]interface{}{
+				"department_id": id,
+				"message":       err.Error(),
+			})
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"department_id": id,
+				"error":         err.Error(),
+			}).Warn("Failed to delete department in bulk operation")
+		} else {
+			successCount++
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"total":         len(req.DepartmentIDs),
+		"success_count": successCount,
+		"error_count":   errorCount,
+	}).Info("Bulk delete departments completed")
+
+	c.JSON(http.StatusOK, gin.H{
+		"success_count": successCount,
+		"error_count":   errorCount,
+		"errors":        errors,
+		"request_id":    requestID,
+	})
+}

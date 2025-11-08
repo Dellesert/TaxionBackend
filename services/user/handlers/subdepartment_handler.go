@@ -597,3 +597,63 @@ func (h *SubdepartmentHandler) ImportSubdepartments(c *gin.Context) {
 		"request_id":             requestID,
 	})
 }
+
+// BulkDeleteSubdepartments handles bulk deletion of subdepartments
+func (h *SubdepartmentHandler) BulkDeleteSubdepartments(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	var req struct {
+		SubdepartmentIDs []uint `json:"subdepartment_ids" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if len(req.SubdepartmentIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "No subdepartment IDs provided",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	successCount := 0
+	errorCount := 0
+	errors := []map[string]interface{}{}
+
+	for _, id := range req.SubdepartmentIDs {
+		if err := h.subdepartmentUsecase.DeleteSubdepartment(id); err != nil {
+			errorCount++
+			errors = append(errors, map[string]interface{}{
+				"subdepartment_id": id,
+				"message":          err.Error(),
+			})
+			logger.WithFields(map[string]interface{}{
+				"request_id":       requestID,
+				"subdepartment_id": id,
+				"error":            err.Error(),
+			}).Warn("Failed to delete subdepartment in bulk operation")
+		} else {
+			successCount++
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"total":         len(req.SubdepartmentIDs),
+		"success_count": successCount,
+		"error_count":   errorCount,
+	}).Info("Bulk delete subdepartments completed")
+
+	c.JSON(http.StatusOK, gin.H{
+		"success_count": successCount,
+		"error_count":   errorCount,
+		"errors":        errors,
+		"request_id":    requestID,
+	})
+}

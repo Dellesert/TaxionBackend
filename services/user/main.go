@@ -458,6 +458,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminDepartments.GET("", middleware.LogAdminAction("list_departments"), departmentHandler.GetDepartments)
 				v1AdminDepartments.POST("", middleware.LogAdminAction("create_department"), departmentHandler.CreateDepartment)
 				v1AdminDepartments.POST("/import", middleware.LogAdminAction("import_departments"), departmentHandler.ImportDepartments)
+				v1AdminDepartments.POST("/bulk-delete", middleware.LogAdminAction("bulk_delete_departments"), departmentHandler.BulkDeleteDepartments)
 				v1AdminDepartments.GET("/:id", middleware.LogAdminAction("get_department"), departmentHandler.GetDepartment)
 				v1AdminDepartments.PUT("/:id", middleware.LogAdminAction("update_department"), departmentHandler.UpdateDepartment)
 				v1AdminDepartments.DELETE("/:id", middleware.LogAdminAction("delete_department"), departmentHandler.DeleteDepartment)
@@ -468,6 +469,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			v1AdminSubdepartments := v1Admin.Group("/subdepartments")
 			{
 				v1AdminSubdepartments.POST("/import", middleware.LogAdminAction("import_subdepartments"), subdepartmentHandler.ImportSubdepartments)
+				v1AdminSubdepartments.POST("/bulk-delete", middleware.LogAdminAction("bulk_delete_subdepartments"), subdepartmentHandler.BulkDeleteSubdepartments)
 			}
 
 			// Quick Start import endpoint (admin only)
@@ -552,6 +554,16 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			departments.PUT("/:id", middleware.LogAdminAction("update_department"), departmentHandler.UpdateDepartment)
 			departments.DELETE("/:id", middleware.LogAdminAction("delete_department"), departmentHandler.DeleteDepartment)
 			departments.GET("/:id/users", middleware.LogAdminAction("get_department_users"), departmentHandler.GetDepartmentWithUsers)
+		}
+
+		// Subdepartment management for admins
+		subdepartments := admin.Group("/subdepartments")
+		{
+			subdepartments.GET("", middleware.LogAdminAction("list_subdepartments"), subdepartmentHandler.GetSubdepartments)
+			subdepartments.POST("", middleware.LogAdminAction("create_subdepartment"), subdepartmentHandler.CreateSubdepartment)
+			subdepartments.GET("/:id", middleware.LogAdminAction("get_subdepartment"), subdepartmentHandler.GetSubdepartment)
+			subdepartments.PUT("/:id", middleware.LogAdminAction("update_subdepartment"), subdepartmentHandler.UpdateSubdepartment)
+			subdepartments.DELETE("/:id", middleware.LogAdminAction("delete_subdepartment"), subdepartmentHandler.DeleteSubdepartment)
 		}
 
 		// System administration endpoints (super admin only)
