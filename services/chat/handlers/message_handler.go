@@ -7,6 +7,7 @@ import (
 
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/usecase"
+	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 
@@ -16,13 +17,15 @@ import (
 
 // MessageHandler handles HTTP requests for message operations
 type MessageHandler struct {
-	messageUsecase usecase.MessageUsecase
+	messageUsecase  usecase.MessageUsecase
+	analyticsClient *analytics.Client
 }
 
 // NewMessageHandler creates a new message handler
-func NewMessageHandler(messageUsecase usecase.MessageUsecase) *MessageHandler {
+func NewMessageHandler(messageUsecase usecase.MessageUsecase, analyticsClient *analytics.Client) *MessageHandler {
 	return &MessageHandler{
-		messageUsecase: messageUsecase,
+		messageUsecase:  messageUsecase,
+		analyticsClient: analyticsClient,
 	}
 }
 
@@ -176,6 +179,17 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		"chat_id":    req.ChatID,
 		"message_id": message.ID,
 	}).Info("Message sent successfully")
+
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventMessageSent,
+		analytics.CategoryMessage,
+		uint64(userID),
+		map[string]interface{}{
+			"chat_id":    req.ChatID,
+			"message_id": message.ID,
+		},
+	)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":    message,

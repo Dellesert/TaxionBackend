@@ -6,6 +6,7 @@ import (
 
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/usecase"
+	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 
@@ -15,13 +16,15 @@ import (
 
 // TaskHandler handles HTTP requests for task operations
 type TaskHandler struct {
-	taskUsecase usecase.TaskUsecase
+	taskUsecase     usecase.TaskUsecase
+	analyticsClient *analytics.Client
 }
 
 // NewTaskHandler creates a new task handler
-func NewTaskHandler(taskUsecase usecase.TaskUsecase) *TaskHandler {
+func NewTaskHandler(taskUsecase usecase.TaskUsecase, analyticsClient *analytics.Client) *TaskHandler {
 	return &TaskHandler{
-		taskUsecase: taskUsecase,
+		taskUsecase:     taskUsecase,
+		analyticsClient: analyticsClient,
 	}
 }
 
@@ -115,6 +118,19 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		"task_id":    task.ID,
 		"title":      task.Title,
 	}).Info("Task created successfully")
+
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventTaskCreated,
+		analytics.CategoryTask,
+		uint64(userID),
+		map[string]interface{}{
+			"task_id":  task.ID,
+			"title":    task.Title,
+			"priority": task.Priority,
+			"status":   task.Status,
+		},
+	)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":    "Task created successfully",
@@ -306,6 +322,17 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		"user_id":    userID,
 		"task_id":    taskID,
 	}).Info("Task updated successfully")
+
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventTaskUpdated,
+		analytics.CategoryTask,
+		uint64(userID),
+		map[string]interface{}{
+			"task_id": taskID,
+			"status":  task.Status,
+		},
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Task updated successfully",
@@ -658,6 +685,21 @@ func (h *TaskHandler) UpdateTaskStatus(c *gin.Context) {
 		"task_id":    taskID,
 		"status":     req.Status,
 	}).Info("Task status updated successfully")
+
+	// Send analytics event (task completed if status is "done")
+	eventType := analytics.EventTaskUpdated
+	if req.Status == "done" {
+		eventType = analytics.EventTaskCompleted
+	}
+	h.analyticsClient.SendEvent(
+		eventType,
+		analytics.CategoryTask,
+		uint64(userID),
+		map[string]interface{}{
+			"task_id": taskID,
+			"status":  req.Status,
+		},
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Task status updated successfully",

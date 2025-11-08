@@ -7,6 +7,7 @@ import (
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/usecase"
+	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
@@ -17,13 +18,15 @@ import (
 
 // AuthHandler handles HTTP requests for authentication
 type AuthHandler struct {
-	authUsecase usecase.AuthUsecase
+	authUsecase     usecase.AuthUsecase
+	analyticsClient *analytics.Client
 }
 
 // NewAuthHandler creates a new auth handler
-func NewAuthHandler(authUsecase usecase.AuthUsecase) *AuthHandler {
+func NewAuthHandler(authUsecase usecase.AuthUsecase, analyticsClient *analytics.Client) *AuthHandler {
 	return &AuthHandler{
-		authUsecase: authUsecase,
+		authUsecase:     authUsecase,
+		analyticsClient: analyticsClient,
 	}
 }
 
@@ -126,6 +129,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		"user_id":    user.ID,
 		"email":      user.Email,
 	}).Info("User registered successfully")
+
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventUserRegistration,
+		analytics.CategoryUser,
+		uint64(user.ID),
+		map[string]interface{}{
+			"email": user.Email,
+			"role":  user.Role,
+		},
+	)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":    "User registered successfully",
@@ -230,6 +244,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"auth_mode":  loginResponse.AuthMode,
 	}).Info("User logged in successfully")
 
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventUserLogin,
+		analytics.CategoryUser,
+		uint64(loginResponse.User.ID),
+		map[string]interface{}{
+			"email":      loginResponse.User.Email,
+			"auth_mode":  loginResponse.AuthMode,
+			"ip_address": ipAddress,
+		},
+	)
+
 	// Set session cookie if in session mode
 	if loginResponse.Session != nil {
 		// Calculate MaxAge in seconds (time until expiration)
@@ -324,6 +350,19 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 		"email":      loginResponse.User.Email,
 		"auth_mode":  loginResponse.AuthMode,
 	}).Info("Super admin logged in successfully")
+
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventUserLogin,
+		analytics.CategoryUser,
+		uint64(loginResponse.User.ID),
+		map[string]interface{}{
+			"email":      loginResponse.User.Email,
+			"auth_mode":  loginResponse.AuthMode,
+			"ip_address": ipAddress,
+			"role":       "super_admin",
+		},
+	)
 
 	// Set session cookie if in session mode
 	if loginResponse.Session != nil {
@@ -424,6 +463,16 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		"request_id": requestID,
 		"user_id":    userID,
 	}).Info("User logged out successfully")
+
+	// Send analytics event
+	h.analyticsClient.SendEvent(
+		analytics.EventUserLogout,
+		analytics.CategoryUser,
+		uint64(userID),
+		map[string]interface{}{
+			"session_id": sessionID,
+		},
+	)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Logout successful",

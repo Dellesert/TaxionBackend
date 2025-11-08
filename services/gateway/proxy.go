@@ -34,6 +34,7 @@ type ProxyConfig struct {
 	NotificationService ServiceConfig
 	FileService         ServiceConfig
 	AnalyticsService    ServiceConfig
+	BackupService       ServiceConfig
 }
 
 // getProxyConfig returns service URLs configuration
@@ -70,6 +71,10 @@ func getProxyConfig() *ProxyConfig {
 		AnalyticsService: ServiceConfig{
 			Name: "analytics-service",
 			URL:  getEnvOrDefault("ANALYTICS_SERVICE_URL", "http://localhost:8086"),
+		},
+		BackupService: ServiceConfig{
+			Name: "backup-service",
+			URL:  getEnvOrDefault("BACKUP_SERVICE_URL", "http://localhost:8089"),
 		},
 	}
 }

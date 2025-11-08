@@ -188,3 +188,40 @@ func (r *FileRepository) GetPublicFiles(limit, offset int) ([]models.File, int64
 
 	return files, total, nil
 }
+
+// FileStatsInternal represents file statistics for internal use
+type FileStatsInternal struct {
+	TotalFiles  int   `json:"total_files"`
+	TotalSize   int64 `json:"total_size"`
+	AvgFileSize int64 `json:"avg_file_size"`
+}
+
+// GetFileStatsInternal retrieves file statistics for analytics
+func (r *FileRepository) GetFileStatsInternal() (*FileStatsInternal, error) {
+	var stats FileStatsInternal
+	var totalFiles int64
+	var totalSize int64
+
+	// Count total files
+	if err := r.db.DB.Model(&models.File{}).Count(&totalFiles).Error; err != nil {
+		return nil, fmt.Errorf("failed to count files: %w", err)
+	}
+
+	// Sum total size
+	row := r.db.DB.Model(&models.File{}).Select("COALESCE(SUM(file_size), 0)").Row()
+	if err := row.Scan(&totalSize); err != nil {
+		return nil, fmt.Errorf("failed to sum file sizes: %w", err)
+	}
+
+	stats.TotalFiles = int(totalFiles)
+	stats.TotalSize = totalSize
+
+	// Calculate average file size
+	if totalFiles > 0 {
+		stats.AvgFileSize = totalSize / totalFiles
+	} else {
+		stats.AvgFileSize = 0
+	}
+
+	return &stats, nil
+}

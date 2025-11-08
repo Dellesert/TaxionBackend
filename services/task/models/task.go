@@ -355,6 +355,17 @@ type TaskStatsResponse struct {
 	TasksCreatedByMe  int `json:"tasks_created_by_me"`
 }
 
+// TaskStatsInternalResponse represents task statistics for analytics (no user-specific data)
+type TaskStatsInternalResponse struct {
+	TotalTasks      int `json:"total_tasks"`
+	NewTasks        int `json:"new_tasks"`
+	InProgressTasks int `json:"in_progress_tasks"`
+	ReviewTasks     int `json:"review_tasks"`
+	CompletedTasks  int `json:"completed_tasks"`
+	CancelledTasks  int `json:"cancelled_tasks"`
+	OverdueTasks    int `json:"overdue_tasks"`
+}
+
 // TaskFilterRequest represents filtering parameters for tasks
 type TaskFilterRequest struct {
 	Status           *TaskStatus   `form:"status" binding:"omitempty,oneof=new viewed in_progress review done cancelled"`

@@ -107,9 +107,10 @@ func main() {
 
 	// Initialize handlers
 	fileHandler := handlers.NewFileHandler(fileUsecase)
+	internalHandler := handlers.NewInternalHandler(fileUsecase)
 
 	// Setup routes
-	r := setupRoutes(fileHandler, jwtConfig)
+	r := setupRoutes(fileHandler, internalHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -151,6 +152,7 @@ func main() {
 
 func setupRoutes(
 	fileHandler *handlers.FileHandler,
+	internalHandler *handlers.InternalHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -204,6 +206,7 @@ func setupRoutes(
 	// Internal routes (no auth, for service-to-service communication)
 	internal := api.Group("/internal/files")
 	{
+		internal.GET("/stats", internalHandler.GetFileStats)
 		internal.GET("/:id", fileHandler.GetFileInternal)
 	}
 

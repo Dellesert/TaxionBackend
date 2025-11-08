@@ -27,6 +27,7 @@ type TaskUsecase interface {
 	UpdateTaskStatus(userID, taskID uint, req *models.UpdateTaskStatusRequest) (*models.TaskResponse, error)
 	GetUserTasks(userID uint, userRole sharedmodels.Role, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error)
 	GetTaskStats(userID uint) (*models.TaskStatsResponse, error)
+	GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error) // Internal method for analytics
 
 	// Hierarchy methods
 	CreateSubtask(userID uint, parentTaskID uint, req *models.CreateTaskRequest) (*models.TaskResponse, error)
@@ -820,6 +821,11 @@ func (u *taskUsecase) GetTaskStats(userID uint) (*models.TaskStatsResponse, erro
 	}
 
 	return stats, nil
+}
+
+// GetTaskStatsInternal returns task statistics for analytics (no user filtering)
+func (u *taskUsecase) GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error) {
+	return u.taskRepo.GetTaskStatsInternal()
 }
 
 // Helper methods

@@ -319,3 +319,8 @@ func (u *FileUsecase) generateUniqueFileName(originalName string) (string, error
 func (u *FileUsecase) GetBaseURL() string {
 	return u.baseURL
 }
+
+// GetFileStatsInternal retrieves file statistics for analytics (no auth required - internal use)
+func (u *FileUsecase) GetFileStatsInternal() (*repository.FileStatsInternal, error) {
+	return u.repo.GetFileStatsInternal()
+}

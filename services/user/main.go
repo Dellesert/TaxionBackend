@@ -38,6 +38,7 @@ import (
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 	sharedredis "tachyon-messenger/shared/redis"
+	"tachyon-messenger/shared/analytics"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -92,6 +93,14 @@ func main() {
 	defer redisClient.Close()
 
 	log.Info("Redis connected successfully")
+
+	// Initialize analytics client
+	analyticsURL := os.Getenv("ANALYTICS_SERVICE_URL")
+	if analyticsURL == "" {
+		analyticsURL = "http://analytics-service:8086"
+	}
+	analyticsClient := analytics.NewClient(analyticsURL, log)
+	log.Infof("Analytics client initialized with URL: %s", analyticsURL)
 
 	// Set Gin mode based on environment
 	if os.Getenv("ENVIRONMENT") == "production" {
@@ -168,7 +177,7 @@ func main() {
 
 	// Initialize handlers
 	userHandler := handlers.NewUserHandler(userUsecase)
-	authHandler := handlers.NewAuthHandler(authUsecase)
+	authHandler := handlers.NewAuthHandler(authUsecase, analyticsClient)
 	profileHandler := handlers.NewProfileHandler(profileUsecase)
 	departmentHandler := handlers.NewDepartmentHandler(departmentUsecase)
 	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)

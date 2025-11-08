@@ -36,6 +36,9 @@ type TaskRepository interface {
 	CountSubtasks(parentTaskID uint) (int64, error)
 	CountCompletedSubtasks(parentTaskID uint) (int64, error)
 	UpdateProgress(taskID uint, progress int) error
+
+	// Internal statistics
+	GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error)
 }
 
 // TaskCommentRepository defines the interface for task comment data operations
@@ -684,4 +687,56 @@ func (r *taskRepository) UpdateProgress(taskID uint, progress int) error {
 	}
 
 	return nil
+}
+
+// GetTaskStatsInternal returns internal task statistics for analytics
+func (r *taskRepository) GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error) {
+	var stats models.TaskStatsInternalResponse
+
+	var totalTasks, newTasks, inProgressTasks, reviewTasks, completedTasks, cancelledTasks, overdueTasks int64
+
+	// Count total tasks
+	if err := r.db.Model(&models.Task{}).Count(&totalTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count total tasks: %w", err)
+	}
+
+	// Count tasks by status
+	if err := r.db.Model(&models.Task{}).Where("status = ?", "new").Count(&newTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count new tasks: %w", err)
+	}
+
+	if err := r.db.Model(&models.Task{}).Where("status = ?", "in_progress").Count(&inProgressTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count in progress tasks: %w", err)
+	}
+
+	if err := r.db.Model(&models.Task{}).Where("status = ?", "review").Count(&reviewTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count review tasks: %w", err)
+	}
+
+	if err := r.db.Model(&models.Task{}).Where("status = ?", "done").Count(&completedTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count completed tasks: %w", err)
+	}
+
+	if err := r.db.Model(&models.Task{}).Where("status = ?", "cancelled").Count(&cancelledTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count cancelled tasks: %w", err)
+	}
+
+	// Count overdue tasks (not done/cancelled and due date < now)
+	if err := r.db.Model(&models.Task{}).
+		Where("status NOT IN ?", []string{"done", "cancelled"}).
+		Where("due_date < ?", time.Now()).
+		Count(&overdueTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count overdue tasks: %w", err)
+	}
+
+	// Convert int64 to int
+	stats.TotalTasks = int(totalTasks)
+	stats.NewTasks = int(newTasks)
+	stats.InProgressTasks = int(inProgressTasks)
+	stats.ReviewTasks = int(reviewTasks)
+	stats.CompletedTasks = int(completedTasks)
+	stats.CancelledTasks = int(cancelledTasks)
+	stats.OverdueTasks = int(overdueTasks)
+
+	return &stats, nil
 }

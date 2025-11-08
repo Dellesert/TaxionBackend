@@ -80,3 +80,31 @@ type TaskForChatResponse struct {
 type TaskAssigneeInfo struct {
 	UserID uint `json:"user_id"`
 }
+
+// GetTaskStats returns task statistics for analytics service
+// @Summary Get task statistics
+// @Description Gets task count by status for analytics (internal use only)
+// @Tags internal
+// @Produce json
+// @Success 200 {object} TaskStatsResponse
+// @Failure 500 {object} gin.H
+// @Router /internal/tasks/stats [get]
+func (h *InternalHandler) GetTaskStats(c *gin.Context) {
+	stats, err := h.taskUsecase.GetTaskStatsInternal()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task statistics"})
+		return
+	}
+
+	c.JSON(http.StatusOK, stats)
+}
+
+// TaskStatsResponse represents task statistics
+type TaskStatsResponse struct {
+	TotalTasks     int `json:"total_tasks"`
+	NewTasks       int `json:"new_tasks"`
+	InProgressTasks int `json:"in_progress_tasks"`
+	ReviewTasks    int `json:"review_tasks"`
+	CompletedTasks int `json:"completed_tasks"`
+	OverdueTasks   int `json:"overdue_tasks"`
+}

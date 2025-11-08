@@ -88,6 +88,9 @@ func systemMetricsHandler(c *gin.Context) {
 		proxyConfig.CalendarService,
 		proxyConfig.PollService,
 		proxyConfig.NotificationService,
+		proxyConfig.FileService,
+		proxyConfig.AnalyticsService,
+		proxyConfig.BackupService,
 	}
 
 	for _, service := range services {

@@ -59,9 +59,9 @@ func servicesHealthHandler(c *gin.Context) {
 		proxyConfig.CalendarService,
 		proxyConfig.PollService,
 		proxyConfig.NotificationService,
-		// Add file and analytics services when they're implemented
-		// proxyConfig.FileService,
-		// proxyConfig.AnalyticsService,
+		proxyConfig.FileService,
+		proxyConfig.AnalyticsService,
+		proxyConfig.BackupService,
 	}
 
 	// Check health of each service

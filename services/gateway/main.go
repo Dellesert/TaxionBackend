@@ -207,12 +207,19 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			files.Any("/*path", proxyRequest(proxyConfig.FileService.URL, proxyConfig.FileService.Name))
 		}
 
-		// Analytics routes - proxy to analytics service (placeholder for now)
+		// Analytics routes - proxy to analytics service
 		analytics := v1.Group("/analytics")
 		{
-			analytics.GET("/dashboard", placeholderHandler("get dashboard"))
-			analytics.GET("/reports", placeholderHandler("get reports"))
+			analytics.Any("/*path", proxyRequest(proxyConfig.AnalyticsService.URL, proxyConfig.AnalyticsService.Name))
 		}
+
+		// Backup routes - proxy to backup service
+		backups := v1.Group("/backups")
+		{
+			backups.Any("", proxyRequest(proxyConfig.BackupService.URL, proxyConfig.BackupService.Name))
+			backups.Any("/*path", proxyRequest(proxyConfig.BackupService.URL, proxyConfig.BackupService.Name))
+		}
+
 		// WebSocket endpoint - proxy to chat service for real-time communication
 		v1.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 

@@ -189,7 +189,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - GIN_MODE=${GIN_MODE:-debug}
       - UPLOAD_DIR=/app/uploads
-      - BASE_URL=${BASE_URL:-http://localhost:8080}
+      - BASE_URL=http://localhost:8080
     depends_on:
       postgres:
         condition: service_healthy
@@ -338,6 +338,50 @@ services:
       - "com.tachyon.version=1.0.0"
       - "com.tachyon.description=Tachyon Notification Service with Email Support"
 
+  # Analytics Service
+  analytics-service:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    container_name: tachyon-analytics-service
+    ports:
+      - "${ANALYTICS_SERVICE_PORT:-8086}:8086"
+    env_file:
+      - .env
+    environment:
+      - SERVER_PORT=8086
+      - ANALYTICS_SERVICE_PORT=8086
+      - PORT=8086
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
+      # Analytics configuration
+      - ANALYTICS_AGGREGATION_INTERVAL_HOURS=${ANALYTICS_AGGREGATION_INTERVAL_HOURS:-1}
+      - ANALYTICS_RETENTION_DAYS=${ANALYTICS_RETENTION_DAYS:-365}
+      - ANALYTICS_BATCH_SIZE=${ANALYTICS_BATCH_SIZE:-1000}
+      - ANALYTICS_CACHE_TTL_SECONDS=${ANALYTICS_CACHE_TTL_SECONDS:-300}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    volumes:
+      - ./logs:/app/logs
+    labels:
+      - "com.tachyon.service=analytics-service"
+      - "com.tachyon.version=1.0.0"
+      - "com.tachyon.description=Tachyon Analytics Service"
+
   # ==============================================
   # API Gateway (Reverse Proxy)
   # ==============================================
@@ -358,8 +402,10 @@ services:
       - TASK_SERVICE_URL=http://task-service:8083
       - CALENDAR_SERVICE_URL=http://calendar-service:8084
       - POLL_SERVICE_URL=http://poll-service:8085
+      - ANALYTICS_SERVICE_URL=http://analytics-service:8086
       - NOTIFICATION_SERVICE_URL=http://notification-service:8087
       - FILE_SERVICE_URL=http://file-service:8088
+      - BACKUP_SERVICE_URL=http://backup-service:8089
       
       # Gateway configuration
       - SERVER_PORT=8080
@@ -383,7 +429,11 @@ services:
         condition: service_healthy
       calendar-service:
         condition: service_healthy
+      analytics-service:
+        condition: service_healthy
       notification-service:
+        condition: service_healthy
+      backup-service:
         condition: service_healthy
     networks:
       - tachyon-network
@@ -401,6 +451,46 @@ services:
       - "com.tachyon.service=gateway"
       - "com.tachyon.version=1.0.0"
       - "com.tachyon.description=Tachyon API Gateway and Reverse Proxy"
+
+  # Backup Service
+  backup-service:
+    build:
+      context: .
+      dockerfile: services/backup/Dockerfile
+    container_name: tachyon-backup-service
+    ports:
+      - "${BACKUP_SERVICE_PORT:-8089}:8089"
+    env_file:
+      - .env
+    environment:
+      - SERVER_PORT=8089
+      - BACKUP_SERVICE_PORT=8089
+      - PORT=8089
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - GIN_MODE=${GIN_MODE:-debug}
+      - BACKUP_DIR=/app/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8089/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    volumes:
+      - backup_data:/app/backups
+    labels:
+      - "com.tachyon.service=backup-service"
+      - "com.tachyon.version=1.0.0"
+      - "com.tachyon.description=Tachyon Database Backup Service"
 
 # ==============================================
 # Volumes
@@ -424,6 +514,12 @@ volumes:
     name: tachyon_file_uploads
     labels:
       - "com.tachyon.volume=files"
+
+  backup_data:
+    driver: local
+    name: tachyon_backup_data
+    labels:
+      - "com.tachyon.volume=backups"
 
 # ==============================================
 # Networks

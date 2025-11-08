@@ -21,6 +21,7 @@ import (
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 	sharedredis "tachyon-messenger/shared/redis"
+	"tachyon-messenger/shared/analytics"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -81,6 +82,14 @@ func main() {
 	defer redisClient.Close()
 	log.Info("Redis connected successfully")
 
+	// Initialize analytics client
+	analyticsURL := os.Getenv("ANALYTICS_SERVICE_URL")
+	if analyticsURL == "" {
+		analyticsURL = "http://analytics-service:8086"
+	}
+	analyticsClient := analytics.NewClient(analyticsURL, log)
+	log.Infof("Analytics client initialized with URL: %s", analyticsURL)
+
 	// Create JWT config
 	jwtConfig := middleware.DefaultJWTConfig(cfg.JWT.Secret)
 
@@ -118,7 +127,7 @@ func main() {
 	attachmentUsecase.SetActivityUsecase(activityUsecase)
 
 	// Initialize handlers
-	taskHandler := handlers.NewTaskHandler(taskUsecase)
+	taskHandler := handlers.NewTaskHandler(taskUsecase, analyticsClient)
 	internalHandler := handlers.NewInternalHandler(taskUsecase)
 	activityHandler := handlers.NewActivityHandler(activityUsecase)
 	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase)
@@ -198,6 +207,7 @@ func setupRoutes(
 	// Internal routes (no auth required - for inter-service communication)
 	internal := api.Group("/internal")
 	{
+		internal.GET("/tasks/stats", internalHandler.GetTaskStats)
 		internal.GET("/tasks/:id", internalHandler.GetTaskForChat)
 	}
 
