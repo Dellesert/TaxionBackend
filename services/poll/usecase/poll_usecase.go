@@ -198,9 +198,9 @@ func (u *pollUsecase) GetPoll(userID, pollID uint, userRole sharedModels.Role) (
 	}
 
 	// Check access rights
-	// System administrators can access all polls
-	isAdmin := userRole == sharedModels.RoleAdmin || userRole == sharedModels.RoleSuperAdmin
-	if !isAdmin && !u.hasPollAccess(userID, poll) {
+	// Only super administrators can access all polls
+	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
+	if !isSuperAdmin && !u.hasPollAccess(userID, poll) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -221,13 +221,12 @@ func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequ
 		return nil, fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: creator or system administrators can update
+	// Check permissions: creator or super administrator can update
 	isCreator := poll.CreatedBy == userID
-	isAdmin := userRole == sharedModels.RoleAdmin
 	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
 
-	if !isCreator && !isAdmin && !isSuperAdmin {
-		return nil, fmt.Errorf("access denied: only poll creator or administrators can update the poll")
+	if !isCreator && !isSuperAdmin {
+		return nil, fmt.Errorf("access denied: only poll creator or super administrator can update the poll")
 	}
 
 	// Validate that poll can be updated (not closed/archived)
@@ -310,24 +309,23 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role
 		return fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: creator, department_head, admin, or super_admin can delete
+	// Check permissions: creator, department_head, or super_admin can delete
 	isCreator := poll.CreatedBy == userID
 	isDepartmentHead := userRole == sharedModels.RoleDepartmentHead
-	isAdmin := userRole == sharedModels.RoleAdmin
 	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
 
-	if !isCreator && !isDepartmentHead && !isAdmin && !isSuperAdmin {
-		return fmt.Errorf("access denied: only poll creator, department heads, or administrators can delete the poll")
+	if !isCreator && !isDepartmentHead && !isSuperAdmin {
+		return fmt.Errorf("access denied: only poll creator, department heads, or super administrator can delete the poll")
 	}
 
-	// Check if poll has votes - only prevent deletion for non-admin users
+	// Check if poll has votes - only prevent deletion for non-super-admin users
 	voteCount, err := u.voteRepo.GetVoteCount(pollID)
 	if err != nil {
 		return fmt.Errorf("failed to check vote count: %w", err)
 	}
 
-	// Only creators cannot delete polls with votes, admins/department heads can delete regardless
-	if voteCount > 0 && isCreator && !isDepartmentHead && !isAdmin && !isSuperAdmin {
+	// Only creators cannot delete polls with votes, super admins/department heads can delete regardless
+	if voteCount > 0 && isCreator && !isDepartmentHead && !isSuperAdmin {
 		return fmt.Errorf("cannot delete poll with existing votes")
 	}
 
@@ -430,13 +428,12 @@ func (u *pollUsecase) UpdatePollStatus(userID, pollID uint, status models.PollSt
 		return fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: creator or system administrators can update status
+	// Check permissions: creator or super administrator can update status
 	isCreator := poll.CreatedBy == userID
-	isAdmin := userRole == sharedModels.RoleAdmin
 	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
 
-	if !isCreator && !isAdmin && !isSuperAdmin {
-		return fmt.Errorf("access denied: only poll creator or administrators can update status")
+	if !isCreator && !isSuperAdmin {
+		return fmt.Errorf("access denied: only poll creator or super administrator can update status")
 	}
 
 	// Validate status transition
@@ -1093,16 +1090,16 @@ func (u *pollUsecase) GetPollVoters(userID, pollID uint, userRole sharedModels.R
 
 	// Check access rights to view voters
 	isCreator := poll.CreatedBy == userID
-	isAdmin := userRole == sharedModels.RoleAdmin || userRole == sharedModels.RoleSuperAdmin
+	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
 
 	// First, check if user has access to the poll itself
-	if !isCreator && !isAdmin && !u.hasPollAccess(userID, poll) {
+	if !isCreator && !isSuperAdmin && !u.hasPollAccess(userID, poll) {
 		return nil, fmt.Errorf("access denied: you don't have access to this poll")
 	}
 
-	// If show_results is false, only creator and admins can view voters
-	if !poll.ShowResults && !isCreator && !isAdmin {
-		return nil, fmt.Errorf("access denied: only poll creator and administrators can view voters when results are hidden")
+	// If show_results is false, only creator and super admins can view voters
+	if !poll.ShowResults && !isCreator && !isSuperAdmin {
+		return nil, fmt.Errorf("access denied: only poll creator and super administrator can view voters when results are hidden")
 	}
 
 	// Get all votes with user information

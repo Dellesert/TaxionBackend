@@ -84,11 +84,11 @@ func (u *taskUsecase) GetTaskComments(userID uint, userRole sharedmodels.Role, t
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Admin and super_admin can access any task's comments
-	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+	// Only super_admin can access any task's comments
+	isSuperAdmin := userRole == sharedmodels.RoleSuperAdmin
 
-	// Check access rights: user must be creator, assignee, or admin to view comments
-	if !isAdmin && !u.hasTaskAccess(userID, task) {
+	// Check access rights: user must be creator, assignee, or super_admin to view comments
+	if !isSuperAdmin && !u.hasTaskAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions to view comments on this task")
 	}
 

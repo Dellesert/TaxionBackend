@@ -162,7 +162,7 @@ func (r *eventRepository) GetUserEvents(userID uint, filter *models.EventFilterR
 
 	query := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')", userID, userID).
+		Where("events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)", userID, userID).
 		Group("events.id")
 
 	// Apply filters
@@ -225,7 +225,7 @@ func (r *eventRepository) GetEventsByDateRange(userID uint, startDate, endDate t
 
 	err := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.start_time >= ? AND events.start_time <= ?",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.start_time >= ? AND events.start_time <= ?",
 			userID, userID, startDate, endDate).
 		Group("events.id").
 		Order("events.start_time ASC").
@@ -245,7 +245,7 @@ func (r *eventRepository) GetEventsByDateRange(userID uint, startDate, endDate t
 func (r *eventRepository) CheckTimeConflict(userID uint, startTime, endTime time.Time, excludeEventID *uint) (bool, error) {
 	query := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status = 'accepted'))", userID, userID).
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status = 'accepted' AND events.is_private = false))", userID, userID).
 		Where("NOT (events.end_time <= ? OR events.start_time >= ?)", startTime, endTime)
 
 	// Exclude specific event if provided (for updates)
@@ -332,7 +332,7 @@ func (r *eventRepository) GetUpcomingEvents(userID uint, limit int) ([]*models.E
 
 	err := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.start_time > ?",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.start_time > ?",
 			userID, userID, now).
 		Group("events.id").
 		Order("events.start_time ASC").
@@ -356,7 +356,7 @@ func (r *eventRepository) GetOverdueEvents(userID uint) ([]*models.Event, error)
 
 	err := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.end_time < ? AND events.type = 'deadline'",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.end_time < ? AND events.type = 'deadline'",
 			userID, userID, now).
 		Group("events.id").
 		Order("events.end_time DESC").
@@ -404,7 +404,7 @@ func (r *eventRepository) GetEventStats(userID uint) (*models.EventStatsResponse
 		var count int64
 		query := r.db.Model(&models.Event{}).
 			Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-			Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.type = ?",
+			Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.type = ?",
 				userID, userID, tc.Type).
 			Group("events.id")
 		if err := query.Count(&count).Error; err != nil {
@@ -417,7 +417,7 @@ func (r *eventRepository) GetEventStats(userID uint) (*models.EventStatsResponse
 	var upcomingCount int64
 	upcomingQuery := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.start_time > ?",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.start_time > ?",
 			userID, userID, now).
 		Group("events.id")
 	if err := upcomingQuery.Count(&upcomingCount).Error; err != nil {
@@ -429,7 +429,7 @@ func (r *eventRepository) GetEventStats(userID uint) (*models.EventStatsResponse
 	var overdueCount int64
 	overdueQuery := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.end_time < ? AND events.type = 'deadline'",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.end_time < ? AND events.type = 'deadline'",
 			userID, userID, now).
 		Group("events.id")
 	if err := overdueQuery.Count(&overdueCount).Error; err != nil {
@@ -443,7 +443,7 @@ func (r *eventRepository) GetEventStats(userID uint) (*models.EventStatsResponse
 	var weekCount int64
 	weekQuery := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.start_time >= ? AND events.start_time < ?",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.start_time >= ? AND events.start_time < ?",
 			userID, userID, weekStart, weekEnd).
 		Group("events.id")
 	if err := weekQuery.Count(&weekCount).Error; err != nil {
@@ -457,7 +457,7 @@ func (r *eventRepository) GetEventStats(userID uint) (*models.EventStatsResponse
 	var monthCount int64
 	monthQuery := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.start_time >= ? AND events.start_time < ?",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.start_time >= ? AND events.start_time < ?",
 			userID, userID, monthStart, monthEnd).
 		Group("events.id")
 	if err := monthQuery.Count(&monthCount).Error; err != nil {
@@ -472,7 +472,7 @@ func (r *eventRepository) GetEventStats(userID uint) (*models.EventStatsResponse
 func (r *eventRepository) SearchEvents(userID uint, searchQuery string, filter *models.EventFilterRequest) ([]*models.Event, int64, error) {
 	query := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')", userID, userID).
+		Where("events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)", userID, userID).
 		Group("events.id")
 
 	// Add search conditions
@@ -510,7 +510,7 @@ func (r *eventRepository) GetRecurringEvents(userID uint) ([]*models.Event, erro
 
 	err := r.db.Model(&models.Event{}).
 		Joins("LEFT JOIN event_participants ON events.id = event_participants.event_id").
-		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined')) AND events.is_recurring = true",
+		Where("(events.created_by = ? OR (event_participants.user_id = ? AND event_participants.status != 'declined' AND events.is_private = false)) AND events.is_recurring = true",
 			userID, userID).
 		Group("events.id").
 		Order("events.start_time ASC").

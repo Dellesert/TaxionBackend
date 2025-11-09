@@ -373,11 +373,11 @@ func (u *taskUsecase) GetTaskByID(userID uint, userRole sharedmodels.Role, taskI
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Admin and super_admin can access any task
-	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+	// Only super_admin can access any task
+	isSuperAdmin := userRole == sharedmodels.RoleSuperAdmin
 
-	// Check access rights: user must be creator, assignee, or admin
-	if !isAdmin && !u.hasTaskAccess(userID, task) {
+	// Check access rights: user must be creator, assignee, or super_admin
+	if !isSuperAdmin && !u.hasTaskAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -421,9 +421,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check permissions: creator, assignee, or admin can update
-	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
-	if !isAdmin && !u.hasTaskAccess(userID, task) {
+	// Check permissions: creator, assignee, or super_admin can update
+	isSuperAdmin := userRole == sharedmodels.RoleSuperAdmin
+	if !isSuperAdmin && !u.hasTaskAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -515,12 +515,12 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 		return fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check permissions: only creator or admin/super_admin can delete
+	// Check permissions: only creator or super_admin can delete
 	isCreator := task.CreatedBy == userID
-	isAdmin := userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin
+	isSuperAdmin := userRole == sharedmodels.RoleSuperAdmin
 
-	if !isCreator && !isAdmin {
-		return fmt.Errorf("access denied: only task creator or administrator can delete the task")
+	if !isCreator && !isSuperAdmin {
+		return fmt.Errorf("access denied: only task creator or super administrator can delete the task")
 	}
 
 	// Log activity before deleting
@@ -706,14 +706,14 @@ func (u *taskUsecase) GetUserTasks(userID uint, userRole sharedmodels.Role, filt
 	var total int64
 	var err error
 
-	// Admin and super_admin can see all tasks
-	if userRole == sharedmodels.RoleAdmin || userRole == sharedmodels.RoleSuperAdmin {
+	// Only super_admin can see all tasks
+	if userRole == sharedmodels.RoleSuperAdmin {
 		tasks, total, err = u.taskRepo.GetAllTasks(filter)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to get all tasks: %w", err)
 		}
 	} else {
-		// Regular users only see their own tasks (created by or assigned to)
+		// Admin and regular users only see their own tasks (created by or assigned to)
 		tasks, total, err = u.taskRepo.GetUserTasks(userID, filter)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)

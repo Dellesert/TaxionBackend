@@ -483,18 +483,18 @@ func (r *pollRepository) applyVisibilityFilter(query *gorm.DB, userID uint) *gor
 // System administrators (admin, super_admin) can see ALL polls without restrictions
 // Other users see polls based on visibility rules and draft restrictions
 func (r *pollRepository) applyVisibilityFilterWithDrafts(query *gorm.DB, userID uint, userRole sharedModels.Role) *gorm.DB {
-	isAdmin := userRole == sharedModels.RoleAdmin || userRole == sharedModels.RoleSuperAdmin
+	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
 
-	// System administrators can see ALL polls from all departments and all users
-	if isAdmin {
-		// No filters applied for admins - they see everything
+	// Only super administrators can see ALL polls from all departments and all users
+	if isSuperAdmin {
+		// No filters applied for super admins - they see everything
 		return query
 	}
 
-	// For non-admins, apply regular visibility filter
+	// For non-super-admins (including regular admins), apply regular visibility filter
 	query = r.applyVisibilityFilter(query, userID)
 
-	// For non-admins, exclude draft polls they didn't create
+	// For non-super-admins, exclude draft polls they didn't create
 	query = query.Where("status != ? OR created_by = ?", models.PollStatusDraft, userID)
 
 	return query
