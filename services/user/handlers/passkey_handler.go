@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -108,8 +109,10 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 
 	// Log the credential JSON for debugging
 	logger.WithFields(map[string]interface{}{
-		"name": wrapper.Name,
+		"name":            wrapper.Name,
+		"credential_size": len(wrapper.Credential),
 	}).Info("Received passkey registration data")
+	logger.WithField("credential_json", string(wrapper.Credential)).Debug("Full credential data")
 
 	// Parse credential from JSON with base64-encoded fields
 	var credData struct {
@@ -173,8 +176,12 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 	// Parse the credential - this validates and fills the parsed fields
 	parsedResponse, err := credResponse.Parse()
 	if err != nil {
-		logger.WithField("error", err.Error()).Warn("Failed to parse credential response")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credential response"})
+		logger.WithFields(map[string]interface{}{
+			"error":           err.Error(),
+			"credential_id":   credData.ID,
+			"credential_type": credData.Type,
+		}).Error("Failed to parse credential response during registration")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid credential response: %v", err)})
 		return
 	}
 
@@ -191,7 +198,7 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 	})
 }
 
-// BeginAuthentication starts the passkey authentication process
+// BeginAuthentication starts the passkey authentication process (legacy - requires email)
 // POST /api/v1/auth/passkey/login/begin
 func (h *PasskeyHandler) BeginAuthentication(c *gin.Context) {
 	var req BeginAuthenticationRequest
@@ -204,6 +211,19 @@ func (h *PasskeyHandler) BeginAuthentication(c *gin.Context) {
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin passkey authentication")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credentials"})
+		return
+	}
+
+	c.JSON(http.StatusOK, options)
+}
+
+// BeginDiscoverableAuthentication starts the passkey authentication process WITHOUT email
+// POST /api/v1/auth/passkey/login/discoverable/begin
+func (h *PasskeyHandler) BeginDiscoverableAuthentication(c *gin.Context) {
+	options, err := h.passkeyUsecase.BeginDiscoverableAuthentication()
+	if err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to begin discoverable passkey authentication")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "passkey authentication failed"})
 		return
 	}
 
@@ -450,15 +470,34 @@ func (h *PasskeyHandler) UpdatePasskeyName(c *gin.Context) {
 
 	passkeyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
+		logger.WithField("error", err.Error()).Warn("Invalid passkey ID")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid passkey id"})
 		return
 	}
 
-	var req UpdatePasskeyNameRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	// Read raw body for debugging
+	bodyBytes, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to read request body")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
+
+	logger.WithFields(map[string]interface{}{
+		"user_id":    userID,
+		"passkey_id": passkeyID,
+		"body":       string(bodyBytes),
+	}).Info("Updating passkey name")
+
+	// Parse the request
+	var req UpdatePasskeyNameRequest
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to parse update name request")
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid request format: %v", err)})
+		return
+	}
+
+	logger.WithField("new_name", req.Name).Info("Parsed passkey name from request")
 
 	if err := h.passkeyUsecase.UpdatePasskeyName(userID.(uint), uint(passkeyID), req.Name); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to update passkey name")

@@ -121,7 +121,7 @@ func main() {
 	log.Info("Backup client initialized")
 
 	// Initialize usecases
-	analyticsUsecase := usecase.NewAnalyticsUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient, taskClient, fileClient, backupClient)
+	analyticsUsecase := usecase.NewAnalyticsUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient, taskClient, fileClient, backupClient, log)
 	aggregatorUsecase := usecase.NewAggregatorUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient)
 
 	// Initialize handlers
@@ -257,6 +257,9 @@ func setupRoutes(
 				tasks.GET("/stats", tasksHandler.GetStats)
 				tasks.GET("/completion-rate", tasksHandler.GetCompletionRate)
 				tasks.GET("/top-performers", tasksHandler.GetTopPerformers)
+				tasks.GET("/departments", tasksHandler.GetDepartmentStats)
+				tasks.GET("/trends", tasksHandler.GetTaskTrends)
+				tasks.GET("/priority-distribution", tasksHandler.GetPriorityDistribution)
 			}
 
 			// Calendar analytics

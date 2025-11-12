@@ -109,7 +109,7 @@ func SeedUsers(db *database.DB, userCount int) ([]*models.User, []*models.Depart
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte("password123"), bcrypt.DefaultCost)
 	superAdmin := &models.User{
 		Email:          "admin@taxion.ru",
-		Name:           "Администратор",
+		Name:           "Иван А.",
 		FirstName:      "Иван",
 		LastName:       "Администраторов",
 		MiddleName:     "Петрович",
@@ -138,7 +138,7 @@ func SeedUsers(db *database.DB, userCount int) ([]*models.User, []*models.Depart
 
 		head := &models.User{
 			Email:          strings.ToLower(fmt.Sprintf("head.%s@taxion.ru", transliterate(dept.Name))),
-			Name:           fmt.Sprintf("%s %s", firstName, lastName),
+			Name:           fmt.Sprintf("%s %s.", firstName, string([]rune(lastName)[0])),
 			FirstName:      firstName,
 			LastName:       lastName,
 			MiddleName:     middleName,
@@ -172,7 +172,7 @@ func SeedUsers(db *database.DB, userCount int) ([]*models.User, []*models.Depart
 
 			user := &models.User{
 				Email:          gofakeit.Email(),
-				Name:           fmt.Sprintf("%s %s", firstName, lastName),
+				Name:           fmt.Sprintf("%s %s.", firstName, string([]rune(lastName)[0])),
 				FirstName:      firstName,
 				LastName:       lastName,
 				MiddleName:     middleName,

@@ -209,6 +209,15 @@ func setupRoutes(
 	{
 		internal.GET("/tasks/stats", internalHandler.GetTaskStats)
 		internal.GET("/tasks/:id", internalHandler.GetTaskForChat)
+
+		// Analytics endpoints
+		analytics := internal.Group("/tasks/analytics")
+		{
+			analytics.GET("/departments", internalHandler.GetDepartmentTaskStats)
+			analytics.GET("/top-performers", internalHandler.GetTopPerformers)
+			analytics.GET("/trends", internalHandler.GetTaskTrends)
+			analytics.GET("/priority-distribution", internalHandler.GetPriorityDistribution)
+		}
 	}
 
 	// Protected routes (require JWT)

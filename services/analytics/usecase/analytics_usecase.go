@@ -8,6 +8,7 @@ import (
 	"tachyon-messenger/services/analytics/clients"
 	"tachyon-messenger/services/analytics/models"
 	"tachyon-messenger/services/analytics/repository"
+	"tachyon-messenger/shared/logger"
 	sharedredis "tachyon-messenger/shared/redis"
 )
 
@@ -20,6 +21,7 @@ type AnalyticsUsecase struct {
 	taskClient    *clients.TaskClient
 	fileClient    *clients.FileClient
 	backupClient  *clients.BackupClient
+	log           *logger.Logger
 }
 
 // NewAnalyticsUsecase creates a new analytics usecase
@@ -31,6 +33,7 @@ func NewAnalyticsUsecase(
 	taskClient *clients.TaskClient,
 	fileClient *clients.FileClient,
 	backupClient *clients.BackupClient,
+	log *logger.Logger,
 ) *AnalyticsUsecase {
 	return &AnalyticsUsecase{
 		analyticsRepo: analyticsRepo,
@@ -40,6 +43,7 @@ func NewAnalyticsUsecase(
 		taskClient:    taskClient,
 		fileClient:    fileClient,
 		backupClient:  backupClient,
+		log:           log,
 	}
 }
 
@@ -83,6 +87,20 @@ func (u *AnalyticsUsecase) getDashboardStats(timeRange models.TimeRange, departm
 	week := models.GetTimeRange("week")
 	month := models.GetTimeRange("month")
 
+	// Get real-time task stats from task service with time range filter
+	// Determine period string from timeRange
+	period := ""
+	switch {
+	case timeRange.Start.Equal(today.Start):
+		period = "today"
+	case timeRange.Start.Equal(week.Start):
+		period = "week"
+	case timeRange.Start.Equal(month.Start):
+		period = "month"
+	}
+
+	taskStats := u.getRealTimeTaskStats(period)
+
 	return &models.DashboardStats{
 		ActiveUsers: &models.StatValue{
 			Today:         u.getActiveUsersCount(today, departmentID),
@@ -95,13 +113,7 @@ func (u *AnalyticsUsecase) getDashboardStats(timeRange models.TimeRange, departm
 			Week:  u.getMessagesCount(week, departmentID),
 			Month: u.getMessagesCount(month, departmentID),
 		},
-		Tasks: &models.TaskStats{
-			Created:        u.getTasksCount(timeRange, "created", departmentID),
-			Completed:      u.getTasksCount(timeRange, "completed", departmentID),
-			InProgress:     u.getTasksCount(timeRange, "in_progress", departmentID),
-			Overdue:        u.getTasksCount(timeRange, "overdue", departmentID),
-			CompletionRate: u.calculateCompletionRate(timeRange, departmentID),
-		},
+		Tasks: taskStats,
 		Calendar: &models.StatValue{
 			Today: u.getCalendarEventsCount(today, departmentID),
 			Week:  u.getCalendarEventsCount(week, departmentID),
@@ -119,15 +131,29 @@ func (u *AnalyticsUsecase) getDashboardStats(timeRange models.TimeRange, departm
 
 // getDashboardCharts generates chart data
 func (u *AnalyticsUsecase) getDashboardCharts(timeRange models.TimeRange, departmentID *uint64) *models.DashboardCharts {
+	// Get real task stats from task service (no period filter for charts - show all time)
+	taskStats, err := u.taskClient.GetTaskStats("")
+	tasksByStatus := &models.TaskStatusChart{
+		New:        0,
+		InProgress: 0,
+		Completed:  0,
+		Overdue:    0,
+	}
+
+	if err == nil {
+		tasksByStatus.New = taskStats.TotalTasks - taskStats.CompletedTasks - taskStats.InProgressTasks
+		if tasksByStatus.New < 0 {
+			tasksByStatus.New = 0
+		}
+		tasksByStatus.InProgress = taskStats.InProgressTasks
+		tasksByStatus.Completed = taskStats.CompletedTasks
+		tasksByStatus.Overdue = taskStats.OverdueTasks
+	}
+
 	return &models.DashboardCharts{
-		UserActivity:   u.getUserActivityChart(timeRange, departmentID),
-		MessagesByHour: u.getMessagesByHourChart(timeRange, departmentID),
-		TasksByStatus: &models.TaskStatusChart{
-			New:        24,
-			InProgress: 78,
-			Completed:  132,
-			Overdue:    12,
-		},
+		UserActivity:      u.getUserActivityChart(timeRange, departmentID),
+		MessagesByHour:    u.getMessagesByHourChart(timeRange, departmentID),
+		TasksByStatus:     tasksByStatus,
 		DepartmentHeatMap: u.getDepartmentHeatMap(timeRange),
 	}
 }
@@ -201,13 +227,14 @@ func (u *AnalyticsUsecase) calculateCompletionRate(timeRange models.TimeRange, d
 	return (float64(completed) / float64(created)) * 100.0
 }
 
-// getRealTimeTaskStats fetches real-time task statistics from Task Service
-func (u *AnalyticsUsecase) getRealTimeTaskStats(departmentID *uint64) *models.TaskStats {
-	// Get real-time statistics from Task Service
-	stats, err := u.taskClient.GetTaskStats()
+// getRealTimeTaskStats fetches real-time task statistics from Task Service with period filter
+func (u *AnalyticsUsecase) getRealTimeTaskStats(period string) *models.TaskStats {
+	// Get real-time statistics from Task Service with period filter
+	stats, err := u.taskClient.GetTaskStats(period)
 	if err != nil {
 		// If task service is unavailable, fall back to event-based calculation
 		// This provides resilience in case the task service is down
+		u.log.Error("Failed to fetch task stats from task service", "error", err, "period", period)
 		return &models.TaskStats{
 			Created:        0,
 			Completed:      0,
@@ -309,4 +336,102 @@ func (u *AnalyticsUsecase) getMessagesByHourChart(timeRange models.TimeRange, de
 func (u *AnalyticsUsecase) getDepartmentHeatMap(timeRange models.TimeRange) []models.DepartmentHeat {
 	// TODO: Implement real data
 	return []models.DepartmentHeat{}
+}
+
+// New task analytics methods
+
+// GetTaskStats returns comprehensive task statistics
+func (u *AnalyticsUsecase) GetTaskStats(period string, departmentID *uint) (interface{}, error) {
+	timeRange := models.GetTimeRange(period)
+
+	// Convert uint to uint64 for compatibility
+	var deptID *uint64
+	if departmentID != nil {
+		id := uint64(*departmentID)
+		deptID = &id
+	}
+
+	// Get basic stats (existing method)
+	basicStats := u.getDashboardStats(timeRange, deptID)
+
+	// Get additional task-specific stats from task client (no period filter)
+	taskStats, err := u.taskClient.GetTaskStats("")
+	if err != nil {
+		return basicStats.Tasks, nil
+	}
+
+	return map[string]interface{}{
+		"basic": basicStats.Tasks,
+		"detailed": taskStats,
+	}, nil
+}
+
+// GetCompletionRate returns task completion rate
+func (u *AnalyticsUsecase) GetCompletionRate(period string, departmentID *uint) (float64, error) {
+	timeRange := models.GetTimeRange(period)
+
+	var deptID *uint64
+	if departmentID != nil {
+		id := uint64(*departmentID)
+		deptID = &id
+	}
+
+	return u.calculateCompletionRate(timeRange, deptID), nil
+}
+
+// GetTopPerformers returns top performing employees
+func (u *AnalyticsUsecase) GetTopPerformers(limit int, period string, departmentID *uint) (interface{}, error) {
+	// Call task service to get real performance data
+	performers, err := u.taskClient.GetTopPerformers(limit, period, departmentID)
+	if err != nil {
+		u.log.Error("Failed to fetch top performers from task service", "error", err)
+		// Return empty array as fallback
+		return []interface{}{}, nil
+	}
+
+	return performers, nil
+}
+
+// GetDepartmentTaskStats returns task statistics grouped by department
+func (u *AnalyticsUsecase) GetDepartmentTaskStats(period string) (interface{}, error) {
+	// Call task service to get real department statistics
+	stats, err := u.taskClient.GetDepartmentTaskStats(period)
+	if err != nil {
+		u.log.Error("Failed to fetch department task stats from task service", "error", err)
+		// Return empty array as fallback
+		return []interface{}{}, nil
+	}
+
+	return stats, nil
+}
+
+// GetTaskTrends returns task completion trends over time
+func (u *AnalyticsUsecase) GetTaskTrends(period string, interval string) (interface{}, error) {
+	// Call task service to get real trend data
+	trends, err := u.taskClient.GetTaskTrends(period, interval)
+	if err != nil {
+		u.log.Error("Failed to fetch task trends from task service", "error", err)
+		// Return empty array as fallback
+		return []interface{}{}, nil
+	}
+
+	return trends, nil
+}
+
+// GetPriorityDistribution returns task distribution by priority
+func (u *AnalyticsUsecase) GetPriorityDistribution(period string) (interface{}, error) {
+	// Call task service to get real priority distribution
+	distribution, err := u.taskClient.GetPriorityDistribution(period)
+	if err != nil {
+		u.log.Error("Failed to fetch priority distribution from task service", "error", err)
+		// Return empty distribution as fallback
+		return map[string]int{
+			"low":      0,
+			"medium":   0,
+			"high":     0,
+			"critical": 0,
+		}, nil
+	}
+
+	return distribution, nil
 }

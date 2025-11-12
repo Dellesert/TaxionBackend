@@ -45,10 +45,12 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 		RPID:          rpID,
 		RPOrigins:     rpOrigins,
 		AttestationPreference: protocol.PreferNoAttestation,
+		// Default settings for registration - use preferred for resident keys
+		// This allows both resident and non-resident keys
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
 			RequireResidentKey: protocol.ResidentKeyNotRequired(),
-			ResidentKey:        protocol.ResidentKeyRequirementDiscouraged,
-			UserVerification:   protocol.VerificationPreferred,
+			ResidentKey:        protocol.ResidentKeyRequirementPreferred, // Preferred, not required
+			UserVerification:   protocol.VerificationPreferred,           // Preferred, not required
 		},
 	}
 

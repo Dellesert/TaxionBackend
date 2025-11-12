@@ -32,6 +32,7 @@ type ChatUsecase interface {
 	TogglePinned(userID, chatID uint, isPinned bool) error
 	GetOrCreateDirectChat(userID, targetUserID uint) (*models.ChatResponse, error)
 	GetOrCreateTaskChat(userID, taskID uint) (*models.ChatResponse, error)
+	GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error)
 }
 
 // chatUsecase implements ChatUsecase interface
@@ -804,4 +805,38 @@ func (uc *chatUsecase) validateCreateChatRequest(req *models.CreateChatRequest) 
 	}
 
 	return nil
+}
+
+// GetChatAttachments retrieves all attachments for a chat with pagination
+func (uc *chatUsecase) GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error) {
+	// Verify user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to check chat membership: %w", err)
+	}
+	if !isMember {
+		return nil, 0, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set default pagination values
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Get attachments from repository
+	attachments, total, err := uc.messageRepo.GetChatAttachments(chatID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get chat attachments: %w", err)
+	}
+
+	// Convert to response format with current baseURL
+	responses := make([]*models.MessageAttachmentResponse, len(attachments))
+	for i, attachment := range attachments {
+		responses[i] = attachment.ToResponse(uc.baseURL)
+	}
+
+	return responses, total, nil
 }

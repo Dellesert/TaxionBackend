@@ -27,7 +27,7 @@ type TaskUsecase interface {
 	UpdateTaskStatus(userID, taskID uint, req *models.UpdateTaskStatusRequest) (*models.TaskResponse, error)
 	GetUserTasks(userID uint, userRole sharedmodels.Role, filter *models.TaskFilterRequest) ([]*models.TaskResponse, int64, error)
 	GetTaskStats(userID uint) (*models.TaskStatsResponse, error)
-	GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error) // Internal method for analytics
+	GetTaskStatsInternal(period string) (*models.TaskStatsInternalResponse, error) // Internal method for analytics with optional period filter
 
 	// Hierarchy methods
 	CreateSubtask(userID uint, parentTaskID uint, req *models.CreateTaskRequest) (*models.TaskResponse, error)
@@ -50,6 +50,12 @@ type TaskUsecase interface {
 	GetTaskComments(userID uint, userRole sharedmodels.Role, taskID uint, filter *models.CommentFilterRequest) (*models.CommentListResponse, error)
 	UpdateComment(userID, commentID uint, req *models.UpdateTaskCommentRequest) (*models.TaskCommentResponse, error)
 	DeleteComment(userID, commentID uint) error
+
+	// Analytics methods (internal use)
+	GetDepartmentTaskStats(period string) (interface{}, error)
+	GetTopPerformers(limit int, period string, departmentID *uint) (interface{}, error)
+	GetTaskTrends(period string, interval string) (interface{}, error)
+	GetPriorityDistribution(period string) (interface{}, error)
 }
 
 // taskUsecase implements TaskUsecase interface
@@ -823,9 +829,17 @@ func (u *taskUsecase) GetTaskStats(userID uint) (*models.TaskStatsResponse, erro
 	return stats, nil
 }
 
-// GetTaskStatsInternal returns task statistics for analytics (no user filtering)
-func (u *taskUsecase) GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error) {
-	return u.taskRepo.GetTaskStatsInternal()
+// GetTaskStatsInternal returns task statistics for analytics (no user filtering) with optional period filter
+func (u *taskUsecase) GetTaskStatsInternal(period string) (*models.TaskStatsInternalResponse, error) {
+	var timeRange *repository.TimeRange
+	if period != "" {
+		tr, err := u.parseTimeRange(period)
+		if err != nil {
+			return nil, err
+		}
+		timeRange = tr
+	}
+	return u.taskRepo.GetTaskStatsInternal(timeRange)
 }
 
 // Helper methods
@@ -1432,4 +1446,107 @@ func (u *taskUsecase) marshalDetails(details interface{}) (string, error) {
 		return "", err
 	}
 	return string(jsonBytes), nil
+}
+
+// --- ANALYTICS METHODS ---
+
+// GetDepartmentTaskStats returns task statistics grouped by department
+func (u *taskUsecase) GetDepartmentTaskStats(period string) (interface{}, error) {
+	timeRange, err := u.parseTimeRange(period)
+	if err != nil {
+		return nil, err
+	}
+
+	stats, err := u.taskRepo.GetAllDepartmentsStats(timeRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get department stats: %w", err)
+	}
+
+	return stats, nil
+}
+
+// GetTopPerformers returns top performing employees
+func (u *taskUsecase) GetTopPerformers(limit int, period string, departmentID *uint) (interface{}, error) {
+	timeRange, err := u.parseTimeRange(period)
+	if err != nil {
+		return nil, err
+	}
+
+	var performers []*repository.EmployeePerformance
+	if departmentID != nil {
+		performers, err = u.taskRepo.GetTopPerformersByDepartment(departmentID, limit, timeRange)
+	} else {
+		performers, err = u.taskRepo.GetTopPerformers(limit, timeRange)
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get top performers: %w", err)
+	}
+
+	return performers, nil
+}
+
+// GetTaskTrends returns task completion trends over time
+func (u *taskUsecase) GetTaskTrends(period string, interval string) (interface{}, error) {
+	timeRange, err := u.parseTimeRange(period)
+	if err != nil {
+		return nil, err
+	}
+
+	trends, err := u.taskRepo.GetTaskCompletionTrends(timeRange, interval)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get task trends: %w", err)
+	}
+
+	return trends, nil
+}
+
+// GetPriorityDistribution returns task distribution by priority
+func (u *taskUsecase) GetPriorityDistribution(period string) (interface{}, error) {
+	timeRange, err := u.parseTimeRange(period)
+	if err != nil {
+		return nil, err
+	}
+
+	distribution, err := u.taskRepo.GetTasksByPriority(timeRange)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get priority distribution: %w", err)
+	}
+
+	return distribution, nil
+}
+
+// parseTimeRange converts period string to TimeRange
+func (u *taskUsecase) parseTimeRange(period string) (*repository.TimeRange, error) {
+	now := time.Now()
+	var start, end time.Time
+
+	switch period {
+	case "today":
+		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		end = start.AddDate(0, 0, 1)
+	case "week":
+		// Last 7 days
+		start = now.AddDate(0, 0, -7)
+		end = now
+	case "month":
+		// Last 30 days
+		start = now.AddDate(0, 0, -30)
+		end = now
+	case "quarter":
+		// Last 90 days
+		start = now.AddDate(0, 0, -90)
+		end = now
+	case "year":
+		// Last 365 days
+		start = now.AddDate(0, 0, -365)
+		end = now
+	default:
+		return nil, fmt.Errorf("invalid period: %s (valid values: today, week, month, quarter, year)", period)
+	}
+
+	return &repository.TimeRange{
+		Start: start,
+		End:   end,
+	}, nil
 }

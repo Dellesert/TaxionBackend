@@ -1092,3 +1092,101 @@ func (h *ChatHandler) TogglePinned(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// GetChatAttachments handles getting all attachments for a chat
+func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID format")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse pagination parameters
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	// Get attachments from usecase
+	attachments, total, err := h.chatUsecase.GetChatAttachments(userID, uint(chatID), limit, offset)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Error("Failed to get chat attachments")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get attachments"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "You are not a member of this chat"
+		} else if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Chat not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chatID,
+		"count":      len(attachments),
+		"total":      total,
+	}).Info("Chat attachments retrieved successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"attachments": attachments,
+		"total":       total,
+		"limit":       limit,
+		"offset":      offset,
+		"request_id":  requestID,
+	})
+}

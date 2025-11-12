@@ -53,6 +53,7 @@ type MessageRepository interface {
 
 	// Attachment operations
 	CreateAttachment(attachment *models.MessageAttachment) error
+	GetChatAttachments(chatID uint, limit, offset int) ([]*models.MessageAttachment, int64, error)
 }
 
 // messageRepository implements MessageRepository interface
@@ -820,4 +821,33 @@ func (r *messageRepository) CreateAttachment(attachment *models.MessageAttachmen
 		return fmt.Errorf("failed to create attachment: %w", err)
 	}
 	return nil
+}
+
+// GetChatAttachments retrieves all attachments for a chat with pagination
+func (r *messageRepository) GetChatAttachments(chatID uint, limit, offset int) ([]*models.MessageAttachment, int64, error) {
+	var attachments []*models.MessageAttachment
+	var total int64
+
+	// First, count total attachments for this chat
+	countQuery := r.db.Model(&models.MessageAttachment{}).
+		Joins("JOIN messages ON message_attachments.message_id = messages.id").
+		Where("messages.chat_id = ? AND messages.deleted_at IS NULL", chatID)
+
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count attachments: %w", err)
+	}
+
+	// Then, get paginated attachments
+	query := r.db.
+		Joins("JOIN messages ON message_attachments.message_id = messages.id").
+		Where("messages.chat_id = ? AND messages.deleted_at IS NULL", chatID).
+		Order("message_attachments.created_at DESC").
+		Limit(limit).
+		Offset(offset)
+
+	if err := query.Find(&attachments).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to get attachments: %w", err)
+	}
+
+	return attachments, total, nil
 }

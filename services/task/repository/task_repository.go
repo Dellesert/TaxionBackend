@@ -38,7 +38,66 @@ type TaskRepository interface {
 	UpdateProgress(taskID uint, progress int) error
 
 	// Internal statistics
-	GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error)
+	GetTaskStatsInternal(timeRange *TimeRange) (*models.TaskStatsInternalResponse, error)
+
+	// Analytics methods
+	GetTasksByDepartment(departmentID *uint, timeRange *TimeRange) (*DepartmentTaskStats, error)
+	GetAllDepartmentsStats(timeRange *TimeRange) ([]*DepartmentTaskStats, error)
+	GetTopPerformersByDepartment(departmentID *uint, limit int, timeRange *TimeRange) ([]*EmployeePerformance, error)
+	GetTopPerformers(limit int, timeRange *TimeRange) ([]*EmployeePerformance, error)
+	GetTaskCompletionTrends(timeRange *TimeRange, interval string) ([]*TrendDataPoint, error)
+	GetTasksByPriority(timeRange *TimeRange) (*PriorityDistribution, error)
+	GetAverageCompletionTime(departmentID *uint, timeRange *TimeRange) (float64, error)
+}
+
+// TimeRange represents a time period for analytics
+type TimeRange struct {
+	Start time.Time
+	End   time.Time
+}
+
+// DepartmentTaskStats represents task statistics for a department
+type DepartmentTaskStats struct {
+	DepartmentID     uint    `json:"department_id"`
+	DepartmentName   string  `json:"department_name"`
+	TotalTasks       int     `json:"total_tasks"`
+	CompletedTasks   int     `json:"completed_tasks"`
+	InProgressTasks  int     `json:"in_progress_tasks"`
+	OverdueTasks     int     `json:"overdue_tasks"`
+	CompletionRate   float64 `json:"completion_rate"`
+	AvgCompletionTime float64 `json:"avg_completion_time"` // in hours
+	EmployeeCount    int     `json:"employee_count"`
+}
+
+// EmployeePerformance represents individual employee task performance
+type EmployeePerformance struct {
+	UserID             uint    `json:"user_id"`
+	UserName           string  `json:"user_name"`
+	DepartmentID       *uint   `json:"department_id,omitempty"`
+	DepartmentName     string  `json:"department_name,omitempty"`
+	TasksCreated       int     `json:"tasks_created"`
+	TasksCompleted     int     `json:"tasks_completed"`
+	TasksInProgress    int     `json:"tasks_in_progress"`
+	TasksOverdue       int     `json:"tasks_overdue"`
+	CompletionRate     float64 `json:"completion_rate"`
+	AvgCompletionTime  float64 `json:"avg_completion_time"` // in hours
+	QualityScore       float64 `json:"quality_score"` // percentage of tasks completed on time
+}
+
+// TrendDataPoint represents a single point in time for trend analysis
+type TrendDataPoint struct {
+	Date      string `json:"date"`
+	Created   int    `json:"created"`
+	Completed int    `json:"completed"`
+	Overdue   int    `json:"overdue"`
+}
+
+// PriorityDistribution represents task distribution by priority
+type PriorityDistribution struct {
+	Low      int `json:"low"`
+	Medium   int `json:"medium"`
+	High     int `json:"high"`
+	Critical int `json:"critical"`
 }
 
 // TaskCommentRepository defines the interface for task comment data operations
@@ -689,43 +748,49 @@ func (r *taskRepository) UpdateProgress(taskID uint, progress int) error {
 	return nil
 }
 
-// GetTaskStatsInternal returns internal task statistics for analytics
-func (r *taskRepository) GetTaskStatsInternal() (*models.TaskStatsInternalResponse, error) {
+// GetTaskStatsInternal returns internal task statistics for analytics with optional time range filter
+func (r *taskRepository) GetTaskStatsInternal(timeRange *TimeRange) (*models.TaskStatsInternalResponse, error) {
 	var stats models.TaskStatsInternalResponse
 
 	var totalTasks, newTasks, inProgressTasks, reviewTasks, completedTasks, cancelledTasks, overdueTasks int64
 
+	// Base query
+	baseQuery := r.db.Model(&models.Task{})
+	if timeRange != nil {
+		baseQuery = baseQuery.Where("created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+
 	// Count total tasks
-	if err := r.db.Model(&models.Task{}).Count(&totalTasks).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Count(&totalTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count total tasks: %w", err)
 	}
 
 	// Count tasks by status
-	if err := r.db.Model(&models.Task{}).Where("status = ?", "new").Count(&newTasks).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Where("status = ?", "new").Count(&newTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count new tasks: %w", err)
 	}
 
-	if err := r.db.Model(&models.Task{}).Where("status = ?", "in_progress").Count(&inProgressTasks).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Where("status = ?", "in_progress").Count(&inProgressTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count in progress tasks: %w", err)
 	}
 
-	if err := r.db.Model(&models.Task{}).Where("status = ?", "review").Count(&reviewTasks).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Where("status = ?", "review").Count(&reviewTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count review tasks: %w", err)
 	}
 
-	if err := r.db.Model(&models.Task{}).Where("status = ?", "done").Count(&completedTasks).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Where("status = ?", "done").Count(&completedTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count completed tasks: %w", err)
 	}
 
-	if err := r.db.Model(&models.Task{}).Where("status = ?", "cancelled").Count(&cancelledTasks).Error; err != nil {
+	if err := baseQuery.Session(&gorm.Session{}).Where("status = ?", "cancelled").Count(&cancelledTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count cancelled tasks: %w", err)
 	}
 
 	// Count overdue tasks (not done/cancelled and due date < now)
-	if err := r.db.Model(&models.Task{}).
+	overdueQuery := baseQuery.Session(&gorm.Session{}).
 		Where("status NOT IN ?", []string{"done", "cancelled"}).
-		Where("due_date < ?", time.Now()).
-		Count(&overdueTasks).Error; err != nil {
+		Where("due_date < ?", time.Now())
+	if err := overdueQuery.Count(&overdueTasks).Error; err != nil {
 		return nil, fmt.Errorf("failed to count overdue tasks: %w", err)
 	}
 
@@ -739,4 +804,341 @@ func (r *taskRepository) GetTaskStatsInternal() (*models.TaskStatsInternalRespon
 	stats.OverdueTasks = int(overdueTasks)
 
 	return &stats, nil
+}
+
+// Analytics methods implementation
+
+// GetTasksByDepartment returns task statistics for a specific department
+func (r *taskRepository) GetTasksByDepartment(departmentID *uint, timeRange *TimeRange) (*DepartmentTaskStats, error) {
+	stats := &DepartmentTaskStats{}
+
+	if departmentID != nil {
+		stats.DepartmentID = *departmentID
+	}
+
+	// Base query with JOIN to users table to get department from user
+	// Use COALESCE to fallback: assignee department -> creator department -> direct department assignment
+	baseQuery := r.db.Table("tasks").
+		Joins("LEFT JOIN public.users AS assignee ON tasks.assigned_to_user_id = assignee.id").
+		Joins("LEFT JOIN public.users AS creator ON tasks.created_by_user_id = creator.id").
+		Where("tasks.deleted_at IS NULL")
+
+	if departmentID != nil {
+		baseQuery = baseQuery.Where("COALESCE(assignee.department_id, creator.department_id, tasks.assigned_to_department_id) = ?", *departmentID)
+	}
+
+	// Count total tasks created in the period
+	totalQuery := baseQuery.Session(&gorm.Session{})
+	if timeRange != nil {
+		totalQuery = totalQuery.Where("tasks.created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+	var totalTasks int64
+	if err := totalQuery.Count(&totalTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count total tasks: %w", err)
+	}
+	stats.TotalTasks = int(totalTasks)
+
+	// Count completed tasks created in the period
+	completedQuery := baseQuery.Session(&gorm.Session{}).Where("tasks.status = ?", models.TaskStatusDone)
+	if timeRange != nil {
+		completedQuery = completedQuery.Where("tasks.created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+	var completedTasks int64
+	if err := completedQuery.Count(&completedTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count completed tasks: %w", err)
+	}
+	stats.CompletedTasks = int(completedTasks)
+
+	// Count in progress tasks created in the period
+	inProgressQuery := baseQuery.Session(&gorm.Session{}).Where("tasks.status = ?", models.TaskStatusInProgress)
+	if timeRange != nil {
+		inProgressQuery = inProgressQuery.Where("tasks.created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+	var inProgressTasks int64
+	if err := inProgressQuery.Count(&inProgressTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count in progress tasks: %w", err)
+	}
+	stats.InProgressTasks = int(inProgressTasks)
+
+	// Count overdue tasks created in the period
+	overdueQuery := baseQuery.Session(&gorm.Session{}).
+		Where("tasks.status NOT IN ?", []string{"done", "cancelled"}).
+		Where("tasks.due_date < ?", time.Now())
+	if timeRange != nil {
+		overdueQuery = overdueQuery.Where("tasks.created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+	var overdueTasks int64
+	if err := overdueQuery.Count(&overdueTasks).Error; err != nil {
+		return nil, fmt.Errorf("failed to count overdue tasks: %w", err)
+	}
+	stats.OverdueTasks = int(overdueTasks)
+
+	// Calculate completion rate based on completed tasks in period vs total tasks
+	if stats.TotalTasks > 0 {
+		stats.CompletionRate = (float64(stats.CompletedTasks) / float64(stats.TotalTasks)) * 100.0
+	}
+
+	// Calculate average completion time for tasks completed in the time range
+	avgTime, _ := r.GetAverageCompletionTime(departmentID, timeRange)
+	stats.AvgCompletionTime = avgTime
+
+	return stats, nil
+}
+
+// GetAllDepartmentsStats returns task statistics for all departments
+func (r *taskRepository) GetAllDepartmentsStats(timeRange *TimeRange) ([]*DepartmentTaskStats, error) {
+	// Get distinct department IDs with names from users table
+	// This handles tasks assigned to users (most common case)
+	type DeptResult struct {
+		DepartmentID   uint
+		DepartmentName string
+		Count          int
+	}
+
+	var deptResults []DeptResult
+	query := r.db.Table("tasks").
+		Select("COALESCE(assignee.department_id, creator.department_id, tasks.assigned_to_department_id) as department_id, departments.name as department_name, COUNT(*) as count").
+		Joins("LEFT JOIN public.users AS assignee ON tasks.assigned_to_user_id = assignee.id").
+		Joins("LEFT JOIN public.users AS creator ON tasks.created_by_user_id = creator.id").
+		Joins("LEFT JOIN public.departments ON COALESCE(assignee.department_id, creator.department_id, tasks.assigned_to_department_id) = departments.id").
+		Where("tasks.deleted_at IS NULL").
+		Where("COALESCE(assignee.department_id, creator.department_id, tasks.assigned_to_department_id) IS NOT NULL")
+
+	if err := query.Group("COALESCE(assignee.department_id, creator.department_id, tasks.assigned_to_department_id), departments.name").Scan(&deptResults).Error; err != nil {
+		return nil, fmt.Errorf("failed to get departments: %w", err)
+	}
+
+	// Get stats for each department
+	var allStats []*DepartmentTaskStats
+	for _, dept := range deptResults {
+		stats, err := r.GetTasksByDepartment(&dept.DepartmentID, timeRange)
+		if err != nil {
+			continue
+		}
+		stats.DepartmentName = dept.DepartmentName
+		allStats = append(allStats, stats)
+	}
+
+	return allStats, nil
+}
+
+// GetTopPerformersByDepartment returns top performing employees in a department
+func (r *taskRepository) GetTopPerformersByDepartment(departmentID *uint, limit int, timeRange *TimeRange) ([]*EmployeePerformance, error) {
+	type PerformanceData struct {
+		UserID             uint
+		UserName           string
+		DepartmentID       *uint
+		DepartmentName     string
+		TasksCompleted     int
+		TasksCreated       int
+		TasksInProgress    int
+		TasksOverdue       int
+		AvgCompletionHours float64
+	}
+
+	query := r.db.Table("tasks").
+		Select(`
+			tasks.assigned_to_user_id as user_id,
+			users.name as user_name,
+			users.department_id as department_id,
+			departments.name as department_name,
+			COUNT(CASE WHEN tasks.status = 'done' THEN 1 END) as tasks_completed,
+			COUNT(CASE WHEN tasks.created_by_user_id = tasks.assigned_to_user_id THEN 1 END) as tasks_created,
+			COUNT(CASE WHEN tasks.status = 'in_progress' THEN 1 END) as tasks_in_progress,
+			COUNT(CASE WHEN tasks.status NOT IN ('done', 'cancelled') AND tasks.due_date < NOW() THEN 1 END) as tasks_overdue,
+			AVG(CASE WHEN tasks.status = 'done' AND tasks.completed_at IS NOT NULL
+				THEN EXTRACT(EPOCH FROM (tasks.completed_at - tasks.created_at)) / 3600
+				ELSE NULL END) as avg_completion_hours
+		`).
+		Joins("LEFT JOIN public.users ON tasks.assigned_to_user_id = users.id").
+		Joins("LEFT JOIN public.departments ON users.department_id = departments.id").
+		Where("tasks.assigned_to_user_id IS NOT NULL")
+
+	if departmentID != nil {
+		query = query.Where("users.department_id = ?", *departmentID)
+	}
+
+	if timeRange != nil {
+		query = query.Where("tasks.created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+
+	var performanceData []PerformanceData
+	if err := query.Group("tasks.assigned_to_user_id, users.name, users.department_id, departments.name").
+		Order("tasks_completed DESC").
+		Limit(limit).
+		Scan(&performanceData).Error; err != nil {
+		return nil, fmt.Errorf("failed to get top performers: %w", err)
+	}
+
+	// Convert to EmployeePerformance
+	var performers []*EmployeePerformance
+	for _, data := range performanceData {
+		totalTasks := data.TasksCompleted + data.TasksInProgress + data.TasksOverdue
+		completionRate := 0.0
+		if totalTasks > 0 {
+			completionRate = (float64(data.TasksCompleted) / float64(totalTasks)) * 100.0
+		}
+
+		// Calculate quality score (tasks completed on time)
+		qualityScore := 100.0
+		if data.TasksCompleted > 0 {
+			qualityScore = ((float64(data.TasksCompleted) - float64(data.TasksOverdue)) / float64(data.TasksCompleted)) * 100.0
+			if qualityScore < 0 {
+				qualityScore = 0
+			}
+		}
+
+		performers = append(performers, &EmployeePerformance{
+			UserID:            data.UserID,
+			UserName:          data.UserName,
+			DepartmentID:      data.DepartmentID,
+			DepartmentName:    data.DepartmentName,
+			TasksCreated:      data.TasksCreated,
+			TasksCompleted:    data.TasksCompleted,
+			TasksInProgress:   data.TasksInProgress,
+			TasksOverdue:      data.TasksOverdue,
+			CompletionRate:    completionRate,
+			AvgCompletionTime: data.AvgCompletionHours,
+			QualityScore:      qualityScore,
+		})
+	}
+
+	return performers, nil
+}
+
+// GetTopPerformers returns top performing employees across all departments
+func (r *taskRepository) GetTopPerformers(limit int, timeRange *TimeRange) ([]*EmployeePerformance, error) {
+	return r.GetTopPerformersByDepartment(nil, limit, timeRange)
+}
+
+// GetTaskCompletionTrends returns task completion trends over time
+func (r *taskRepository) GetTaskCompletionTrends(timeRange *TimeRange, interval string) ([]*TrendDataPoint, error) {
+	if timeRange == nil {
+		// Default to last 30 days
+		end := time.Now()
+		start := end.AddDate(0, 0, -30)
+		timeRange = &TimeRange{Start: start, End: end}
+	}
+
+	// Determine date truncation based on interval
+	dateTrunc := "day"
+	switch interval {
+	case "hour":
+		dateTrunc = "hour"
+	case "week":
+		dateTrunc = "week"
+	case "month":
+		dateTrunc = "month"
+	default:
+		dateTrunc = "day"
+	}
+
+	type TrendData struct {
+		Date      time.Time
+		Created   int
+		Completed int
+		Overdue   int
+	}
+
+	var trends []TrendData
+	query := r.db.Model(&models.Task{}).
+		Select(fmt.Sprintf(`
+			DATE_TRUNC('%s', created_at) as date,
+			COUNT(*) as created,
+			COUNT(CASE WHEN status = 'done' THEN 1 END) as completed,
+			COUNT(CASE WHEN status NOT IN ('done', 'cancelled') AND due_date < NOW() THEN 1 END) as overdue
+		`, dateTrunc)).
+		Where("created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End).
+		Group(fmt.Sprintf("DATE_TRUNC('%s', created_at)", dateTrunc)).
+		Order("date ASC")
+
+	if err := query.Scan(&trends).Error; err != nil {
+		return nil, fmt.Errorf("failed to get task trends: %w", err)
+	}
+
+	// Convert to TrendDataPoint with appropriate date formatting
+	var dataPoints []*TrendDataPoint
+	for _, trend := range trends {
+		var dateStr string
+		switch dateTrunc {
+		case "hour":
+			dateStr = trend.Date.Format("2006-01-02 15:04")
+		case "week":
+			// For weekly grouping, show the first day of the week
+			dateStr = trend.Date.Format("2006-01-02")
+		case "month":
+			// For monthly grouping, show year-month
+			dateStr = trend.Date.Format("2006-01")
+		default: // day
+			dateStr = trend.Date.Format("2006-01-02")
+		}
+
+		dataPoints = append(dataPoints, &TrendDataPoint{
+			Date:      dateStr,
+			Created:   trend.Created,
+			Completed: trend.Completed,
+			Overdue:   trend.Overdue,
+		})
+	}
+
+	return dataPoints, nil
+}
+
+// GetTasksByPriority returns task distribution by priority
+func (r *taskRepository) GetTasksByPriority(timeRange *TimeRange) (*PriorityDistribution, error) {
+	dist := &PriorityDistribution{}
+
+	query := r.db.Model(&models.Task{})
+	if timeRange != nil {
+		query = query.Where("created_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+
+	// Count by priority
+	priorities := []struct {
+		Priority models.TaskPriority
+		Count    *int
+	}{
+		{models.TaskPriorityLow, &dist.Low},
+		{models.TaskPriorityMedium, &dist.Medium},
+		{models.TaskPriorityHigh, &dist.High},
+		{models.TaskPriorityCritical, &dist.Critical},
+	}
+
+	for _, p := range priorities {
+		var count int64
+		// Clone the query to avoid accumulating WHERE conditions
+		priorityQuery := query.Session(&gorm.Session{})
+		if err := priorityQuery.Where("priority = ?", p.Priority).Count(&count).Error; err != nil {
+			return nil, fmt.Errorf("failed to count tasks by priority %s: %w", p.Priority, err)
+		}
+		*p.Count = int(count)
+	}
+
+	return dist, nil
+}
+
+// GetAverageCompletionTime returns average task completion time in hours
+func (r *taskRepository) GetAverageCompletionTime(departmentID *uint, timeRange *TimeRange) (float64, error) {
+	type AvgResult struct {
+		AvgHours float64
+	}
+
+	query := r.db.Model(&models.Task{}).
+		Select("AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600) as avg_hours").
+		Where("status = ? AND completed_at IS NOT NULL", models.TaskStatusDone)
+
+	if departmentID != nil {
+		query = query.Where("assigned_to_department_id = ?", *departmentID)
+	}
+
+	if timeRange != nil {
+		query = query.Where("completed_at BETWEEN ? AND ?", timeRange.Start, timeRange.End)
+	}
+
+	var result AvgResult
+	if err := query.Scan(&result).Error; err != nil {
+		return 0, fmt.Errorf("failed to calculate average completion time: %w", err)
+	}
+
+	return result.AvgHours, nil
 }

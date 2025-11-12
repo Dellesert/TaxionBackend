@@ -19,10 +19,7 @@ go get github.com/joho/godotenv
 # 2. Запустите Docker контейнеры
 docker compose up -d postgres redis
 
-# 3. Дождитесь запуска (5-10 секунд)
-timeout /t 5
-
-# 4. Запустите seeding (переходите к шагу 3)
+# 3. Запустите seeding (переходите к шагу 3)
 ```
 
 **На Linux/Mac (Bash):**

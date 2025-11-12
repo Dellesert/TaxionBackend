@@ -19,9 +19,12 @@ type PasskeyUsecase interface {
 	BeginRegistration(userID uint, passkeyName string) (*protocol.CredentialCreation, error)
 	FinishRegistration(userID uint, response *protocol.ParsedCredentialCreationData) error
 
-	// Authentication flow
+	// Authentication flow (legacy - requires email)
 	BeginAuthentication(email string) (*protocol.CredentialAssertion, error)
 	FinishAuthentication(email string, response *protocol.ParsedCredentialAssertionData) (*models.User, error)
+
+	// Discoverable authentication flow (no email required)
+	BeginDiscoverableAuthentication() (*protocol.CredentialAssertion, error)
 	FinishAuthenticationByCredential(response *protocol.ParsedCredentialAssertionData) (*models.User, error)
 
 	// Management
@@ -248,6 +251,60 @@ func (u *passkeyUsecase) BeginAuthentication(email string) (*protocol.Credential
 	return options, nil
 }
 
+// BeginDiscoverableAuthentication starts the passkey authentication process WITHOUT requiring email
+// This uses discoverable credentials (resident keys) where the passkey itself contains user information
+func (u *passkeyUsecase) BeginDiscoverableAuthentication() (*protocol.CredentialAssertion, error) {
+	logger.Info("Starting discoverable passkey authentication")
+
+	// Check security settings to see if passkey login is allowed
+	settings, err := u.settingsRepo.GetOrCreate()
+	if err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to get settings, continuing anyway")
+	}
+
+	if settings != nil {
+		logger.WithFields(map[string]interface{}{
+			"auth_mode": settings.AuthMode,
+		}).Debug("Current auth mode")
+
+		// Check if passkey authentication is allowed
+		if settings.AuthMode == models.AuthModePassword {
+			logger.Warn("Passkey login is disabled by settings")
+			return nil, fmt.Errorf("passkey login is disabled. Please use password authentication")
+		}
+	}
+
+	// For discoverable credentials, we call BeginDiscoverableLogin with custom options
+	// that don't include allowCredentials (empty list means browser will show all available passkeys)
+	logger.Debug("Calling BeginDiscoverableLogin")
+	options, sessionData, err := u.webAuthn.webAuthn.BeginDiscoverableLogin(
+		// Explicitly set userVerification to preferred (not required)
+		// This is important for discoverable credentials
+		webauthn.WithUserVerification(protocol.VerificationPreferred),
+	)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"error":       err.Error(),
+			"error_type":  fmt.Sprintf("%T", err),
+		}).Error("Failed to begin discoverable passkey authentication")
+		return nil, fmt.Errorf("failed to begin passkey authentication: %w", err)
+	}
+
+	// Store session data with the challenge as key
+	// The challenge is base64url encoded, so convert it properly
+	challengeStr := string(sessionData.Challenge)
+	sessionKey := fmt.Sprintf("passkey_discoverable_%s", challengeStr)
+	u.sessionStore[sessionKey] = sessionData
+
+	logger.WithFields(map[string]interface{}{
+		"challenge":     challengeStr,
+		"challenge_len": len(challengeStr),
+		"session_key":   sessionKey,
+	}).Info("Discoverable passkey authentication started successfully")
+
+	return options, nil
+}
+
 // FinishAuthentication completes the passkey authentication process
 func (u *passkeyUsecase) FinishAuthentication(email string, response *protocol.ParsedCredentialAssertionData) (*models.User, error) {
 	// Normalize email
@@ -319,29 +376,48 @@ func (u *passkeyUsecase) FinishAuthentication(email string, response *protocol.P
 
 // FinishAuthenticationByCredential completes the passkey authentication process by credential ID
 // This method looks up the user by the credential ID instead of requiring email
+// Used for discoverable credentials (resident keys) authentication flow
 func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.ParsedCredentialAssertionData) (*models.User, error) {
+	logger.Info("Starting FinishAuthenticationByCredential")
+
 	// Check security settings to see if passkey login is allowed
 	settings, err := u.settingsRepo.GetOrCreate()
 	if err == nil && settings != nil {
 		// Check if passkey authentication is allowed
 		if settings.AuthMode == models.AuthModePassword {
+			logger.Warn("Passkey login is disabled in FinishAuthenticationByCredential")
 			return nil, fmt.Errorf("passkey login is disabled. Please use password authentication")
 		}
 	}
 
 	// Get the credential ID from the response
 	credentialID := response.RawID
+	logger.WithField("credential_id_length", len(credentialID)).Debug("Looking up credential")
 
 	// Find the passkey by credential ID
 	passkeyCredential, err := u.passkeyRepo.GetByCredentialID(credentialID)
 	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"error":              err.Error(),
+			"credential_id_len":  len(credentialID),
+		}).Error("Credential not found in database")
 		return nil, fmt.Errorf("credential not found")
 	}
+
+	logger.WithFields(map[string]interface{}{
+		"user_id":    passkeyCredential.UserID,
+		"passkey_id": passkeyCredential.ID,
+	}).Info("Found credential in database")
 
 	// Get the user
 	user, err := u.userRepo.GetByID(passkeyCredential.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found")
+	}
+
+	// Check if user is active
+	if !user.IsActive {
+		return nil, fmt.Errorf("user account is deactivated")
 	}
 
 	// Get all user's passkeys
@@ -353,17 +429,60 @@ func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.Par
 	// Create WebAuthnUser
 	webAuthnUser := NewWebAuthnUser(user, passkeys)
 
-	// Get session data using email
-	sessionKey := fmt.Sprintf("passkey_auth_%s", user.Email)
+	// Try to find session data - first try discoverable session, then fall back to email-based
+	challenge := string(response.Response.CollectedClientData.Challenge)
+	sessionKey := fmt.Sprintf("passkey_discoverable_%s", challenge)
+
+	logger.WithFields(map[string]interface{}{
+		"session_key":   sessionKey,
+		"challenge_len": len(challenge),
+		"store_size":    len(u.sessionStore),
+	}).Debug("Looking for session data")
+
 	sessionData, ok := u.sessionStore[sessionKey]
+
+	// Fallback to email-based session (for backward compatibility)
 	if !ok {
+		logger.Debug("Discoverable session not found, trying email-based session")
+		sessionKey = fmt.Sprintf("passkey_auth_%s", user.Email)
+		sessionData, ok = u.sessionStore[sessionKey]
+	}
+
+	if !ok {
+		logger.WithFields(map[string]interface{}{
+			"challenge":     challenge,
+			"user_email":    user.Email,
+			"available_keys": fmt.Sprintf("%v", getSessionStoreKeys(u.sessionStore)),
+		}).Error("Authentication session not found or expired")
 		return nil, fmt.Errorf("authentication session not found or expired")
 	}
+
+	logger.Info("Found session data")
 
 	webAuthnSessionData, ok := sessionData.(*webauthn.SessionData)
 	if !ok {
 		return nil, fmt.Errorf("invalid session data")
 	}
+
+	// Log the session data details for debugging
+	logger.WithFields(map[string]interface{}{
+		"session_user_id":        string(webAuthnSessionData.UserID),
+		"webauthn_user_id":       string(webAuthnUser.WebAuthnID()),
+		"actual_user_id":         user.ID,
+		"session_challenge":      string(webAuthnSessionData.Challenge),
+		"session_user_id_len":    len(webAuthnSessionData.UserID),
+		"webauthn_user_id_len":   len(webAuthnUser.WebAuthnID()),
+	}).Info("Comparing User IDs before validation")
+
+	// CRITICAL FIX: Update the session's User ID to match the actual user we found
+	// BeginDiscoverableLogin() creates a session without a user context (since we don't know who's logging in)
+	// But ValidateLogin() expects the session User ID to match the user we're validating against
+	// So we update the session data with the correct User ID now that we know who the user is
+	webAuthnSessionData.UserID = webAuthnUser.WebAuthnID()
+
+	logger.WithFields(map[string]interface{}{
+		"updated_session_user_id": string(webAuthnSessionData.UserID),
+	}).Info("Updated session User ID to match the authenticated user")
 
 	// Verify the assertion
 	credential, err := u.webAuthn.webAuthn.ValidateLogin(webAuthnUser, *webAuthnSessionData, response)
@@ -479,4 +598,13 @@ func formatTransports(transports []protocol.AuthenticatorTransport) string {
 		strs[i] = string(t)
 	}
 	return strings.Join(strs, ",")
+}
+
+// getSessionStoreKeys returns all keys from the session store for debugging
+func getSessionStoreKeys(store map[string]interface{}) []string {
+	keys := make([]string, 0, len(store))
+	for k := range store {
+		keys = append(keys, k)
+	}
+	return keys
 }

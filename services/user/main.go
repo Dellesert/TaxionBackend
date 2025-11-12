@@ -68,7 +68,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, SMTP settings, and subdepartments tables)
+	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, SMTP settings, user settings, and subdepartments tables)
 	if err := db.Migrate(
 		&models.Department{},
 		&models.Subdepartment{},
@@ -79,6 +79,7 @@ func main() {
 		&models.Invitation{},
 		&models.PasswordReset{},
 		&models.SMTPSettings{},
+		&models.UserSettings{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -291,7 +292,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		passkey := auth.Group("/passkey")
 		{
 			// Public endpoints (no auth required for login)
-			passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)
+			passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)                              // Legacy: requires email
+			passkey.POST("/login/discoverable/begin", passkeyHandler.BeginDiscoverableAuthentication)    // New: no email required
 			passkey.POST("/login/finish", passkeyHandler.FinishAuthentication)
 
 			// Protected endpoints (require auth for registration and management)
@@ -350,7 +352,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			v1Passkey := v1Auth.Group("/passkey")
 			{
 				// Public endpoints (no auth required for login)
-				v1Passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)
+				v1Passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)                              // Legacy: requires email
+				v1Passkey.POST("/login/discoverable/begin", passkeyHandler.BeginDiscoverableAuthentication)    // New: no email required
 				v1Passkey.POST("/login/finish", passkeyHandler.FinishAuthentication)
 
 				// Protected endpoints (require auth for registration and management)

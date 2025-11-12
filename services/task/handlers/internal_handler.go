@@ -90,7 +90,10 @@ type TaskAssigneeInfo struct {
 // @Failure 500 {object} gin.H
 // @Router /internal/tasks/stats [get]
 func (h *InternalHandler) GetTaskStats(c *gin.Context) {
-	stats, err := h.taskUsecase.GetTaskStatsInternal()
+	// Get optional period parameter (today, week, month, year)
+	period := c.Query("period")
+
+	stats, err := h.taskUsecase.GetTaskStatsInternal(period)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task statistics"})
 		return
@@ -101,10 +104,79 @@ func (h *InternalHandler) GetTaskStats(c *gin.Context) {
 
 // TaskStatsResponse represents task statistics
 type TaskStatsResponse struct {
-	TotalTasks     int `json:"total_tasks"`
-	NewTasks       int `json:"new_tasks"`
+	TotalTasks      int `json:"total_tasks"`
+	NewTasks        int `json:"new_tasks"`
 	InProgressTasks int `json:"in_progress_tasks"`
-	ReviewTasks    int `json:"review_tasks"`
-	CompletedTasks int `json:"completed_tasks"`
-	OverdueTasks   int `json:"overdue_tasks"`
+	ReviewTasks     int `json:"review_tasks"`
+	CompletedTasks  int `json:"completed_tasks"`
+	OverdueTasks    int `json:"overdue_tasks"`
+}
+
+// GetDepartmentTaskStats returns task analytics by department
+func (h *InternalHandler) GetDepartmentTaskStats(c *gin.Context) {
+	period := c.DefaultQuery("period", "week")
+
+	stats, err := h.taskUsecase.GetDepartmentTaskStats(period)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": stats})
+}
+
+// GetTopPerformers returns top performing employees
+func (h *InternalHandler) GetTopPerformers(c *gin.Context) {
+	limitStr := c.DefaultQuery("limit", "10")
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 10
+	}
+
+	period := c.DefaultQuery("period", "week")
+	departmentIDStr := c.Query("department_id")
+
+	var departmentID *uint
+	if departmentIDStr != "" {
+		id, err := strconv.ParseUint(departmentIDStr, 10, 32)
+		if err == nil {
+			uid := uint(id)
+			departmentID = &uid
+		}
+	}
+
+	performers, err := h.taskUsecase.GetTopPerformers(limit, period, departmentID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": performers})
+}
+
+// GetTaskTrends returns task completion trends
+func (h *InternalHandler) GetTaskTrends(c *gin.Context) {
+	period := c.DefaultQuery("period", "week")
+	interval := c.DefaultQuery("interval", "day")
+
+	trends, err := h.taskUsecase.GetTaskTrends(period, interval)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": trends})
+}
+
+// GetPriorityDistribution returns task distribution by priority
+func (h *InternalHandler) GetPriorityDistribution(c *gin.Context) {
+	period := c.DefaultQuery("period", "week")
+
+	distribution, err := h.taskUsecase.GetPriorityDistribution(period)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": distribution})
 }
