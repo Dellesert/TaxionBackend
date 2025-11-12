@@ -64,7 +64,22 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 		offset = 0
 	}
 
-	chats, err := h.chatUsecase.GetUserChats(userID, limit, offset)
+	// Parse filter parameters
+	chatType := c.Query("type")        // "private", "group", "channel"
+	isFavoriteStr := c.Query("is_favorite") // "true", "false"
+	isPinnedStr := c.Query("is_pinned")     // "true", "false"
+
+	var isFavorite, isPinned *bool
+	if isFavoriteStr != "" {
+		val := isFavoriteStr == "true"
+		isFavorite = &val
+	}
+	if isPinnedStr != "" {
+		val := isPinnedStr == "true"
+		isPinned = &val
+	}
+
+	chats, err := h.chatUsecase.GetUserChats(userID, limit, offset, chatType, isFavorite, isPinned)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

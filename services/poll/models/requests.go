@@ -108,12 +108,12 @@ type PollFilterRequest struct {
 	Search string `json:"search,omitempty" validate:"omitempty"`
 
 	// Pagination
-	Limit  int `json:"limit" validate:"omitempty,min=1,max=100"`
-	Offset int `json:"offset" validate:"omitempty,min=0"`
+	Limit  int `json:"limit" form:"limit" validate:"omitempty,min=1,max=100"`
+	Offset int `json:"offset" form:"offset" validate:"omitempty,min=0"`
 
 	// Sorting
-	SortBy    string `json:"sort_by,omitempty" validate:"omitempty,oneof=created_at updated_at title start_time end_time total_votes"`
-	SortOrder string `json:"sort_order,omitempty" validate:"omitempty,oneof=asc desc"`
+	SortBy    string `json:"sort_by,omitempty" form:"sort_by" validate:"omitempty,oneof=created_at updated_at title start_time end_time total_votes"`
+	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
 }
 
 // File: services/poll/models/responses.go

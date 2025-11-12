@@ -19,7 +19,7 @@ type ChatRepository interface {
 	Delete(id uint) error
 	Count() (int64, error)
 	GetWithMembers(id uint) (*models.Chat, error)
-	GetUserChats(userID uint, limit, offset int) ([]*models.Chat, int64, error)
+	GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) ([]*models.Chat, int64, error)
 	GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error)
 	GetChatByTaskID(taskID uint) (*models.Chat, error)
 
@@ -77,13 +77,14 @@ func (r *chatRepository) GetByID(id uint) (*models.Chat, error) {
 // GetByUserID retrieves chats by user ID with pagination and sorting
 func (r *chatRepository) GetByUserID(userID uint, limit, offset int) ([]*models.Chat, error) {
 	var chats []*models.Chat
+	// Add secondary sort by id to ensure deterministic ordering for pagination
 	err := r.db.
 		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
 		Where("chat_members.user_id = ? AND chat_members.is_active = ?", userID, true).
 		Where("chats.is_active = ?", true).
 		Limit(limit).
 		Offset(offset).
-		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC").
+		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
 		Find(&chats).Error
 
 	if err != nil {
@@ -145,34 +146,61 @@ func (r *chatRepository) GetWithMembers(id uint) (*models.Chat, error) {
 	return &chat, nil
 }
 
-// GetUserChats retrieves all chats for a user with pagination and sorting
-func (r *chatRepository) GetUserChats(userID uint, limit, offset int) ([]*models.Chat, int64, error) {
+// GetUserChats retrieves all chats for a user with pagination, sorting and optional filters
+func (r *chatRepository) GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) ([]*models.Chat, int64, error) {
 	var chats []*models.Chat
 	var total int64
 
-	// Get total count (exclude hidden chats)
-	err := r.db.Model(&models.Chat{}).
+	// Build base query for count
+	countQuery := r.db.Model(&models.Chat{}).
 		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
 		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
-		Where("chats.is_active = ?", true).
-		Count(&total).Error
+		Where("chats.is_active = ?", true)
 
+	// Apply filters
+	if chatType != "" {
+		countQuery = countQuery.Where("chats.type = ?", chatType)
+	}
+	if isFavorite != nil {
+		countQuery = countQuery.Where("chat_members.is_favorite = ?", *isFavorite)
+	}
+	if isPinned != nil {
+		countQuery = countQuery.Where("chat_members.is_pinned = ?", *isPinned)
+	}
+
+	// Get total count (exclude hidden chats)
+	err := countQuery.Count(&total).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count user chats: %w", err)
 	}
 
-	// Get chats with members, sorted by last activity (exclude hidden chats)
-	err = r.db.
+	// Build query for getting chats
+	query := r.db.
 		Preload("Members.User"). // Загружаем User для каждого Member
 		Preload("Members", func(db *gorm.DB) *gorm.DB {
 			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
 		}).
 		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
 		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
-		Where("chats.is_active = ?", true).
+		Where("chats.is_active = ?", true)
+
+	// Apply filters
+	if chatType != "" {
+		query = query.Where("chats.type = ?", chatType)
+	}
+	if isFavorite != nil {
+		query = query.Where("chat_members.is_favorite = ?", *isFavorite)
+	}
+	if isPinned != nil {
+		query = query.Where("chat_members.is_pinned = ?", *isPinned)
+	}
+
+	// Get chats with members, sorted by last activity (exclude hidden chats)
+	// Add secondary sort by id to ensure deterministic ordering for pagination
+	err = query.
 		Limit(limit).
 		Offset(offset).
-		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC").
+		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
 		Find(&chats).Error
 
 	if err != nil {

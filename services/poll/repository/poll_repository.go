@@ -568,7 +568,8 @@ func (r *pollRepository) applyFilters(query *gorm.DB, filter *models.PollFilterR
 // applySortingAndPagination applies sorting and pagination to the query
 func (r *pollRepository) applySortingAndPagination(query *gorm.DB, filter *models.PollFilterRequest) *gorm.DB {
 	if filter == nil {
-		return query.Order("created_at DESC").Limit(models.DefaultLimit)
+		// Add secondary sort by id for deterministic ordering
+		return query.Order("created_at DESC").Order("id DESC").Limit(models.DefaultLimit)
 	}
 
 	// Apply sorting
@@ -582,7 +583,12 @@ func (r *pollRepository) applySortingAndPagination(query *gorm.DB, filter *model
 		sortOrder = "desc"
 	}
 
+	// Primary sort
 	query = query.Order(sortBy + " " + sortOrder)
+
+	// Always add secondary sort by id to ensure deterministic ordering for pagination
+	// This prevents duplicates when primary sort field has same values
+	query = query.Order("id " + sortOrder)
 
 	// Apply pagination
 	limit := filter.Limit
@@ -597,6 +603,12 @@ func (r *pollRepository) applySortingAndPagination(query *gorm.DB, filter *model
 	if offset < 0 {
 		offset = 0
 	}
+
+	// Debug logging
+	logger.WithFields(map[string]interface{}{
+		"limit":  limit,
+		"offset": offset,
+	}).Info("Applying pagination")
 
 	return query.Limit(limit).Offset(offset)
 }

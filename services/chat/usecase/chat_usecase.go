@@ -16,7 +16,7 @@ import (
 // ChatUsecase defines the interface for chat business logic
 type ChatUsecase interface {
 	CreateChat(userID uint, req *models.CreateChatRequest) (*models.ChatResponse, error)
-	GetUserChats(userID uint, limit, offset int) (*models.ChatListResponse, error)
+	GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) (*models.ChatListResponse, error)
 	GetChat(userID, chatID uint) (*models.ChatResponse, error)
 	UpdateChat(userID, chatID uint, req *models.UpdateChatRequest) (*models.ChatResponse, error)
 	DeleteChat(userID, chatID uint, clearHistory bool) error
@@ -426,8 +426,8 @@ func (uc *chatUsecase) CreateChat(userID uint, req *models.CreateChatRequest) (*
 	return chatWithMembers.ToResponse(uc.baseURL), nil
 }
 
-// GetUserChats retrieves all chats for a user
-func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int) (*models.ChatListResponse, error) {
+// GetUserChats retrieves all chats for a user with optional filters
+func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) (*models.ChatListResponse, error) {
 	// Set default pagination
 	if limit <= 0 {
 		limit = 20
@@ -436,7 +436,7 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int) (*models.Cha
 		limit = 100
 	}
 
-	chats, total, err := uc.chatRepo.GetUserChats(userID, limit, offset)
+	chats, total, err := uc.chatRepo.GetUserChats(userID, limit, offset, chatType, isFavorite, isPinned)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user chats: %w", err)
 	}
