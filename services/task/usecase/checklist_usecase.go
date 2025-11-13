@@ -239,10 +239,13 @@ func (u *checklistUsecase) UpdateChecklistItem(id, userID uint, title string, is
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
 
-	// Track if completion status changed
+	// Track if completion status changed to completed
+	wasUncompleted := !item.IsCompleted
 	completionChanged := false
+	isBeingCompleted := false
 	if isCompleted != nil && item.IsCompleted != *isCompleted {
 		completionChanged = true
+		isBeingCompleted = wasUncompleted && *isCompleted
 	}
 
 	// Update fields
@@ -258,6 +261,18 @@ func (u *checklistUsecase) UpdateChecklistItem(id, userID uint, title string, is
 
 	if err := u.checklistRepo.UpdateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to update checklist item: %w", err)
+	}
+
+	// If this is the first checklist item being completed and task is in 'new' or 'viewed' status,
+	// automatically move task to 'in_progress'
+	if isBeingCompleted && u.taskUsecase != nil {
+		if task.Status == models.TaskStatusNew || task.Status == models.TaskStatusViewed {
+			// Check if this is the first item being completed
+			if err := u.autoTransitionTaskToInProgress(task.ID, userID); err != nil {
+				// Log error but don't fail the operation
+				fmt.Printf("Failed to auto-transition task to in_progress: %v\n", err)
+			}
+		}
 	}
 
 	// Recalculate task progress if completion status changed
@@ -323,11 +338,25 @@ func (u *checklistUsecase) ToggleChecklistItem(id, userID uint) (*models.TaskChe
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
 
+	// Track if item is being completed (uncompleted -> completed)
+	isBeingCompleted := !item.IsCompleted
+
 	// Toggle completion status
 	item.IsCompleted = !item.IsCompleted
 
 	if err := u.checklistRepo.UpdateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to toggle checklist item: %w", err)
+	}
+
+	// If this is the first checklist item being completed and task is in 'new' or 'viewed' status,
+	// automatically move task to 'in_progress'
+	if isBeingCompleted && u.taskUsecase != nil {
+		if task.Status == models.TaskStatusNew || task.Status == models.TaskStatusViewed {
+			if err := u.autoTransitionTaskToInProgress(task.ID, userID); err != nil {
+				// Log error but don't fail the operation
+				fmt.Printf("Failed to auto-transition task to in_progress: %v\n", err)
+			}
+		}
 	}
 
 	// Recalculate task progress
@@ -378,4 +407,29 @@ func (u *checklistUsecase) ReorderChecklistItems(checklistID, userID uint, itemP
 // SetTaskUsecase sets the TaskUsecase to avoid circular dependency
 func (u *checklistUsecase) SetTaskUsecase(taskUsecase TaskUsecase) {
 	u.taskUsecase = taskUsecase
+}
+
+// autoTransitionTaskToInProgress automatically transitions a task to 'in_progress' status
+// when a checklist item is completed for the first time
+func (u *checklistUsecase) autoTransitionTaskToInProgress(taskID, userID uint) error {
+	// Get the task to check current status
+	task, err := u.taskRepo.GetByID(taskID)
+	if err != nil {
+		return fmt.Errorf("failed to get task: %w", err)
+	}
+
+	// Only transition if task is in 'new' or 'viewed' status
+	if task.Status != models.TaskStatusNew && task.Status != models.TaskStatusViewed {
+		return nil
+	}
+
+	// Update task status to 'in_progress'
+	task.Status = models.TaskStatusInProgress
+	task.LastStatusChangedByUserID = &userID
+
+	if err := u.taskRepo.Update(task); err != nil {
+		return fmt.Errorf("failed to update task status: %w", err)
+	}
+
+	return nil
 }

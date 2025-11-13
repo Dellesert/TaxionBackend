@@ -6,6 +6,7 @@ import (
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/usecase"
+	sharedErrors "tachyon-messenger/shared/errors"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
@@ -45,30 +46,25 @@ func (h *TwoFAHandler) SendCode(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Invalid request body for 2FA send code")
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
-			"details":    err.Error(),
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.BadRequestError("Invalid request body").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Additional validation
 	if strings.TrimSpace(req.Email) == "" {
 		logger.WithField("request_id", requestID).Warn("Email is required for 2FA")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Email is required",
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.RequiredFieldError("email").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	if strings.TrimSpace(req.Password) == "" {
 		logger.WithField("request_id", requestID).Warn("Password is required for 2FA")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Password is required",
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.RequiredFieldError("password").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -84,32 +80,26 @@ func (h *TwoFAHandler) SendCode(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed to send 2FA code")
 
-		// Determine appropriate status code
-		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to send verification code"
+		// Determine appropriate error based on error message
+		var apiErr *sharedErrors.APIError
 
 		if strings.Contains(err.Error(), "invalid email or password") {
-			statusCode = http.StatusUnauthorized
-			errorMessage = "Invalid email or password"
+			apiErr = sharedErrors.InvalidCredentialsError()
 		} else if strings.Contains(err.Error(), "deactivated") {
-			statusCode = http.StatusForbidden
-			errorMessage = "Account is deactivated"
+			apiErr = sharedErrors.AccountDeactivatedError()
 		} else if strings.Contains(err.Error(), "super admin access is restricted") {
-			statusCode = http.StatusForbidden
-			errorMessage = "Super admin access is restricted to web dashboard"
-		} else if strings.Contains(err.Error(), "invalid password format") {
-			statusCode = http.StatusBadRequest
-			errorMessage = err.Error()
+			apiErr = sharedErrors.SuperAdminWebOnlyError()
 		} else if strings.Contains(err.Error(), "two factor authentication is not enabled") ||
 			strings.Contains(err.Error(), "2FA not enabled") {
-			statusCode = http.StatusBadRequest
-			errorMessage = "Two factor authentication is not enabled for this account"
+			apiErr = sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.Auth2FANotEnabled,
+				"Two-factor authentication is not enabled for this account")
+		} else {
+			apiErr = sharedErrors.NewAPIError(http.StatusInternalServerError, sharedErrors.Auth2FASendFailed,
+				"Failed to send verification code")
 		}
 
-		c.JSON(statusCode, gin.H{
-			"error":      errorMessage,
-			"request_id": requestID,
-		})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -118,10 +108,18 @@ func (h *TwoFAHandler) SendCode(c *gin.Context) {
 		"email":      req.Email,
 	}).Info("2FA code sent successfully")
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":    "Verification code sent to your email",
-		"request_id": requestID,
-	})
+	// 2FA code expires in 5 minutes (300 seconds)
+	codeExpiresIn := 300
+	canResendAfter := 60
+
+	response := gin.H{
+		"message":          "Verification code sent to your email",
+		"request_id":       requestID,
+		"code_expires_in":  codeExpiresIn,
+		"can_resend_after": canResendAfter,
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // VerifyCode handles verifying 2FA code and completing login
@@ -135,30 +133,25 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Invalid request body for 2FA verify code")
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
-			"details":    err.Error(),
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.BadRequestError("Invalid request body").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Additional validation
 	if strings.TrimSpace(req.Email) == "" {
 		logger.WithField("request_id", requestID).Warn("Email is required for 2FA verification")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Email is required",
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.RequiredFieldError("email").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	if strings.TrimSpace(req.Code) == "" {
 		logger.WithField("request_id", requestID).Warn("Code is required for 2FA verification")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Code is required",
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.RequiredFieldError("code").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -171,21 +164,23 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed to verify 2FA code")
 
-		statusCode := http.StatusUnauthorized
-		errorMessage := "Invalid or expired verification code"
+		// Determine appropriate error based on error message
+		var apiErr *sharedErrors.APIError
 
-		if strings.Contains(err.Error(), "deactivated") {
-			statusCode = http.StatusForbidden
-			errorMessage = "Account is deactivated"
+		if strings.Contains(err.Error(), "invalid or expired") || strings.Contains(err.Error(), "expired") {
+			apiErr = sharedErrors.NewAPIError(http.StatusUnauthorized, sharedErrors.Auth2FACodeExpired,
+				"Verification code is invalid or expired")
+		} else if strings.Contains(err.Error(), "deactivated") {
+			apiErr = sharedErrors.AccountDeactivatedError()
 		} else if strings.Contains(err.Error(), "user not found") {
-			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			apiErr = sharedErrors.NewAPIError(http.StatusNotFound, sharedErrors.UserNotFound, "User not found")
+		} else {
+			apiErr = sharedErrors.NewAPIError(http.StatusUnauthorized, sharedErrors.Auth2FAInvalidCode,
+				"Invalid verification code")
 		}
 
-		c.JSON(statusCode, gin.H{
-			"error":      errorMessage,
-			"request_id": requestID,
-		})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -230,10 +225,9 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 					"error":      err.Error(),
 				}).Error("Failed to create session after 2FA")
 
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":      "Failed to create session",
-					"request_id": requestID,
-				})
+				apiErr := sharedErrors.InternalError("Failed to create session").
+					WithRequestID(requestID)
+				c.JSON(apiErr.StatusCode, apiErr)
 				return
 			}
 
@@ -270,10 +264,9 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 				"error":      err.Error(),
 			}).Error("Failed to generate tokens after 2FA")
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to generate authentication tokens",
-				"request_id": requestID,
-			})
+			apiErr := sharedErrors.InternalError("Failed to generate authentication tokens").
+				WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
 			return
 		}
 		response["tokens"] = tokens

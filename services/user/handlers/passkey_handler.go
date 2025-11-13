@@ -9,9 +9,11 @@ import (
 	"strconv"
 
 	"tachyon-messenger/services/user/usecase"
+	sharedErrors "tachyon-messenger/shared/errors"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 
+	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
 	"github.com/go-webauthn/webauthn/protocol"
 )
@@ -51,10 +53,13 @@ type UpdatePasskeyNameRequest struct {
 // BeginRegistration starts the passkey registration process
 // POST /api/v1/auth/passkey/register/begin
 func (h *PasskeyHandler) BeginRegistration(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context (set by auth middleware)
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Unauthorized").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -71,7 +76,11 @@ func (h *PasskeyHandler) BeginRegistration(c *gin.Context) {
 	options, err := h.passkeyUsecase.BeginRegistration(userID.(uint), name)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin passkey registration")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyRegistrationFailed,
+			"Failed to begin passkey registration").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -81,10 +90,13 @@ func (h *PasskeyHandler) BeginRegistration(c *gin.Context) {
 // FinishRegistration completes the passkey registration process
 // POST /api/v1/auth/passkey/register/finish
 func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Unauthorized").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -92,7 +104,8 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to read request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		apiErr := sharedErrors.BadRequestError("Invalid request").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -103,7 +116,8 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 	}
 	if err := json.Unmarshal(bodyBytes, &wrapper); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to parse request wrapper")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request format"})
+		apiErr := sharedErrors.BadRequestError("Invalid request format").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -126,7 +140,8 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 	}
 	if err := json.Unmarshal(wrapper.Credential, &credData); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to parse credential JSON")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credential format"})
+		apiErr := sharedErrors.BadRequestError("Invalid credential format").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -137,7 +152,8 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 		rawID, err = base64.RawURLEncoding.DecodeString(credData.RawID)
 		if err != nil {
 			logger.WithField("error", err.Error()).Warn("Failed to decode rawId")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rawId encoding"})
+			apiErr := sharedErrors.BadRequestError("Invalid rawId encoding").WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
 			return
 		}
 	}
@@ -145,14 +161,16 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 	clientDataJSON, err := base64.StdEncoding.DecodeString(credData.Response.ClientDataJSON)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode clientDataJSON")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clientDataJSON encoding"})
+		apiErr := sharedErrors.BadRequestError("Invalid clientDataJSON encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	attestationObject, err := base64.StdEncoding.DecodeString(credData.Response.AttestationObject)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode attestationObject")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid attestationObject encoding"})
+		apiErr := sharedErrors.BadRequestError("Invalid attestationObject encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -181,36 +199,50 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 			"credential_id":   credData.ID,
 			"credential_type": credData.Type,
 		}).Error("Failed to parse credential response during registration")
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid credential response: %v", err)})
+		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyInvalid,
+			fmt.Sprintf("Invalid credential response: %v", err)).
+			WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Finish registration
 	if err := h.passkeyUsecase.FinishRegistration(userID.(uint), parsedResponse); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to finish passkey registration")
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyRegistrationFailed,
+			"Failed to finish passkey registration").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Passkey registered successfully",
+		"success":    true,
+		"message":    "Passkey registered successfully",
+		"request_id": requestID,
 	})
 }
 
 // BeginAuthentication starts the passkey authentication process (legacy - requires email)
 // POST /api/v1/auth/passkey/login/begin
 func (h *PasskeyHandler) BeginAuthentication(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	var req BeginAuthenticationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiErr := sharedErrors.BadRequestError("Invalid request").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	options, err := h.passkeyUsecase.BeginAuthentication(req.Email)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin passkey authentication")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credentials"})
+		apiErr := sharedErrors.InvalidCredentialsError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -220,10 +252,15 @@ func (h *PasskeyHandler) BeginAuthentication(c *gin.Context) {
 // BeginDiscoverableAuthentication starts the passkey authentication process WITHOUT email
 // POST /api/v1/auth/passkey/login/discoverable/begin
 func (h *PasskeyHandler) BeginDiscoverableAuthentication(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	options, err := h.passkeyUsecase.BeginDiscoverableAuthentication()
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin discoverable passkey authentication")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "passkey authentication failed"})
+		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyInvalid,
+			"Passkey authentication failed").
+			WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -233,11 +270,14 @@ func (h *PasskeyHandler) BeginDiscoverableAuthentication(c *gin.Context) {
 // FinishAuthentication completes the passkey authentication process
 // POST /api/v1/auth/passkey/login/finish
 func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Read the raw body first
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to read request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		apiErr := sharedErrors.BadRequestError("Invalid request").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -255,7 +295,8 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 	}
 	if err := json.Unmarshal(bodyBytes, &credData); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to parse credential JSON")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credential format"})
+		apiErr := sharedErrors.BadRequestError("Invalid credential format").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -266,7 +307,8 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		rawID, err = base64.RawURLEncoding.DecodeString(credData.RawID)
 		if err != nil {
 			logger.WithField("error", err.Error()).Warn("Failed to decode rawId")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rawId encoding"})
+			apiErr := sharedErrors.BadRequestError("Invalid rawId encoding").WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
 			return
 		}
 	}
@@ -274,21 +316,24 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 	clientDataJSON, err := base64.StdEncoding.DecodeString(credData.Response.ClientDataJSON)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode clientDataJSON")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid clientDataJSON encoding"})
+		apiErr := sharedErrors.BadRequestError("Invalid clientDataJSON encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	authenticatorData, err := base64.StdEncoding.DecodeString(credData.Response.AuthenticatorData)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode authenticatorData")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid authenticatorData encoding"})
+		apiErr := sharedErrors.BadRequestError("Invalid authenticatorData encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	signature, err := base64.StdEncoding.DecodeString(credData.Response.Signature)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode signature")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid signature encoding"})
+		apiErr := sharedErrors.BadRequestError("Invalid signature encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -297,7 +342,8 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		userHandle, err = base64.StdEncoding.DecodeString(*credData.Response.UserHandle)
 		if err != nil {
 			logger.WithField("error", err.Error()).Warn("Failed to decode userHandle")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid userHandle encoding"})
+			apiErr := sharedErrors.BadRequestError("Invalid userHandle encoding").WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
 			return
 		}
 	}
@@ -325,7 +371,9 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 	parsedResponse, err := credResponse.Parse()
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to parse credential response")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid credential response"})
+		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyInvalid,
+			"Invalid credential response").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -334,12 +382,13 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 	user, err := h.passkeyUsecase.FinishAuthenticationByCredential(parsedResponse)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to finish passkey authentication")
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid passkey"})
+		apiErr := sharedErrors.NewAPIError(http.StatusUnauthorized, sharedErrors.AuthPasskeyInvalid,
+			"Invalid passkey").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Create session for the user
-	requestID := c.GetHeader("X-Request-ID")
 	ipAddress, userAgent := middleware.ExtractClientInfo(c)
 
 	authConfig := middleware.GetAuthConfig()
@@ -360,10 +409,9 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 				"error":      err.Error(),
 			}).Error("Failed to create session after passkey authentication")
 
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to create session",
-				"request_id": requestID,
-			})
+			apiErr := sharedErrors.InternalError("Failed to create session").
+				WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
 			return
 		}
 
@@ -385,17 +433,20 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		}).Info("Passkey authentication successful, session created")
 
 		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "Authentication successful",
-			"user":    user.ToResponse(),
+			"success":    true,
+			"message":    "Authentication successful",
+			"user":       user.ToResponse(),
 			"session": gin.H{
 				"session_id": session.SessionID,
 			},
-			"auth_mode": "session",
+			"auth_mode":  "session",
+			"request_id": requestID,
 		})
 	} else {
 		logger.WithField("user_id", user.ID).Error("Session store not configured")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Session management not available"})
+		apiErr := sharedErrors.InternalError("Session management not available").
+			WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 	}
 }
 

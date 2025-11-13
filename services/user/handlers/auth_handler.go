@@ -8,6 +8,7 @@ import (
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/usecase"
 	"tachyon-messenger/shared/analytics"
+	sharedErrors "tachyon-messenger/shared/errors"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
@@ -163,30 +164,25 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Invalid request body for user login")
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
-			"details":    err.Error(),
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.BadRequestError("Invalid request body").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Additional validation
 	if strings.TrimSpace(req.Email) == "" {
 		logger.WithField("request_id", requestID).Warn("Email is required for login")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Email is required",
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.RequiredFieldError("email").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	if strings.TrimSpace(req.Password) == "" {
 		logger.WithField("request_id", requestID).Warn("Password is required for login")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Password is required",
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.RequiredFieldError("password").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -202,38 +198,30 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed login attempt")
 
-		// Determine appropriate HTTP status code based on error
-		statusCode := http.StatusUnauthorized
-		errorMessage := "Invalid credentials"
+		// Determine appropriate error based on error message
+		var apiErr *sharedErrors.APIError
 
 		if strings.Contains(err.Error(), "invalid email or password") {
-			statusCode = http.StatusUnauthorized
-			errorMessage = "Invalid email or password"
-		} else if strings.Contains(err.Error(), "2FA is required") ||
-			strings.Contains(err.Error(), "2FA") {
-			statusCode = http.StatusForbidden
-			errorMessage = err.Error()
+			apiErr = sharedErrors.InvalidCredentialsError()
+		} else if strings.Contains(err.Error(), "2FA is required") {
+			apiErr = sharedErrors.TwoFactorRequiredError()
 		} else if strings.Contains(err.Error(), "deactivated") {
-			statusCode = http.StatusForbidden
-			errorMessage = "Account is deactivated"
-		} else if strings.Contains(err.Error(), "Passkey") ||
-			strings.Contains(err.Error(), "password login is disabled") {
-			statusCode = http.StatusForbidden
-			errorMessage = err.Error()
-		} else if strings.Contains(err.Error(), "email is required") ||
-			strings.Contains(err.Error(), "password is required") {
-			statusCode = http.StatusBadRequest
-			errorMessage = err.Error()
+			apiErr = sharedErrors.AccountDeactivatedError()
+		} else if strings.Contains(err.Error(), "password login is disabled") {
+			apiErr = sharedErrors.PasskeyOnlyError()
+		} else if strings.Contains(err.Error(), "super admin access is restricted") {
+			apiErr = sharedErrors.SuperAdminWebOnlyError()
+		} else if strings.Contains(err.Error(), "email is required") {
+			apiErr = sharedErrors.RequiredFieldError("email")
+		} else if strings.Contains(err.Error(), "password is required") {
+			apiErr = sharedErrors.RequiredFieldError("password")
 		} else {
 			// For any other error, keep it generic for security
-			statusCode = http.StatusInternalServerError
-			errorMessage = "Login failed"
+			apiErr = sharedErrors.InternalError("Login failed")
 		}
 
-		c.JSON(statusCode, gin.H{
-			"error":      errorMessage,
-			"request_id": requestID,
-		})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -311,11 +299,10 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Invalid request body for super admin login")
 
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
-			"details":    err.Error(),
-			"request_id": requestID,
-		})
+		apiErr := sharedErrors.BadRequestError("Invalid request body").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -331,16 +318,23 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed super admin login attempt")
 
-		// Check if error is 2FA required
-		errorMessage := "Invalid credentials"
-		if strings.Contains(err.Error(), "2FA") || strings.Contains(err.Error(), "two-factor") {
-			errorMessage = err.Error()
+		// Determine appropriate error based on error message
+		var apiErr *sharedErrors.APIError
+
+		if strings.Contains(err.Error(), "2FA is required") {
+			apiErr = sharedErrors.TwoFactorRequiredError()
+		} else if strings.Contains(err.Error(), "invalid email or password") {
+			apiErr = sharedErrors.InvalidCredentialsError()
+		} else if strings.Contains(err.Error(), "deactivated") {
+			apiErr = sharedErrors.AccountDeactivatedError()
+		} else if strings.Contains(err.Error(), "password login is disabled") {
+			apiErr = sharedErrors.PasskeyOnlyError()
+		} else {
+			apiErr = sharedErrors.InvalidCredentialsError()
 		}
 
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      errorMessage,
-			"request_id": requestID,
-		})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
