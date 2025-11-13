@@ -31,6 +31,7 @@ type PollRepository interface {
 	GetPollsByStatus(status models.PollStatus, filter *models.PollFilterRequest) ([]*models.Poll, int64, error)
 	GetExpiredPolls() ([]*models.Poll, error)
 	UpdateStatus(id uint, status models.PollStatus) error
+	BatchUpdateStatus(ids []uint, status models.PollStatus) (int64, error)
 	Count() (int64, error)
 	CountByCreator(userID uint) (int64, error)
 	CountByStatus(status models.PollStatus) (int64, error)
@@ -135,6 +136,7 @@ func (r *pollRepository) Delete(id uint) error {
 }
 
 // GetPolls retrieves polls based on visibility and filters
+// Polls are sorted with user_has_voted=false first (unvoted polls)
 func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest, userRole sharedModels.Role) ([]*models.Poll, int64, error) {
 	query := r.db.Model(&models.Poll{}).
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
@@ -154,8 +156,16 @@ func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest,
 		return nil, 0, fmt.Errorf("failed to count polls: %w", err)
 	}
 
-	// Apply sorting and pagination
-	query = r.applySortingAndPagination(query, filter)
+	// Apply sorting and pagination with user voting priority
+	query = r.applySortingAndPaginationWithVotePriority(query, filter, userID)
+
+	// Debug: Log SQL with Session DryRun
+	stmt := query.Session(&gorm.Session{DryRun: true}).Find(&[]models.Poll{}).Statement
+	logger.WithFields(map[string]interface{}{
+		"user_id": userID,
+		"sql":     stmt.SQL.String(),
+		"vars":    stmt.Vars,
+	}).Info("GetPolls SQL query")
 
 	var polls []*models.Poll
 	if err := query.Find(&polls).Error; err != nil {
@@ -177,6 +187,7 @@ func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest,
 }
 
 // SearchPolls searches polls by title and description
+// Polls are sorted with user_has_voted=false first (unvoted polls)
 func (r *pollRepository) SearchPolls(userID uint, searchQuery string, filter *models.PollFilterRequest) ([]*models.Poll, int64, error) {
 	query := r.db.Model(&models.Poll{}).
 		Preload("Options", func(db *gorm.DB) *gorm.DB {
@@ -200,8 +211,8 @@ func (r *pollRepository) SearchPolls(userID uint, searchQuery string, filter *mo
 		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
 	}
 
-	// Apply sorting and pagination
-	query = r.applySortingAndPagination(query, filter)
+	// Apply sorting and pagination with user voting priority
+	query = r.applySortingAndPaginationWithVotePriority(query, filter, userID)
 
 	var polls []*models.Poll
 	if err := query.Find(&polls).Error; err != nil {
@@ -400,12 +411,21 @@ func (r *pollRepository) GetPollsByStatus(status models.PollStatus, filter *mode
 }
 
 // GetExpiredPolls retrieves polls that should be closed (end_time has passed)
+// Uses indexed query and limits results for performance
 func (r *pollRepository) GetExpiredPolls() ([]*models.Poll, error) {
 	var polls []*models.Poll
 	now := time.Now()
 
-	err := r.db.Where("status = ? AND end_time IS NOT NULL AND end_time < ?",
-		models.PollStatusActive, now).Find(&polls).Error
+	// Optimized query:
+	// 1. Uses index on (status, end_time)
+	// 2. Only selects ID (minimal data)
+	// 3. Limits to 100 polls per batch to avoid heavy load
+	err := r.db.
+		Select("id").
+		Where("status = ? AND end_time IS NOT NULL AND end_time < ?",
+			models.PollStatusActive, now).
+		Limit(100).
+		Find(&polls).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expired polls: %w", err)
 	}
@@ -423,6 +443,24 @@ func (r *pollRepository) UpdateStatus(id uint, status models.PollStatus) error {
 		return fmt.Errorf("poll not found")
 	}
 	return nil
+}
+
+// BatchUpdateStatus updates status for multiple polls in a single query
+// Returns the number of updated rows
+func (r *pollRepository) BatchUpdateStatus(ids []uint, status models.PollStatus) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+
+	result := r.db.Model(&models.Poll{}).
+		Where("id IN ?", ids).
+		Update("status", status)
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to batch update poll status: %w", result.Error)
+	}
+
+	return result.RowsAffected, nil
 }
 
 // Count returns the total number of polls
@@ -465,14 +503,21 @@ func (r *pollRepository) applyVisibilityFilter(query *gorm.DB, userID uint) *gor
 	}
 
 	if err := r.db.Table("users").Select("department_id").Where("id = ?", userID).First(&result).Error; err == nil && result.DepartmentID != nil {
-		// User has a department - include department polls
+		// User has a department - show:
+		// 1. All public polls (regardless of department_id)
+		// 2. Polls created by this user
+		// 3. Invite-only polls where user is a participant
+		// 4. Department polls for user's department
 		return query.Where(
 			"visibility = ? OR created_by = ? OR (visibility = ? AND id IN (SELECT poll_id FROM poll_participants WHERE user_id = ?)) OR (visibility = ? AND department_id = ?)",
 			models.PollVisibilityPublic, userID, models.PollVisibilityInviteOnly, userID, models.PollVisibilityDepartment, *result.DepartmentID,
 		)
 	}
 
-	// User has no department - exclude department polls
+	// User has no department - show:
+	// 1. All public polls
+	// 2. Polls created by this user
+	// 3. Invite-only polls where user is a participant
 	return query.Where(
 		"visibility = ? OR created_by = ? OR (visibility = ? AND id IN (SELECT poll_id FROM poll_participants WHERE user_id = ?))",
 		models.PollVisibilityPublic, userID, models.PollVisibilityInviteOnly, userID,
@@ -613,6 +658,70 @@ func (r *pollRepository) applySortingAndPagination(query *gorm.DB, filter *model
 	return query.Limit(limit).Offset(offset)
 }
 
+// applySortingAndPaginationWithVotePriority applies sorting with priority for unvoted polls
+// Unvoted polls appear first, then voted polls
+func (r *pollRepository) applySortingAndPaginationWithVotePriority(query *gorm.DB, filter *models.PollFilterRequest, userID uint) *gorm.DB {
+	if filter == nil {
+		filter = &models.PollFilterRequest{
+			Limit:     models.DefaultLimit,
+			Offset:    0,
+			SortBy:    "created_at",
+			SortOrder: "desc",
+		}
+	}
+
+	// Apply sorting
+	sortBy := filter.SortBy
+	if sortBy == "" {
+		sortBy = "created_at"
+	}
+
+	sortOrder := filter.SortOrder
+	if sortOrder == "" {
+		sortOrder = "desc"
+	}
+
+	// Primary sort: unvoted polls first (0), then voted polls (1)
+	// Use raw SQL for the EXISTS subquery in ORDER BY
+	// Note: We need to format the SQL directly since gorm.Expr with parameters doesn't always work in ORDER BY
+	votePrioritySQL := fmt.Sprintf(
+		"CASE WHEN EXISTS (SELECT 1 FROM poll_votes WHERE poll_votes.poll_id = polls.id AND poll_votes.user_id = %d) THEN 1 ELSE 0 END",
+		userID,
+	)
+	query = query.Order(votePrioritySQL)
+
+	// Secondary sort: by user's chosen field
+	query = query.Order(sortBy + " " + sortOrder)
+
+	// Tertiary sort: by id for deterministic ordering
+	query = query.Order("id " + sortOrder)
+
+	// Apply pagination
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = models.DefaultLimit
+	}
+	if limit > models.MaxLimit {
+		limit = models.MaxLimit
+	}
+
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Debug logging
+	logger.WithFields(map[string]interface{}{
+		"user_id": userID,
+		"limit":   limit,
+		"offset":  offset,
+		"sort_by": sortBy,
+		"order":   sortOrder,
+	}).Info("Applying pagination with vote priority")
+
+	return query.Limit(limit).Offset(offset)
+}
+
 // loadPollStatistics loads computed statistics for polls
 func (r *pollRepository) loadPollStatistics(polls []*models.Poll, userID uint) {
 	if len(polls) == 0 {
@@ -700,11 +809,21 @@ func (r *pollRepository) loadPollStatistics(polls []*models.Poll, userID uint) {
 	}).Info("Loaded department names")
 
 	// Apply computed fields to polls
+	pollDebugInfo := make([]map[string]interface{}, 0, len(polls))
 	for _, poll := range polls {
 		poll.TotalVotes = int(voteCountMap[poll.ID])
 		poll.TotalVoters = int(voterCountMap[poll.ID])
 		poll.UserHasVoted = userVoteMap[poll.ID]
 		poll.DepartmentName = departmentMap[poll.ID]
+
+		// Debug info for each poll
+		pollDebugInfo = append(pollDebugInfo, map[string]interface{}{
+			"poll_id":        poll.ID,
+			"title":          poll.Title,
+			"user_has_voted": poll.UserHasVoted,
+			"total_votes":    poll.TotalVotes,
+			"visibility":     poll.Visibility,
+		})
 
 		if poll.DepartmentID != nil {
 			logger.WithFields(map[string]interface{}{
@@ -723,4 +842,10 @@ func (r *pollRepository) loadPollStatistics(polls []*models.Poll, userID uint) {
 			}
 		}
 	}
+
+	// Debug: Log poll order and voting status
+	logger.WithFields(map[string]interface{}{
+		"user_id": userID,
+		"polls":   pollDebugInfo,
+	}).Info("Poll statistics loaded")
 }

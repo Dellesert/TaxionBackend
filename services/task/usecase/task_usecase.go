@@ -60,12 +60,13 @@ type TaskUsecase interface {
 
 // taskUsecase implements TaskUsecase interface
 type taskUsecase struct {
-	taskRepo       repository.TaskRepository
-	commentRepo    repository.CommentRepository
-	activityRepo   repository.ActivityRepository
-	attachmentRepo repository.AttachmentRepository
-	checklistRepo  repository.ChecklistRepository
-	userClient     *clients.UserClient
+	taskRepo          repository.TaskRepository
+	commentRepo       repository.CommentRepository
+	activityRepo      repository.ActivityRepository
+	attachmentRepo    repository.AttachmentRepository
+	checklistRepo     repository.ChecklistRepository
+	attachmentUsecase AttachmentUsecase
+	userClient        *clients.UserClient
 }
 
 // NewTaskUsecase creates a new task usecase
@@ -75,14 +76,16 @@ func NewTaskUsecase(
 	activityRepo repository.ActivityRepository,
 	attachmentRepo repository.AttachmentRepository,
 	checklistRepo repository.ChecklistRepository,
+	attachmentUsecase AttachmentUsecase,
 ) TaskUsecase {
 	return &taskUsecase{
-		taskRepo:       taskRepo,
-		commentRepo:    commentRepo,
-		activityRepo:   activityRepo,
-		attachmentRepo: attachmentRepo,
-		checklistRepo:  checklistRepo,
-		userClient:     clients.NewUserClient(),
+		taskRepo:          taskRepo,
+		commentRepo:       commentRepo,
+		activityRepo:      activityRepo,
+		attachmentRepo:    attachmentRepo,
+		checklistRepo:     checklistRepo,
+		attachmentUsecase: attachmentUsecase,
+		userClient:        clients.NewUserClient(),
 	}
 }
 
@@ -428,13 +431,15 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 	}
 
 	// Check permissions: creator, assignee, or super_admin can update
+	// Parent task creator cannot edit subtasks (only view them)
 	isSuperAdmin := userRole == sharedmodels.RoleSuperAdmin
-	if !isSuperAdmin && !u.hasTaskAccess(userID, task) {
+	if !isSuperAdmin && !u.hasTaskEditAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
 	// Track changes for activity logging
 	changes := make(map[string]interface{})
+	statusChanged := false
 
 	// Update fields if provided
 	if req.Title != nil && strings.TrimSpace(*req.Title) != task.Title {
@@ -451,6 +456,7 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		oldStatus := task.Status
 		task.Status = *req.Status
 		task.LastStatusChangedBy = &userID
+		statusChanged = true
 		u.logActivity(taskID, userID, "task_status_changed", string(oldStatus), string(task.Status), changes)
 	}
 	if req.Priority != nil && *req.Priority != task.Priority {
@@ -497,6 +503,13 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		if err != nil {
 			return nil, fmt.Errorf("failed to reload task: %w", err)
 		}
+	}
+
+	// Recalculate progress if status changed (for tasks without subtasks/checklists)
+	if statusChanged {
+		u.RecalculateTaskProgress(taskID)
+		// Reload task to get updated progress
+		task, _ = u.taskRepo.GetByID(taskID)
 	}
 
 	response := task.ToResponse()
@@ -561,7 +574,8 @@ func (u *taskUsecase) AssignTask(userID, taskID uint, req *models.AssignTaskRequ
 	}
 
 	// Check permissions: only creator or current assignee can reassign
-	if !u.hasTaskAccess(userID, task) {
+	// Parent task creator cannot edit subtasks (only view them)
+	if !u.hasTaskEditAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -601,7 +615,8 @@ func (u *taskUsecase) UnassignTask(userID, taskID uint) (*models.TaskResponse, e
 	}
 
 	// Check permissions: only creator or current assignee can unassign
-	if !u.hasTaskAccess(userID, task) {
+	// Parent task creator cannot edit subtasks (only view them)
+	if !u.hasTaskEditAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -633,7 +648,8 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 	}
 
 	// Check permissions: only creator or assignee can update status
-	if !u.hasTaskAccess(userID, task) {
+	// Parent task creator cannot edit subtasks (only view them)
+	if !u.hasTaskEditAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -660,24 +676,26 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 		"changed_at": time.Now(),
 	})
 
-	// Recalculate progress if status changed
-	if oldStatus != task.Status {
-		u.RecalculateTaskProgress(taskID)
-		// If task has parent, recalculate parent progress and log activity
-		if task.ParentTaskID != nil {
-			u.RecalculateTaskProgress(*task.ParentTaskID)
+	// Recalculate progress (for all tasks, regardless of subtasks/checklists)
+	u.RecalculateTaskProgress(taskID)
 
-			// Log activity in parent task about subtask status change
-			statusChangeMessage := fmt.Sprintf("Подзадача '%s' изменила статус: %s → %s", task.Title, oldStatus, req.Status)
-			u.logActivity(*task.ParentTaskID, userID, "subtask_status_changed", string(oldStatus), string(req.Status), map[string]interface{}{
-				"subtask_id":    taskID,
-				"subtask_title": task.Title,
-				"old_status":    oldStatus,
-				"new_status":    req.Status,
-				"message":       statusChangeMessage,
-			})
-		}
+	// If task has parent, recalculate parent progress and log activity
+	if task.ParentTaskID != nil {
+		u.RecalculateTaskProgress(*task.ParentTaskID)
+
+		// Log activity in parent task about subtask status change
+		statusChangeMessage := fmt.Sprintf("Подзадача '%s' изменила статус: %s → %s", task.Title, oldStatus, req.Status)
+		u.logActivity(*task.ParentTaskID, userID, "subtask_status_changed", string(oldStatus), string(req.Status), map[string]interface{}{
+			"subtask_id":    taskID,
+			"subtask_title": task.Title,
+			"old_status":    oldStatus,
+			"new_status":    req.Status,
+			"message":       statusChangeMessage,
+		})
 	}
+
+	// Reload task to get updated progress
+	task, _ = u.taskRepo.GetByID(taskID)
 
 	response := task.ToResponse()
 
@@ -863,6 +881,38 @@ func (u *taskUsecase) hasTaskAccess(userID uint, task *models.Task) bool {
 		}
 	}
 
+	// Check if user is creator of parent task (for subtasks)
+	if task.ParentTaskID != nil {
+		parentTask, err := u.taskRepo.GetByID(*task.ParentTaskID)
+		if err == nil && parentTask.CreatedBy == userID {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasTaskEditAccess checks if user has edit access to the task
+// This is more restrictive than hasTaskAccess - doesn't allow parent task creator to edit subtasks
+func (u *taskUsecase) hasTaskEditAccess(userID uint, task *models.Task) bool {
+	// User is creator
+	if task.CreatedBy == userID {
+		return true
+	}
+
+	// User is assignee (old field for backward compatibility)
+	if task.AssignedTo != nil && *task.AssignedTo == userID {
+		return true
+	}
+
+	// User is in task_assignees (new many-to-many relationship)
+	for _, assignee := range task.Assignees {
+		if assignee.UserID == userID {
+			return true
+		}
+	}
+
+	// Parent task creator cannot edit subtasks
 	return false
 }
 
@@ -1066,6 +1116,15 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 		task.Assignees = append(task.Assignees, *assignee)
 	}
 
+	// Copy attachments from parent task if specified
+	if len(req.ParentAttachmentIDs) > 0 && u.attachmentUsecase != nil {
+		err := u.attachmentUsecase.CopyAttachmentsToTask(parentTaskID, task.ID, userID, req.ParentAttachmentIDs)
+		if err != nil {
+			// Log warning but don't fail subtask creation
+			fmt.Printf("Warning: failed to copy attachments to subtask: %v\n", err)
+		}
+	}
+
 	// Log activity for parent task with assignee information
 	details := map[string]interface{}{
 		"subtask_id":    task.ID,
@@ -1140,7 +1199,8 @@ func (u *taskUsecase) DelegateTask(userID uint, taskID uint, toUserID uint) (*mo
 	}
 
 	// Check permissions - only current assignee or task creator can delegate
-	if !u.hasTaskAccess(userID, task) {
+	// Parent task creator cannot delegate subtasks (only view them)
+	if !u.hasTaskEditAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: only task assignee or creator can delegate")
 	}
 
@@ -1294,7 +1354,7 @@ func (u *taskUsecase) MarkTaskAsViewed(userID uint, taskID uint) (*models.TaskRe
 	return response, nil
 }
 
-// RecalculateTaskProgress recalculates progress based on subtasks
+// RecalculateTaskProgress recalculates progress based on subtasks and checklists
 func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 	// Get task
 	task, err := u.taskRepo.GetByID(taskID)
@@ -1308,8 +1368,14 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 		return fmt.Errorf("failed to count subtasks: %w", err)
 	}
 
-	// If no subtasks, calculate progress based on status
-	if totalSubtasks == 0 {
+	// Count checklist items
+	totalChecklistItems, err := u.checklistRepo.CountChecklistItemsByTaskID(taskID)
+	if err != nil {
+		return fmt.Errorf("failed to count checklist items: %w", err)
+	}
+
+	// If no subtasks and no checklist items, calculate progress based on status
+	if totalSubtasks == 0 && totalChecklistItems == 0 {
 		progress := u.calculateProgressByStatus(task.Status)
 		if task.ProgressPercentage != progress {
 			return u.taskRepo.UpdateProgress(taskID, progress)
@@ -1317,16 +1383,41 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 		return nil
 	}
 
-	// Count completed subtasks
-	completedSubtasks, err := u.taskRepo.CountCompletedSubtasks(taskID)
-	if err != nil {
-		return fmt.Errorf("failed to count completed subtasks: %w", err)
-	}
+	var progress int
 
-	// Calculate progress percentage
-	progress := 0
-	if totalSubtasks > 0 {
-		progress = int((float64(completedSubtasks) / float64(totalSubtasks)) * 100)
+	// If task has only checklist items (no subtasks)
+	if totalSubtasks == 0 && totalChecklistItems > 0 {
+		completedChecklistItems, err := u.checklistRepo.CountCompletedChecklistItemsByTaskID(taskID)
+		if err != nil {
+			return fmt.Errorf("failed to count completed checklist items: %w", err)
+		}
+		progress = int((float64(completedChecklistItems) / float64(totalChecklistItems)) * 100)
+	} else if totalSubtasks > 0 {
+		// If task has subtasks, calculate progress based on subtasks
+		// Each subtask contributes to the overall progress based on its own progress
+
+		// Get all subtasks with their progress
+		subtasks, err := u.taskRepo.GetSubtasks(taskID)
+		if err != nil {
+			return fmt.Errorf("failed to get subtasks: %w", err)
+		}
+
+		// Calculate average progress of all subtasks
+		totalProgress := 0
+		for _, subtask := range subtasks {
+			// First recalculate subtask progress (in case it has checklists)
+			u.RecalculateTaskProgress(subtask.ID)
+
+			// Reload subtask to get updated progress
+			updatedSubtask, err := u.taskRepo.GetByID(subtask.ID)
+			if err == nil {
+				totalProgress += updatedSubtask.ProgressPercentage
+			}
+		}
+
+		if totalSubtasks > 0 {
+			progress = totalProgress / int(totalSubtasks)
+		}
 	}
 
 	// Update progress if changed
@@ -1358,7 +1449,8 @@ func (u *taskUsecase) UpdateTaskProgress(userID uint, taskID uint, progress int)
 	}
 
 	// Check permissions
-	if !u.hasTaskAccess(userID, task) {
+	// Parent task creator cannot edit subtasks (only view them)
+	if !u.hasTaskEditAccess(userID, task) {
 		return nil, fmt.Errorf("access denied: insufficient permissions")
 	}
 
@@ -1370,6 +1462,16 @@ func (u *taskUsecase) UpdateTaskProgress(userID uint, taskID uint, progress int)
 
 	if subtaskCount > 0 {
 		return nil, fmt.Errorf("cannot manually update progress for tasks with subtasks - progress is auto-calculated")
+	}
+
+	// Check if task has checklists - if yes, progress is auto-calculated
+	checklistItemCount, err := u.checklistRepo.CountChecklistItemsByTaskID(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check checklist items: %w", err)
+	}
+
+	if checklistItemCount > 0 {
+		return nil, fmt.Errorf("cannot manually update progress for tasks with checklists - progress is auto-calculated based on completed checklist items")
 	}
 
 	// Update progress

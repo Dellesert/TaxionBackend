@@ -117,14 +117,19 @@ func main() {
 	// Initialize user client
 	userClient := clients.NewUserClient()
 
-	// Initialize usecases
-	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo, activityRepo, attachmentRepo, checklistRepo)
+	// Initialize usecases (order matters due to dependencies)
 	activityUsecase := usecase.NewActivityUsecase(activityRepo, taskRepo, userClient)
 	attachmentUsecase := usecase.NewAttachmentUsecase(attachmentRepo, taskRepo)
 	checklistUsecase := usecase.NewChecklistUsecase(checklistRepo, taskRepo)
 
 	// Set activity usecase for attachment usecase (to avoid circular dependency)
 	attachmentUsecase.SetActivityUsecase(activityUsecase)
+
+	// Initialize task usecase with attachment usecase
+	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo, activityRepo, attachmentRepo, checklistRepo, attachmentUsecase)
+
+	// Set task usecase for checklist usecase (to avoid circular dependency)
+	checklistUsecase.SetTaskUsecase(taskUsecase)
 
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase, analyticsClient)

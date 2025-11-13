@@ -26,6 +26,7 @@ type PollUsecase interface {
 
 	// Poll status management
 	UpdatePollStatus(userID, pollID uint, status models.PollStatus, userRole sharedModels.Role) error
+	AutoCloseExpiredPolls() (int, error)
 
 	// Voting operations
 	VotePoll(userID, pollID uint, req *models.VotePollRequest) ([]*models.PollVoteResponse, error)
@@ -195,6 +196,14 @@ func (u *pollUsecase) GetPoll(userID, pollID uint, userRole sharedModels.Role) (
 			return nil, fmt.Errorf("poll not found")
 		}
 		return nil, fmt.Errorf("failed to get poll: %w", err)
+	}
+
+	// Auto-close poll if it has expired (on-the-fly check)
+	if poll.Status == models.PollStatusActive && poll.EndTime != nil && time.Now().After(*poll.EndTime) {
+		// Update status to closed
+		if err := u.pollRepo.UpdateStatus(pollID, models.PollStatusClosed); err == nil {
+			poll.Status = models.PollStatusClosed
+		}
 	}
 
 	// Check access rights
@@ -447,6 +456,35 @@ func (u *pollUsecase) UpdatePollStatus(userID, pollID uint, status models.PollSt
 	}
 
 	return nil
+}
+
+// AutoCloseExpiredPolls automatically closes polls that have passed their end_time
+// Returns the number of polls that were closed
+// Optimized to use batch updates for better performance
+func (u *pollUsecase) AutoCloseExpiredPolls() (int, error) {
+	// Get expired polls (limited to 100 per batch for performance)
+	expiredPolls, err := u.pollRepo.GetExpiredPolls()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get expired polls: %w", err)
+	}
+
+	if len(expiredPolls) == 0 {
+		return 0, nil
+	}
+
+	// Collect poll IDs for batch update
+	pollIDs := make([]uint, len(expiredPolls))
+	for i, poll := range expiredPolls {
+		pollIDs[i] = poll.ID
+	}
+
+	// Batch update all expired polls in a single query
+	updatedCount, err := u.pollRepo.BatchUpdateStatus(pollIDs, models.PollStatusClosed)
+	if err != nil {
+		return 0, fmt.Errorf("failed to batch update poll status: %w", err)
+	}
+
+	return int(updatedCount), nil
 }
 
 // VotePoll handles voting on a poll

@@ -207,6 +207,7 @@ type CreateTaskRequest struct {
 	ParentTaskID         *uint                     `json:"parent_task_id,omitempty" validate:"omitempty,min=1"`
 	DueDate              *time.Time                `json:"due_date,omitempty"`
 	Checklists           []CreateChecklistRequest  `json:"checklists,omitempty" validate:"omitempty,dive"`
+	ParentAttachmentIDs  []uint                    `json:"parent_attachment_ids,omitempty" validate:"omitempty,dive,min=1"` // IDs of attachments from parent task to copy
 
 	// Backward compatibility
 	AssignedTo           *uint   `json:"assigned_to,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"` // Deprecated

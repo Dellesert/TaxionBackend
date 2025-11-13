@@ -99,6 +99,50 @@ func main() {
 	// Setup routes
 	r := setupRoutes(pollHandler, jwtConfig)
 
+	// Start background scheduler for auto-closing expired polls
+	checkInterval := time.Duration(cfg.Poll.AutoCloseCheckInterval) * time.Minute
+	log.WithFields(map[string]interface{}{
+		"interval_minutes": cfg.Poll.AutoCloseCheckInterval,
+	}).Info("Starting poll auto-close scheduler")
+
+	ctx, cancelScheduler := context.WithCancel(context.Background())
+	defer cancelScheduler()
+
+	go func() {
+		ticker := time.NewTicker(checkInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				log.Info("Poll auto-close scheduler stopped")
+				return
+			case <-ticker.C:
+				startTime := time.Now()
+				closedCount, err := pollUsecase.AutoCloseExpiredPolls()
+				duration := time.Since(startTime)
+
+				if err != nil {
+					log.WithFields(map[string]interface{}{
+						"error":        err.Error(),
+						"duration_ms":  duration.Milliseconds(),
+					}).Error("Failed to auto-close expired polls")
+				} else if closedCount > 0 {
+					log.WithFields(map[string]interface{}{
+						"closed_count": closedCount,
+						"duration_ms":  duration.Milliseconds(),
+					}).Info("Auto-closed expired polls")
+				} else {
+					// Log successful check even if no polls were closed (for monitoring)
+					log.WithFields(map[string]interface{}{
+						"closed_count": 0,
+						"duration_ms":  duration.Milliseconds(),
+					}).Debug("Poll auto-close check completed - no expired polls")
+				}
+			}
+		}
+	}()
+
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {

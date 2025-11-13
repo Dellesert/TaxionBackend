@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	Clean       bool
+	CleanTasks  bool
 	Users       bool
 	Chats       bool
 	Tasks       bool
@@ -55,6 +56,15 @@ func main() {
 			log.Fatalf("Failed to clean database: %v", err)
 		}
 		fmt.Println("✅ Database cleaned")
+	}
+
+	// Clean only tasks if requested
+	if config.CleanTasks {
+		fmt.Println("🗑️  Cleaning tasks only...")
+		if err := seeders.CleanTasks(db); err != nil {
+			log.Fatalf("Failed to clean tasks: %v", err)
+		}
+		return
 	}
 
 	// Seed users and departments (required for other seeders)
@@ -118,6 +128,7 @@ func parseFlags() *Config {
 	config := &Config{}
 
 	flag.BoolVar(&config.Clean, "clean", false, "Clean database before seeding")
+	flag.BoolVar(&config.CleanTasks, "clean-tasks", false, "Clean only tasks (delete all mock tasks)")
 	flag.BoolVar(&config.All, "all", false, "Seed all data")
 	flag.BoolVar(&config.Users, "users", false, "Seed users and departments")
 	flag.BoolVar(&config.Chats, "chats", false, "Seed chats and messages")
@@ -132,6 +143,11 @@ func parseFlags() *Config {
 	flag.IntVar(&config.EventCount, "event-count", 80, "Number of calendar events to create")
 
 	flag.Parse()
+
+	// If clean-tasks flag is set, don't enable other flags
+	if config.CleanTasks {
+		return config
+	}
 
 	// If no specific flag is set, enable all
 	if !config.Users && !config.Chats && !config.Tasks && !config.Polls && !config.Calendar {

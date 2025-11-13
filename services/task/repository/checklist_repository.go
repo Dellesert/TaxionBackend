@@ -28,6 +28,10 @@ type ChecklistRepository interface {
 	// Batch operations
 	CreateChecklistItems(items []*models.TaskChecklistItem) error
 	GetChecklistsWithItems(taskID uint) ([]*models.TaskChecklist, error)
+
+	// Counting operations for progress calculation
+	CountChecklistItemsByTaskID(taskID uint) (int64, error)
+	CountCompletedChecklistItemsByTaskID(taskID uint) (int64, error)
 }
 
 // checklistRepository implements ChecklistRepository interface
@@ -180,4 +184,32 @@ func (r *checklistRepository) DeleteChecklistItem(id uint) error {
 		return fmt.Errorf("checklist item not found")
 	}
 	return nil
+}
+
+// Counting operations for progress calculation
+
+// CountChecklistItemsByTaskID counts total checklist items for a task
+func (r *checklistRepository) CountChecklistItemsByTaskID(taskID uint) (int64, error) {
+	var count int64
+	err := r.db.Table("task_checklist_items").
+		Joins("INNER JOIN task_checklists ON task_checklist_items.checklist_id = task_checklists.id").
+		Where("task_checklists.task_id = ? AND task_checklist_items.deleted_at IS NULL AND task_checklists.deleted_at IS NULL", taskID).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count checklist items: %w", err)
+	}
+	return count, nil
+}
+
+// CountCompletedChecklistItemsByTaskID counts completed checklist items for a task
+func (r *checklistRepository) CountCompletedChecklistItemsByTaskID(taskID uint) (int64, error) {
+	var count int64
+	err := r.db.Table("task_checklist_items").
+		Joins("INNER JOIN task_checklists ON task_checklist_items.checklist_id = task_checklists.id").
+		Where("task_checklists.task_id = ? AND task_checklist_items.is_completed = ? AND task_checklist_items.deleted_at IS NULL AND task_checklists.deleted_at IS NULL", taskID, true).
+		Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count completed checklist items: %w", err)
+	}
+	return count, nil
 }

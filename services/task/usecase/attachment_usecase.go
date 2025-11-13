@@ -30,6 +30,9 @@ type AttachmentUsecase interface {
 	GetAttachmentByID(id uint) (*models.TaskAttachment, error)
 	DeleteAttachment(id, userID uint) error
 
+	// Copy attachments from parent task to subtask
+	CopyAttachmentsToTask(sourceTaskID, targetTaskID, userID uint, attachmentIDs []uint) error
+
 	// File validation
 	ValidateFile(file *multipart.FileHeader) error
 
@@ -305,6 +308,81 @@ func (u *attachmentUsecase) DeleteAttachment(id, userID uint) error {
 	if u.activityUsecase != nil {
 		if err := u.activityUsecase.LogAttachmentDeleted(taskID, userID, id, fileName); err != nil {
 			fmt.Printf("Warning: failed to log attachment deletion activity: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// CopyAttachmentsToTask copies selected attachments from source task to target task
+// This is used when creating subtasks and wanting to inherit attachments from parent task
+func (u *attachmentUsecase) CopyAttachmentsToTask(sourceTaskID, targetTaskID, userID uint, attachmentIDs []uint) error {
+	if len(attachmentIDs) == 0 {
+		return nil // Nothing to copy
+	}
+
+	// Verify source task exists
+	sourceTask, err := u.taskRepo.GetByID(sourceTaskID)
+	if err != nil {
+		return fmt.Errorf("source task not found: %w", err)
+	}
+	if sourceTask == nil {
+		return fmt.Errorf("source task not found")
+	}
+
+	// Verify target task exists
+	targetTask, err := u.taskRepo.GetByID(targetTaskID)
+	if err != nil {
+		return fmt.Errorf("target task not found: %w", err)
+	}
+	if targetTask == nil {
+		return fmt.Errorf("target task not found")
+	}
+
+	// Get all attachments from source task
+	sourceAttachments, err := u.attachmentRepo.GetByTaskID(sourceTaskID)
+	if err != nil {
+		return fmt.Errorf("failed to get source task attachments: %w", err)
+	}
+
+	// Create a map for quick lookup
+	sourceAttachmentMap := make(map[uint]*models.TaskAttachment)
+	for _, att := range sourceAttachments {
+		sourceAttachmentMap[att.ID] = att
+	}
+
+	// Copy each selected attachment
+	for _, attachmentID := range attachmentIDs {
+		sourceAttachment, exists := sourceAttachmentMap[attachmentID]
+		if !exists {
+			// Skip invalid attachment IDs (attachment doesn't belong to source task)
+			fmt.Printf("Warning: attachment %d does not belong to task %d, skipping\n", attachmentID, sourceTaskID)
+			continue
+		}
+
+		// Create new attachment record for target task
+		// FilePath is preserved - it's either a local path or /files/{id} reference to file-service
+		// This creates a shared reference to the same file
+		newAttachment := &models.TaskAttachment{
+			TaskID:           targetTaskID,
+			UploadedByUserID: userID, // Current user copying the attachment
+			FileName:         sourceAttachment.FileName,
+			FilePath:         sourceAttachment.FilePath, // Same file path/reference
+			FileType:         sourceAttachment.FileType,
+			FileSize:         sourceAttachment.FileSize,
+		}
+
+		if err := u.attachmentRepo.Create(newAttachment); err != nil {
+			// Log error but continue with other attachments
+			fmt.Printf("Warning: failed to copy attachment %d to task %d: %v\n", attachmentID, targetTaskID, err)
+			continue
+		}
+
+		// Log activity for target task
+		if u.activityUsecase != nil {
+			if err := u.activityUsecase.LogAttachmentAdded(targetTaskID, userID, newAttachment.ID, newAttachment.FileName); err != nil {
+				fmt.Printf("Warning: failed to log attachment copy activity: %v\n", err)
+			}
 		}
 	}
 

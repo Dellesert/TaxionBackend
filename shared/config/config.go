@@ -16,6 +16,7 @@ type Config struct {
 	JWT      JWTConfig
 	Server   ServerConfig
 	Auth     AuthConfig
+	Poll     PollConfig
 }
 
 // DatabaseConfig holds database configuration
@@ -42,6 +43,11 @@ type ServerConfig struct {
 type AuthConfig struct {
 	Mode            string // "jwt" or "session"
 	SessionDuration int    // Session duration in hours (for session mode)
+}
+
+// PollConfig holds poll service configuration
+type PollConfig struct {
+	AutoCloseCheckInterval int // Auto-close check interval in minutes
 }
 
 // LoadConfig loads configuration from environment variables
@@ -100,12 +106,21 @@ func LoadConfig() (*Config, error) {
 	serverPort := os.Getenv("SERVER_PORT")
 	authMode := os.Getenv("AUTH_MODE")
 	sessionDuration := os.Getenv("SESSION_DURATION_HOURS")
+	pollAutoCloseInterval := os.Getenv("POLL_AUTO_CLOSE_INTERVAL_MINUTES")
 
 	// Parse session duration
 	sessionDurationHours := 168 // Default 7 days
 	if sessionDuration != "" {
 		if parsed, err := strconv.Atoi(sessionDuration); err == nil && parsed > 0 {
 			sessionDurationHours = parsed
+		}
+	}
+
+	// Parse poll auto-close interval
+	pollAutoCloseMinutes := 5 // Default 5 minutes
+	if pollAutoCloseInterval != "" {
+		if parsed, err := strconv.Atoi(pollAutoCloseInterval); err == nil && parsed > 0 {
+			pollAutoCloseMinutes = parsed
 		}
 	}
 
@@ -154,6 +169,9 @@ func LoadConfig() (*Config, error) {
 		Auth: AuthConfig{
 			Mode:            authMode,
 			SessionDuration: sessionDurationHours,
+		},
+		Poll: PollConfig{
+			AutoCloseCheckInterval: pollAutoCloseMinutes,
 		},
 	}
 

@@ -25,12 +25,16 @@ type ChecklistUsecase interface {
 
 	// Batch operations
 	ReorderChecklistItems(checklistID, userID uint, itemPositions map[uint]int) error
+
+	// Internal method to set TaskUsecase (to avoid circular dependency)
+	SetTaskUsecase(taskUsecase TaskUsecase)
 }
 
 // checklistUsecase implements ChecklistUsecase interface
 type checklistUsecase struct {
 	checklistRepo repository.ChecklistRepository
 	taskRepo      repository.TaskRepository
+	taskUsecase   TaskUsecase
 }
 
 // NewChecklistUsecase creates a new checklist usecase
@@ -161,7 +165,16 @@ func (u *checklistUsecase) DeleteChecklist(id, userID uint) error {
 		return fmt.Errorf("permission denied: only task creator can delete checklists")
 	}
 
-	return u.checklistRepo.DeleteChecklist(id)
+	if err := u.checklistRepo.DeleteChecklist(id); err != nil {
+		return err
+	}
+
+	// Recalculate task progress
+	if u.taskUsecase != nil {
+		u.taskUsecase.RecalculateTaskProgress(task.ID)
+	}
+
+	return nil
 }
 
 // CreateChecklistItem creates a new checklist item
@@ -177,7 +190,6 @@ func (u *checklistUsecase) CreateChecklistItem(checklistID, userID uint, title s
 	if err != nil {
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
-	_ = task
 
 	// If position not provided, add at the end
 	if position < 0 {
@@ -197,6 +209,11 @@ func (u *checklistUsecase) CreateChecklistItem(checklistID, userID uint, title s
 
 	if err := u.checklistRepo.CreateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to create checklist item: %w", err)
+	}
+
+	// Recalculate task progress
+	if u.taskUsecase != nil {
+		u.taskUsecase.RecalculateTaskProgress(task.ID)
 	}
 
 	return item, nil
@@ -221,7 +238,12 @@ func (u *checklistUsecase) UpdateChecklistItem(id, userID uint, title string, is
 	if err != nil {
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
-	_ = task
+
+	// Track if completion status changed
+	completionChanged := false
+	if isCompleted != nil && item.IsCompleted != *isCompleted {
+		completionChanged = true
+	}
 
 	// Update fields
 	if title != "" {
@@ -236,6 +258,11 @@ func (u *checklistUsecase) UpdateChecklistItem(id, userID uint, title string, is
 
 	if err := u.checklistRepo.UpdateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to update checklist item: %w", err)
+	}
+
+	// Recalculate task progress if completion status changed
+	if completionChanged && u.taskUsecase != nil {
+		u.taskUsecase.RecalculateTaskProgress(task.ID)
 	}
 
 	return item, nil
@@ -263,9 +290,17 @@ func (u *checklistUsecase) DeleteChecklistItem(id, userID uint) error {
 
 	// TODO: Add proper permission check
 	// For now, allow task creator and assignees
-	_ = task
 
-	return u.checklistRepo.DeleteChecklistItem(id)
+	if err := u.checklistRepo.DeleteChecklistItem(id); err != nil {
+		return err
+	}
+
+	// Recalculate task progress
+	if u.taskUsecase != nil {
+		u.taskUsecase.RecalculateTaskProgress(task.ID)
+	}
+
+	return nil
 }
 
 // ToggleChecklistItem toggles the completion status of a checklist item
@@ -276,11 +311,28 @@ func (u *checklistUsecase) ToggleChecklistItem(id, userID uint) (*models.TaskChe
 		return nil, fmt.Errorf("checklist item not found: %w", err)
 	}
 
+	// Verify checklist exists
+	checklist, err := u.checklistRepo.GetChecklistByID(item.ChecklistID)
+	if err != nil {
+		return nil, fmt.Errorf("checklist not found: %w", err)
+	}
+
+	// Verify task exists
+	task, err := u.taskRepo.GetByID(checklist.TaskID)
+	if err != nil {
+		return nil, fmt.Errorf("task not found: %w", err)
+	}
+
 	// Toggle completion status
 	item.IsCompleted = !item.IsCompleted
 
 	if err := u.checklistRepo.UpdateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to toggle checklist item: %w", err)
+	}
+
+	// Recalculate task progress
+	if u.taskUsecase != nil {
+		u.taskUsecase.RecalculateTaskProgress(task.ID)
 	}
 
 	return item, nil
@@ -295,11 +347,10 @@ func (u *checklistUsecase) ReorderChecklistItems(checklistID, userID uint, itemP
 	}
 
 	// Verify task exists
-	task, err := u.taskRepo.GetByID(checklist.TaskID)
+	_, err = u.taskRepo.GetByID(checklist.TaskID)
 	if err != nil {
 		return fmt.Errorf("task not found: %w", err)
 	}
-	_ = task
 
 	// Update each item's position
 	for itemID, position := range itemPositions {
@@ -319,5 +370,12 @@ func (u *checklistUsecase) ReorderChecklistItems(checklistID, userID uint, itemP
 		}
 	}
 
+	// Note: Reordering doesn't affect progress, so no need to recalculate
+
 	return nil
+}
+
+// SetTaskUsecase sets the TaskUsecase to avoid circular dependency
+func (u *checklistUsecase) SetTaskUsecase(taskUsecase TaskUsecase) {
+	u.taskUsecase = taskUsecase
 }

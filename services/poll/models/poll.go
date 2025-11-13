@@ -47,13 +47,13 @@ type Poll struct {
 	Title       string         `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description string         `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
 	Type        PollType       `gorm:"not null;size:20" json:"type" validate:"required,oneof=single_choice multiple_choice ranking rating open_text"`
-	Status      PollStatus     `gorm:"not null;default:'draft';size:20" json:"status" validate:"required,oneof=draft active closed archived cancelled"`
+	Status      PollStatus     `gorm:"not null;default:'draft';size:20;index:idx_status_endtime" json:"status" validate:"required,oneof=draft active closed archived cancelled"`
 	Visibility  PollVisibility `gorm:"not null;default:'public';size:20" json:"visibility" validate:"required,oneof=public department invite_only private"`
 	CreatedBy   uint           `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
 
 	// Timing settings
 	StartTime *time.Time `gorm:"index" json:"start_time,omitempty"`
-	EndTime   *time.Time `gorm:"index" json:"end_time,omitempty"`
+	EndTime   *time.Time `gorm:"index:idx_status_endtime" json:"end_time,omitempty"`
 
 	// Poll settings
 	AllowAnonymous    bool `gorm:"not null" json:"allow_anonymous"`
