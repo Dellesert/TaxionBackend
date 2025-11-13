@@ -1205,3 +1205,50 @@ func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
 		"request_id":  requestID,
 	})
 }
+
+// GetTotalUnreadCount handles getting total unread messages count for the user across all chats
+func (h *ChatHandler) GetTotalUnreadCount(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get total unread count from usecase
+	unreadCount, err := h.chatUsecase.GetTotalUnreadCount(userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get total unread count")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get unread count",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":   requestID,
+		"user_id":      userID,
+		"unread_count": unreadCount,
+	}).Info("Total unread count retrieved successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"unread_count": unreadCount,
+		"request_id":   requestID,
+	})
+}

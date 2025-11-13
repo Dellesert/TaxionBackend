@@ -38,6 +38,7 @@ type MessageRepository interface {
 	MarkAsRead(receipt *models.MessageReadReceipt) error
 	GetReadReceipts(messageID uint) ([]*models.MessageReadReceipt, error)
 	GetUnreadCount(chatID, userID uint) (int64, error)
+	GetTotalUnreadCount(userID uint) (int64, error)
 	MarkAllAsRead(chatID, userID uint) ([]uint, error)
 
 	// Search and filtering
@@ -457,6 +458,30 @@ func (r *messageRepository) GetUnreadCount(chatID, userID uint) (int64, error) {
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to count unread messages: %w", err)
+	}
+	return count, nil
+}
+
+// GetTotalUnreadCount returns the total number of unread messages for a user across all their chats
+func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
+	var count int64
+
+	// Get all messages from chats where the user is a member,
+	// excluding messages sent by the user themselves,
+	// and excluding messages that have been read by the user
+	err := r.db.Model(&models.Message{}).
+		Joins("JOIN chat_members ON messages.chat_id = chat_members.chat_id").
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
+		Where("messages.sender_id != ? AND messages.is_deleted = ?", userID, false).
+		Where("messages.id NOT IN (?)",
+			r.db.Table("message_read_receipts").
+				Select("message_id").
+				Where("user_id = ?", userID),
+		).
+		Count(&count).Error
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to count total unread messages: %w", err)
 	}
 	return count, nil
 }

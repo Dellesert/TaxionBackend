@@ -33,6 +33,7 @@ type ChatUsecase interface {
 	GetOrCreateDirectChat(userID, targetUserID uint) (*models.ChatResponse, error)
 	GetOrCreateTaskChat(userID, taskID uint) (*models.ChatResponse, error)
 	GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error)
+	GetTotalUnreadCount(userID uint) (int64, error)
 }
 
 // chatUsecase implements ChatUsecase interface
@@ -839,4 +840,13 @@ func (uc *chatUsecase) GetChatAttachments(userID, chatID uint, limit, offset int
 	}
 
 	return responses, total, nil
+}
+
+// GetTotalUnreadCount retrieves the total number of unread messages for a user across all chats
+func (uc *chatUsecase) GetTotalUnreadCount(userID uint) (int64, error) {
+	count, err := uc.messageRepo.GetTotalUnreadCount(userID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get total unread count: %w", err)
+	}
+	return count, nil
 }
