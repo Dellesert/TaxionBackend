@@ -136,8 +136,29 @@ func GetTaskPermissions(ctx context.Context, task *models.Task, userID uint) (*T
 	}
 }
 
+// isTaskCompleted checks if task is in a completed state (done or cancelled)
+func isTaskCompleted(task *models.Task) bool {
+	return task.Status == models.TaskStatusDone || task.Status == models.TaskStatusCancelled
+}
+
 // getCreatorPermissions returns permissions for task creator (full access)
 func getCreatorPermissions(task *models.Task) *TaskPermissions {
+	// If task is completed, only allow viewing and deleting
+	if isTaskCompleted(task) {
+		return &TaskPermissions{
+			CanView:              true,
+			CanViewSubtasks:      true,
+			CanEdit:              false,
+			CanChangeStatus:      false,
+			CanCheckItems:        false,
+			CanCreateSubtasks:    false,
+			CanDelegate:          false,
+			CanEmergencyComplete: false,
+			CanAssignUsers:       false,
+			CanDelete:            true,
+		}
+	}
+
 	return &TaskPermissions{
 		CanView:              true,
 		CanViewSubtasks:      true,
@@ -154,6 +175,22 @@ func getCreatorPermissions(task *models.Task) *TaskPermissions {
 
 // getCurrentAssigneePermissions returns permissions for current assignee of main task
 func getCurrentAssigneePermissions(task *models.Task) *TaskPermissions {
+	// If task is completed, only allow viewing
+	if isTaskCompleted(task) {
+		return &TaskPermissions{
+			CanView:              true,
+			CanViewSubtasks:      true,
+			CanEdit:              false,
+			CanChangeStatus:      false,
+			CanCheckItems:        false,
+			CanCreateSubtasks:    false,
+			CanDelegate:          false,
+			CanEmergencyComplete: false,
+			CanAssignUsers:       false,
+			CanDelete:            false,
+		}
+	}
+
 	return &TaskPermissions{
 		CanView:              true,
 		CanViewSubtasks:      true,
@@ -170,6 +207,22 @@ func getCurrentAssigneePermissions(task *models.Task) *TaskPermissions {
 
 // getSubtaskAssigneePermissions returns permissions for subtask assignee
 func getSubtaskAssigneePermissions(task *models.Task) *TaskPermissions {
+	// If task is completed, only allow viewing
+	if isTaskCompleted(task) {
+		return &TaskPermissions{
+			CanView:              true,
+			CanViewSubtasks:      false,
+			CanEdit:              false,
+			CanChangeStatus:      false,
+			CanCheckItems:        false,
+			CanCreateSubtasks:    false,
+			CanDelegate:          false,
+			CanEmergencyComplete: false,
+			CanAssignUsers:       false,
+			CanDelete:            false,
+		}
+	}
+
 	return &TaskPermissions{
 		CanView:              true,
 		CanViewSubtasks:      false, // Cannot see other subtasks
@@ -186,6 +239,22 @@ func getSubtaskAssigneePermissions(task *models.Task) *TaskPermissions {
 
 // getParentTaskCreatorPermissions returns permissions for creator of parent task viewing subtask of another user
 func getParentTaskCreatorPermissions(task *models.Task) *TaskPermissions {
+	// If task is completed, only allow viewing and deleting
+	if isTaskCompleted(task) {
+		return &TaskPermissions{
+			CanView:              true,
+			CanViewSubtasks:      true,
+			CanEdit:              false,
+			CanChangeStatus:      false,
+			CanCheckItems:        false,
+			CanCreateSubtasks:    false,
+			CanDelegate:          false,
+			CanEmergencyComplete: false,
+			CanAssignUsers:       false,
+			CanDelete:            true, // Can still delete completed subtasks
+		}
+	}
+
 	// Check for emergency completion (if task is overdue by more than 3 days)
 	canEmergency := false
 	if task.DueDate != nil {
@@ -216,6 +285,22 @@ func getParentTaskCreatorPermissions(task *models.Task) *TaskPermissions {
 
 // getDelegationChainPermissions returns permissions for user in delegation chain (former assignee)
 func getDelegationChainPermissions(task *models.Task) *TaskPermissions {
+	// If task is completed, only allow viewing
+	if isTaskCompleted(task) {
+		return &TaskPermissions{
+			CanView:              true,
+			CanViewSubtasks:      true,
+			CanEdit:              false,
+			CanChangeStatus:      false,
+			CanCheckItems:        false,
+			CanCreateSubtasks:    false,
+			CanDelegate:          false,
+			CanEmergencyComplete: false,
+			CanAssignUsers:       false,
+			CanDelete:            false,
+		}
+	}
+
 	// Check for emergency completion (if task is overdue by more than 3 days)
 	canEmergency := false
 	if task.DueDate != nil {
