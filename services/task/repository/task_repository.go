@@ -162,7 +162,7 @@ func (r *taskRepository) RemoveAllAssignees(taskID uint) error {
 // GetByID retrieves a task by ID
 func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 	var task models.Task
-	err := r.db.Preload("Assignees").First(&task, id).Error
+	err := r.db.Preload("Assignees").Preload("ParentTask").First(&task, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("task not found")

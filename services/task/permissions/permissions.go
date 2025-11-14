@@ -50,7 +50,15 @@ func GetUserTaskRole(ctx context.Context, task *models.Task, userID uint) (TaskU
 		fmt.Printf("[GetUserTaskRole] Assignee %d: UserID=%d\n", i, assignee.UserID)
 	}
 
-	// 1. Check if user is a current assignee of this task
+	// 1. Check if user is the creator of this task (priority check)
+	// Creator role has higher priority than assignee role
+	if task.CreatedByUserID == userID {
+		// User created this task (main or subtask) - always return Creator role
+		// Creator has full rights to manage their created tasks
+		return RoleCreator, nil
+	}
+
+	// 2. Check if user is a current assignee of this task (but not creator)
 	isCurrentAssignee := false
 	for _, assignee := range task.Assignees {
 		if assignee.UserID == userID {
@@ -61,29 +69,26 @@ func GetUserTaskRole(ctx context.Context, task *models.Task, userID uint) (TaskU
 
 	fmt.Printf("[GetUserTaskRole] isCurrentAssignee: %v\n", isCurrentAssignee)
 
-	// If user is assignee of a subtask, return SubtaskAssignee role
+	// If user is assignee of a subtask (but not creator), return SubtaskAssignee role
 	if isCurrentAssignee && task.ParentTaskID != nil {
 		return RoleSubtaskAssignee, nil
 	}
 
-	// If user is assignee of main task, return CurrentAssignee role
+	// If user is assignee of main task (but not creator), return CurrentAssignee role
 	if isCurrentAssignee {
 		return RoleCurrentAssignee, nil
 	}
 
-	// 2. Check if user is the creator of this task
-	if task.CreatedByUserID == userID {
-		// If this is a subtask, check if user is also assignee
-		// If not, user is ParentTaskCreator viewing someone else's subtask
-		if task.ParentTaskID != nil {
-			// User created the subtask but is not assignee = viewing others' subtask
+	// 3. Check if user is creator of parent task (for subtasks only)
+	// This applies when user created the parent task, but someone else created this subtask
+	if task.ParentTaskID != nil && task.ParentTask != nil {
+		// User is creator of parent task, but not creator of this subtask
+		if task.ParentTask.CreatedByUserID == userID {
 			return RoleParentTaskCreator, nil
 		}
-		// User is creator of main task
-		return RoleCreator, nil
 	}
 
-	// 3. Check delegation chain
+	// 4. Check delegation chain
 	// User is in delegation chain if they delegated the task to someone else
 	if task.DelegatedFromUserID != nil && *task.DelegatedFromUserID == userID {
 		return RoleDelegationChain, nil
