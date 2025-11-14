@@ -142,13 +142,13 @@ func getCurrentAssigneePermissions(task *models.Task) *TaskPermissions {
 	return &TaskPermissions{
 		CanView:              true,
 		CanViewSubtasks:      true,
-		CanEdit:              true,
+		CanEdit:              false, // Current assignee cannot edit task details (title, description, etc.)
 		CanChangeStatus:      true,
 		CanCheckItems:        true,
 		CanCreateSubtasks:    true,
 		CanDelegate:          true,
 		CanEmergencyComplete: false,
-		CanAssignUsers:       true,
+		CanAssignUsers:       false, // Only creator can assign users
 		CanDelete:            false,
 	}
 }
