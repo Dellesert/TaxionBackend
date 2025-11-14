@@ -1,9 +1,11 @@
 package usecase
 
 import (
+	"context"
 	"fmt"
 
 	"tachyon-messenger/services/task/models"
+	"tachyon-messenger/services/task/permissions"
 	"tachyon-messenger/services/task/repository"
 )
 
@@ -239,6 +241,31 @@ func (u *checklistUsecase) UpdateChecklistItem(id, userID uint, title string, is
 		return nil, fmt.Errorf("task not found: %w", err)
 	}
 
+	// Check permissions
+	ctx := context.Background()
+
+	// If updating completion status, need can_check_items permission
+	if isCompleted != nil && item.IsCompleted != *isCompleted {
+		canCheck, err := permissions.CanCheckChecklistItem(ctx, task, userID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check permissions: %w", err)
+		}
+		if !canCheck {
+			return nil, fmt.Errorf("access denied: insufficient permissions to check items")
+		}
+	}
+
+	// If updating title or position, need can_edit permission
+	if title != "" || position != nil {
+		canEdit, err := permissions.HasPermission(ctx, task, userID, "edit")
+		if err != nil {
+			return nil, fmt.Errorf("failed to check permissions: %w", err)
+		}
+		if !canEdit {
+			return nil, fmt.Errorf("access denied: insufficient permissions to edit checklist")
+		}
+	}
+
 	// Track if completion status changed to completed
 	wasUncompleted := !item.IsCompleted
 	completionChanged := false
@@ -336,6 +363,16 @@ func (u *checklistUsecase) ToggleChecklistItem(id, userID uint) (*models.TaskChe
 	task, err := u.taskRepo.GetByID(checklist.TaskID)
 	if err != nil {
 		return nil, fmt.Errorf("task not found: %w", err)
+	}
+
+	// Check permissions - user must have can_check_items permission
+	ctx := context.Background()
+	canCheck, err := permissions.CanCheckChecklistItem(ctx, task, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check permissions: %w", err)
+	}
+	if !canCheck {
+		return nil, fmt.Errorf("access denied: insufficient permissions to check items")
 	}
 
 	// Track if item is being completed (uncompleted -> completed)

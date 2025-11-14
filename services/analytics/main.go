@@ -227,10 +227,10 @@ func setupRoutes(
 	// API v1 routes
 	v1 := r.Group("/api/v1")
 	{
-		// Analytics routes (require super admin authentication)
+		// Analytics routes (require admin or super admin authentication)
 		analytics := v1.Group("/analytics")
 		analytics.Use(middleware.AuthMiddleware())
-		analytics.Use(middleware.RequireSuperAdminRole())
+		analytics.Use(middleware.RequireAdminRole())
 		{
 			// Dashboard - main analytics page
 			analytics.GET("/dashboard", dashboardHandler.GetDashboard)

@@ -293,6 +293,10 @@ func setupRoutes(
 		protected.PUT("/checklist-items/:id", checklistHandler.UpdateChecklistItem)
 		protected.PATCH("/checklist-items/:id/toggle", checklistHandler.ToggleChecklistItem)
 		protected.DELETE("/checklist-items/:id", checklistHandler.DeleteChecklistItem)
+
+		// Task permissions endpoints (NEW)
+		protected.GET("/tasks/:id/permissions", taskHandler.GetTaskPermissions)
+		protected.POST("/tasks/:id/emergency-complete", taskHandler.EmergencyCompleteTask)
 	}
 
 	return r

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 
 	"tachyon-messenger/services/task/clients"
 	"tachyon-messenger/services/task/models"
+	"tachyon-messenger/services/task/permissions"
 	"tachyon-messenger/services/task/repository"
 	sharedmodels "tachyon-messenger/shared/models"
 
@@ -56,6 +58,11 @@ type TaskUsecase interface {
 	GetTopPerformers(limit int, period string, departmentID *uint) (interface{}, error)
 	GetTaskTrends(period string, interval string) (interface{}, error)
 	GetPriorityDistribution(period string) (interface{}, error)
+
+	// Permission methods
+	GetTaskPermissions(ctx context.Context, taskID uint, userID uint) (*models.TaskPermissions, error)
+	CheckPermission(ctx context.Context, taskID uint, userID uint, action string) (bool, error)
+	EmergencyCompleteTask(ctx context.Context, taskID uint, userID uint) error
 }
 
 // taskUsecase implements TaskUsecase interface
@@ -398,6 +405,13 @@ func (u *taskUsecase) GetTaskByID(userID uint, userRole sharedmodels.Role, taskI
 		fmt.Printf("Failed to enrich task with user info: %v\n", err)
 	}
 
+	// Enrich with permissions
+	ctx := context.Background()
+	if err := u.enrichTaskResponseWithPermissions(ctx, response, userID); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich task with permissions: %v\n", err)
+	}
+
 	return response, nil
 }
 
@@ -453,6 +467,16 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		u.logActivity(taskID, userID, "task_updated_description", oldDesc, task.Description, nil)
 	}
 	if req.Status != nil && *req.Status != task.Status {
+		// Check can_change_status permission before allowing status change
+		ctx := context.Background()
+		canChangeStatus, err := permissions.HasPermission(ctx, task, userID, "change_status")
+		if err != nil {
+			return nil, fmt.Errorf("failed to check permissions: %w", err)
+		}
+		if !canChangeStatus {
+			return nil, fmt.Errorf("access denied: insufficient permissions to change task status")
+		}
+
 		oldStatus := task.Status
 		task.Status = *req.Status
 		task.LastStatusChangedBy = &userID
@@ -647,10 +671,27 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check permissions: only creator or assignee can update status
-	// Parent task creator cannot edit subtasks (only view them)
-	if !u.hasTaskEditAccess(userID, task) {
-		return nil, fmt.Errorf("access denied: insufficient permissions")
+	// Check permissions: use permissions system to verify can_change_status
+	ctx := context.Background()
+
+	// Debug logging
+	fmt.Printf("UpdateTaskStatus - Task ID: %d, User ID: %d\n", taskID, userID)
+	fmt.Printf("Task CreatedByUserID: %d, ParentTaskID: %v\n", task.CreatedByUserID, task.ParentTaskID)
+	fmt.Printf("Task Assignees: %+v\n", task.Assignees)
+
+	// Get user role for debugging
+	role, _ := permissions.GetUserTaskRole(ctx, task, userID)
+	fmt.Printf("User role: %s\n", role)
+
+	canChangeStatus, err := permissions.HasPermission(ctx, task, userID, "change_status")
+	if err != nil {
+		return nil, fmt.Errorf("failed to check permissions: %w", err)
+	}
+
+	fmt.Printf("Can change status: %v\n", canChangeStatus)
+
+	if !canChangeStatus {
+		return nil, fmt.Errorf("access denied: insufficient permissions to change task status")
 	}
 
 	// Update status

@@ -248,6 +248,20 @@ type AssignTaskRequest struct {
 
 // Response Models
 
+// TaskPermissions represents user permissions for a task
+type TaskPermissions struct {
+	CanView              bool `json:"can_view"`               // View task
+	CanViewSubtasks      bool `json:"can_view_subtasks"`      // View all subtasks
+	CanEdit              bool `json:"can_edit"`               // Edit task
+	CanChangeStatus      bool `json:"can_change_status"`      // Change status
+	CanCheckItems        bool `json:"can_check_items"`        // Check checklist items
+	CanCreateSubtasks    bool `json:"can_create_subtasks"`    // Create subtasks
+	CanDelegate          bool `json:"can_delegate"`           // Delegate task
+	CanEmergencyComplete bool `json:"can_emergency_complete"` // Emergency complete
+	CanAssignUsers       bool `json:"can_assign_users"`       // Assign users
+	CanDelete            bool `json:"can_delete"`             // Delete task
+}
+
 // TaskResponse represents a task in API responses
 type TaskResponse struct {
 	ID                   uint         `json:"id"`
@@ -292,6 +306,9 @@ type TaskResponse struct {
 
 	// Delegation chain (list of users from top to current assignee)
 	DelegationChain      []UserInfo   `json:"delegation_chain,omitempty"`
+
+	// Permissions - user's permissions for this task
+	Permissions          *TaskPermissions `json:"permissions,omitempty"`
 
 	// Timestamps
 	CreatedAt            time.Time    `json:"created_at"`
