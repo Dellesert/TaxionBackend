@@ -42,6 +42,14 @@ type DelegationInfo struct {
 
 // GetUserTaskRole determines the role of a user in a task
 func GetUserTaskRole(ctx context.Context, task *models.Task, userID uint) (TaskUserRole, error) {
+	// Debug logging
+	fmt.Printf("[GetUserTaskRole] Task ID: %d, User ID: %d, CreatedBy: %d, ParentTaskID: %v\n",
+		task.ID, userID, task.CreatedByUserID, task.ParentTaskID)
+	fmt.Printf("[GetUserTaskRole] Assignees count: %d\n", len(task.Assignees))
+	for i, assignee := range task.Assignees {
+		fmt.Printf("[GetUserTaskRole] Assignee %d: UserID=%d\n", i, assignee.UserID)
+	}
+
 	// 1. Check if user is a current assignee of this task
 	isCurrentAssignee := false
 	for _, assignee := range task.Assignees {
@@ -50,6 +58,8 @@ func GetUserTaskRole(ctx context.Context, task *models.Task, userID uint) (TaskU
 			break
 		}
 	}
+
+	fmt.Printf("[GetUserTaskRole] isCurrentAssignee: %v\n", isCurrentAssignee)
 
 	// If user is assignee of a subtask, return SubtaskAssignee role
 	if isCurrentAssignee && task.ParentTaskID != nil {

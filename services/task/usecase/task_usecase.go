@@ -903,7 +903,7 @@ func (u *taskUsecase) GetTaskStatsInternal(period string) (*models.TaskStatsInte
 
 // Helper methods
 
-// hasTaskAccess checks if user has access to the task (creator or assignee)
+// hasTaskAccess checks if user has access to the task (creator or assignee or in delegation chain)
 func (u *taskUsecase) hasTaskAccess(userID uint, task *models.Task) bool {
 	// User is creator
 	if task.CreatedBy == userID {
@@ -920,6 +920,16 @@ func (u *taskUsecase) hasTaskAccess(userID uint, task *models.Task) bool {
 		if assignee.UserID == userID {
 			return true
 		}
+	}
+
+	// Check if user is in delegation chain
+	if task.DelegatedFromUserID != nil && *task.DelegatedFromUserID == userID {
+		return true
+	}
+
+	// Check if user was the original assignee
+	if task.OriginalAssigneeID != nil && *task.OriginalAssigneeID == userID {
+		return true
 	}
 
 	// Check if user is creator of parent task (for subtasks)
@@ -1259,9 +1269,13 @@ func (u *taskUsecase) DelegateTask(userID uint, taskID uint, toUserID uint) (*mo
 		return nil, fmt.Errorf("failed to delegate task: %w", err)
 	}
 
+	// Remove all current assignees from task_assignees (they will be in delegation chain)
+	// The new assignee becomes the sole active assignee
+	if err := u.taskRepo.RemoveAllAssignees(taskID); err != nil {
+		return nil, fmt.Errorf("failed to remove old assignees: %w", err)
+	}
+
 	// Add new assignee to task_assignees
-	// Previous assignees remain in the table so they can still view the delegated task
-	// The new assignee becomes the active owner (assigned_to field)
 	newAssignee := &models.TaskAssignee{
 		TaskID: taskID,
 		UserID: toUserID,

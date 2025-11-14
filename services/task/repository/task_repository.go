@@ -17,6 +17,7 @@ type TaskRepository interface {
 	Create(task *models.Task) error
 	CreateAssignee(assignee *models.TaskAssignee) error
 	DeleteAllAssignees(taskID uint) error
+	RemoveAllAssignees(taskID uint) error // Alias for DeleteAllAssignees
 	GetByID(id uint) (*models.Task, error)
 	GetByIDWithDetails(id uint) (*models.Task, error) // Get task with all relations loaded
 	Update(task *models.Task) error
@@ -153,6 +154,11 @@ func (r *taskRepository) DeleteAllAssignees(taskID uint) error {
 	return nil
 }
 
+// RemoveAllAssignees is an alias for DeleteAllAssignees
+func (r *taskRepository) RemoveAllAssignees(taskID uint) error {
+	return r.DeleteAllAssignees(taskID)
+}
+
 // GetByID retrieves a task by ID
 func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 	var task models.Task
@@ -235,11 +241,14 @@ func (r *taskRepository) GetAllTasks(filter *models.TaskFilterRequest) ([]*model
 func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequest) ([]*models.Task, int64, error) {
 	// Query to find tasks where user is either:
 	// 1. Top-level tasks where user is creator or assignee
-	// 2. Subtasks where user is assignee (regardless of who created parent task)
+	// 2. Subtasks where user is assignee OR user is creator of parent task
+	// 3. Tasks in delegation chain (user delegated it or was original assignee)
 	query := r.db.Model(&models.Task{}).Where(
 		"((parent_task_id IS NULL AND (created_by = ? OR assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL))) OR "+
-			"(parent_task_id IS NOT NULL AND (assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL))))",
-		userID, userID, userID, userID, userID,
+			"(parent_task_id IS NOT NULL AND (assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL) OR "+
+			"parent_task_id IN (SELECT id FROM tasks WHERE created_by = ? AND deleted_at IS NULL))) OR "+
+			"(delegated_from_user_id = ? OR original_assignee_id = ?))",
+		userID, userID, userID, userID, userID, userID, userID, userID,
 	)
 
 	// Apply filters
