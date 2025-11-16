@@ -42,7 +42,43 @@ import (
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
+
+// migrateUserSettings handles UserSettings table migration with custom constraint handling
+func migrateUserSettings(db *gorm.DB) error {
+	// Use raw SQL to create the table if it doesn't exist
+	createTableSQL := `
+		CREATE TABLE IF NOT EXISTS user_settings (
+			id BIGSERIAL PRIMARY KEY,
+			user_id BIGINT NOT NULL,
+			show_setup_guide BOOLEAN NOT NULL DEFAULT TRUE,
+			theme VARCHAR(20) DEFAULT 'light',
+			language VARCHAR(10) DEFAULT 'ru',
+			created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`
+
+	if err := db.Exec(createTableSQL).Error; err != nil {
+		return fmt.Errorf("failed to create user_settings table: %w", err)
+	}
+
+	// Drop old constraint if it exists (ignore errors)
+	db.Exec("ALTER TABLE user_settings DROP CONSTRAINT IF EXISTS uni_user_settings_user_id")
+
+	// Create unique index on user_id if it doesn't exist
+	indexSQL := `
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_user_settings_user_id
+		ON user_settings(user_id)
+	`
+
+	if err := db.Exec(indexSQL).Error; err != nil {
+		return fmt.Errorf("failed to create unique index on user_id: %w", err)
+	}
+
+	return nil
+}
 
 func main() {
 	// Initialize logger
@@ -69,6 +105,7 @@ func main() {
 	defer db.Close()
 
 	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, SMTP settings, user settings, and subdepartments tables)
+	// First migrate all models except UserSettings
 	if err := db.Migrate(
 		&models.Department{},
 		&models.Subdepartment{},
@@ -79,9 +116,13 @@ func main() {
 		&models.Invitation{},
 		&models.PasswordReset{},
 		&models.SMTPSettings{},
-		&models.UserSettings{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Handle UserSettings migration separately with custom constraint handling
+	if err := migrateUserSettings(db.DB); err != nil {
+		log.Fatalf("Failed to migrate UserSettings: %v", err)
 	}
 
 	log.Info("Database connected and migrations completed")

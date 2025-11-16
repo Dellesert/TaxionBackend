@@ -170,6 +170,13 @@ func (r *taskRepository) GetByID(id uint) (*models.Task, error) {
 		return nil, fmt.Errorf("failed to get task: %w", err)
 	}
 
+	// Debug logging for ParentTaskID
+	if task.ParentTaskID != nil {
+		fmt.Printf("[GetByID] Task ID: %d has ParentTaskID: %d\n", id, *task.ParentTaskID)
+	} else {
+		fmt.Printf("[GetByID] Task ID: %d has NO ParentTaskID (nil)\n", id)
+	}
+
 	// Load comment count
 	var commentCount int64
 	r.db.Model(&models.TaskComment{}).Where("task_id = ?", id).Count(&commentCount)

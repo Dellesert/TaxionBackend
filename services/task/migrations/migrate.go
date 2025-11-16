@@ -197,6 +197,36 @@ func migrateTasksTable(db *database.DB) error {
 			}
 		}
 
+		// Step 8: Recalculate progress for all parent tasks
+		// This ensures that parent tasks have correct progress based on their subtasks
+		fmt.Println("📊 Recalculating progress for parent tasks...")
+		progressRecalculation := `
+			WITH subtask_progress AS (
+				SELECT
+					parent_task_id,
+					AVG(progress_percentage)::int as avg_progress
+				FROM tasks
+				WHERE parent_task_id IS NOT NULL
+				  AND deleted_at IS NULL
+				GROUP BY parent_task_id
+			)
+			UPDATE tasks
+			SET
+				progress_percentage = sp.avg_progress,
+				updated_at = NOW()
+			FROM subtask_progress sp
+			WHERE tasks.id = sp.parent_task_id
+			  AND (tasks.progress_percentage != sp.avg_progress OR tasks.progress_percentage IS NULL)
+		`
+		if err := tx.Exec(progressRecalculation).Error; err != nil {
+			// Log but don't fail - this is not critical
+			fmt.Printf("Warning: failed to recalculate parent task progress: %v\n", err)
+		} else {
+			var updatedCount int64
+			tx.Raw("SELECT COUNT(*) FROM tasks WHERE id IN (SELECT DISTINCT parent_task_id FROM tasks WHERE parent_task_id IS NOT NULL AND deleted_at IS NULL)").Scan(&updatedCount)
+			fmt.Printf("✓ Recalculated progress for parent tasks (checked %d tasks)\n", updatedCount)
+		}
+
 		return nil
 	})
 }

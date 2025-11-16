@@ -430,6 +430,8 @@ func (u *taskUsecase) GetTaskByIDInternal(taskID uint) (*models.Task, error) {
 
 // UpdateTask updates an existing task
 func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID uint, req *models.UpdateTaskRequest) (*models.TaskResponse, error) {
+	fmt.Printf("[UpdateTask] ENTRY - Task ID: %d, UserID: %d, Status in request: %v\n", taskID, userID, req.Status)
+
 	// Validate request
 	if err := u.validateUpdateTaskRequest(req); err != nil {
 		return nil, fmt.Errorf("validation failed: %w", err)
@@ -467,6 +469,7 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		u.logActivity(taskID, userID, "task_updated_description", oldDesc, task.Description, nil)
 	}
 	if req.Status != nil && *req.Status != task.Status {
+		fmt.Printf("[UpdateTask] Task ID: %d - Status change detected: %s -> %s\n", taskID, task.Status, *req.Status)
 		// Check can_change_status permission before allowing status change
 		ctx := context.Background()
 		canChangeStatus, err := permissions.HasPermission(ctx, task, userID, "change_status")
@@ -474,6 +477,7 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 			return nil, fmt.Errorf("failed to check permissions: %w", err)
 		}
 		if !canChangeStatus {
+			fmt.Printf("[UpdateTask] Task ID: %d - Permission denied for status change\n", taskID)
 			return nil, fmt.Errorf("access denied: insufficient permissions to change task status")
 		}
 
@@ -481,6 +485,7 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		task.Status = *req.Status
 		task.LastStatusChangedBy = &userID
 		statusChanged = true
+		fmt.Printf("[UpdateTask] Task ID: %d - statusChanged set to TRUE\n", taskID)
 		u.logActivity(taskID, userID, "task_status_changed", string(oldStatus), string(task.Status), changes)
 	}
 	if req.Priority != nil && *req.Priority != task.Priority {
@@ -530,10 +535,13 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 	}
 
 	// Recalculate progress if status changed (for tasks without subtasks/checklists)
+	fmt.Printf("[UpdateTask] Task ID: %d - statusChanged=%v\n", taskID, statusChanged)
 	if statusChanged {
+		fmt.Printf("[UpdateTask] Task ID: %d - calling RecalculateTaskProgress\n", taskID)
 		u.RecalculateTaskProgress(taskID)
 		// Reload task to get updated progress
 		task, _ = u.taskRepo.GetByID(taskID)
+		fmt.Printf("[UpdateTask] Task ID: %d - after recalculation, progress=%d%%\n", taskID, task.ProgressPercentage)
 	}
 
 	response := task.ToResponse()
@@ -566,6 +574,9 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 		return fmt.Errorf("access denied: only task creator or super administrator can delete the task")
 	}
 
+	// Save ParentTaskID before deleting (for progress recalculation)
+	parentTaskID := task.ParentTaskID
+
 	// Log activity before deleting
 	u.logActivity(taskID, userID, "task_deleted", task.Title, "Task deleted", map[string]interface{}{
 		"task_id":    taskID,
@@ -576,6 +587,12 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 	// Delete task
 	if err := u.taskRepo.Delete(taskID); err != nil {
 		return fmt.Errorf("failed to delete task: %w", err)
+	}
+
+	// If task had a parent, recalculate parent progress after deletion
+	if parentTaskID != nil {
+		fmt.Printf("[DeleteTask] Task ID: %d had parent task ID: %d, recalculating parent progress after deletion\n", taskID, *parentTaskID)
+		u.RecalculateTaskProgress(*parentTaskID)
 	}
 
 	return nil
@@ -705,9 +722,23 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 		task.CompletedAt = &now
 	}
 
+	// Debug: Log ParentTaskID before Update
+	if task.ParentTaskID != nil {
+		fmt.Printf("[UpdateTaskStatus] Before Update - Task ID: %d has ParentTaskID: %d\n", taskID, *task.ParentTaskID)
+	} else {
+		fmt.Printf("[UpdateTaskStatus] Before Update - Task ID: %d has NO ParentTaskID\n", taskID)
+	}
+
 	// Save updated task
 	if err := u.taskRepo.Update(task); err != nil {
 		return nil, fmt.Errorf("failed to update task status: %w", err)
+	}
+
+	// Debug: Log ParentTaskID after Update
+	if task.ParentTaskID != nil {
+		fmt.Printf("[UpdateTaskStatus] After Update - Task ID: %d has ParentTaskID: %d\n", taskID, *task.ParentTaskID)
+	} else {
+		fmt.Printf("[UpdateTaskStatus] After Update - Task ID: %d has NO ParentTaskID\n", taskID)
 	}
 
 	// Log activity
@@ -1417,6 +1448,8 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 		return fmt.Errorf("task not found: %w", err)
 	}
 
+	fmt.Printf("[RecalculateTaskProgress] Task ID: %d, Title: %s, Current Progress: %d%%\n", taskID, task.Title, task.ProgressPercentage)
+
 	// Count subtasks
 	totalSubtasks, err := u.taskRepo.CountSubtasks(taskID)
 	if err != nil {
@@ -1429,12 +1462,35 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 		return fmt.Errorf("failed to count checklist items: %w", err)
 	}
 
+	fmt.Printf("[RecalculateTaskProgress] Task ID: %d has %d subtasks and %d checklist items\n", taskID, totalSubtasks, totalChecklistItems)
+
 	// If no subtasks and no checklist items, calculate progress based on status
 	if totalSubtasks == 0 && totalChecklistItems == 0 {
 		progress := u.calculateProgressByStatus(task.Status)
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - calculating by status '%s': %d%%\n", taskID, task.Status, progress)
 		if task.ProgressPercentage != progress {
-			return u.taskRepo.UpdateProgress(taskID, progress)
+			fmt.Printf("[RecalculateTaskProgress] Task ID: %d - updating progress from %d%% to %d%%\n", taskID, task.ProgressPercentage, progress)
+
+			// IMPORTANT: Save ParentTaskID BEFORE UpdateProgress
+			parentTaskID := task.ParentTaskID
+			fmt.Printf("[RecalculateTaskProgress] Task ID: %d - saved ParentTaskID: %v\n", taskID, parentTaskID)
+
+			if err := u.taskRepo.UpdateProgress(taskID, progress); err != nil {
+				return fmt.Errorf("failed to update progress: %w", err)
+			}
+
+			fmt.Printf("[RecalculateTaskProgress] Task ID: %d - after UpdateProgress, checking parent...\n", taskID)
+
+			// If task has parent, recalculate parent progress too
+			if parentTaskID != nil {
+				fmt.Printf("[RecalculateTaskProgress] Task ID: %d has parent task ID: %d, recalculating parent progress\n", taskID, *parentTaskID)
+				u.RecalculateTaskProgress(*parentTaskID)
+			} else {
+				fmt.Printf("[RecalculateTaskProgress] Task ID: %d has NO parent (ParentTaskID is nil)\n", taskID)
+			}
+			return nil
 		}
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - progress unchanged, skipping update\n", taskID)
 		return nil
 	}
 
@@ -1447,7 +1503,9 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 			return fmt.Errorf("failed to count completed checklist items: %w", err)
 		}
 		progress = int((float64(completedChecklistItems) / float64(totalChecklistItems)) * 100)
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - calculating by checklist: %d/%d completed = %d%%\n", taskID, completedChecklistItems, totalChecklistItems, progress)
 	} else if totalSubtasks > 0 {
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - has subtasks, calculating by average subtask progress\n", taskID)
 		// If task has subtasks, calculate progress based on subtasks
 		// Each subtask contributes to the overall progress based on its own progress
 
@@ -1461,11 +1519,18 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 		totalProgress := 0
 		for _, subtask := range subtasks {
 			// First recalculate subtask progress (in case it has checklists)
-			u.RecalculateTaskProgress(subtask.ID)
+			if err := u.RecalculateTaskProgress(subtask.ID); err != nil {
+				fmt.Printf("WARNING: Failed to recalculate progress for subtask %d: %v\n", subtask.ID, err)
+				// Continue with current progress value instead of failing
+			}
 
-			// Reload subtask to get updated progress
+			// Reload subtask to get updated progress after recalculation
 			updatedSubtask, err := u.taskRepo.GetByID(subtask.ID)
-			if err == nil {
+			if err != nil {
+				fmt.Printf("WARNING: Failed to reload subtask %d for progress calculation: %v\n", subtask.ID, err)
+				// Use the original subtask progress if reload fails
+				totalProgress += subtask.ProgressPercentage
+			} else {
 				totalProgress += updatedSubtask.ProgressPercentage
 			}
 		}
@@ -1477,14 +1542,29 @@ func (u *taskUsecase) RecalculateTaskProgress(taskID uint) error {
 
 	// Update progress if changed
 	if task.ProgressPercentage != progress {
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - updating progress from %d%% to %d%%\n", taskID, task.ProgressPercentage, progress)
+
+		// IMPORTANT: Save ParentTaskID BEFORE UpdateProgress
+		// because UpdateProgress might affect the task object in memory
+		parentTaskID := task.ParentTaskID
+
 		if err := u.taskRepo.UpdateProgress(taskID, progress); err != nil {
 			return fmt.Errorf("failed to update progress: %w", err)
 		}
 
+		// Debug: Check ParentTaskID
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - checking for parent... ParentTaskID is: %v (saved: %v)\n", taskID, task.ParentTaskID, parentTaskID)
+
 		// If task has parent, recalculate parent progress too
-		if task.ParentTaskID != nil {
-			u.RecalculateTaskProgress(*task.ParentTaskID)
+		// Use the saved parentTaskID instead of task.ParentTaskID
+		if parentTaskID != nil {
+			fmt.Printf("[RecalculateTaskProgress] Task ID: %d has parent task ID: %d, recalculating parent progress\n", taskID, *parentTaskID)
+			u.RecalculateTaskProgress(*parentTaskID)
+		} else {
+			fmt.Printf("[RecalculateTaskProgress] Task ID: %d has NO parent (ParentTaskID is nil)\n", taskID)
 		}
+	} else {
+		fmt.Printf("[RecalculateTaskProgress] Task ID: %d - progress unchanged (%d%%), skipping update\n", taskID, progress)
 	}
 
 	return nil

@@ -72,3 +72,7 @@ backups/
 uploads/
 .env.production
 .env copy
+
+#Other
+Курсовая/
+Курсовая_Краткая/
