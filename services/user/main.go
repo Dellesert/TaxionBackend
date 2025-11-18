@@ -81,6 +81,9 @@ func migrateUserSettings(db *gorm.DB) error {
 }
 
 func main() {
+	// Track service start time
+	startTime := time.Now()
+
 	// Initialize logger
 	log := logger.New(&logger.Config{
 		Level:       "info",
@@ -244,7 +247,7 @@ func main() {
 	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)
 	passwordResetHandler := handlers.NewPasswordResetHandler(passwordResetUsecase)
 	smtpHandler := handlers.NewSMTPHandler(smtpUsecase)
-	metricsHandler := handlers.NewMetricsHandler(db, redisClient)
+	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "user-service", startTime)
 	quickStartHandler := handlers.NewQuickStartHandler(departmentUsecase, subdepartmentUsecase, userUsecase)
 
 	// Create Gin router
@@ -255,6 +258,9 @@ func main() {
 
 	// Setup common middleware (without CORS - Gateway handles it)
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
+
+	// Add metrics middleware to track HTTP requests
+	router.Use(metricsHandler.MetricsMiddleware())
 
 	// Setup routes
 	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, metricsHandler, quickStartHandler, jwtConfig)
@@ -301,6 +307,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 	{
 		internalMetrics.GET("/database", metricsHandler.GetDatabaseMetrics)
 		internalMetrics.GET("/redis", metricsHandler.GetRedisMetrics)
+		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
 	}
 
 	// Apple App Site Association for Passkeys
@@ -359,6 +366,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		internal.PUT("/users/:id/status", userHandler.UpdateUser)
 		// Get multiple users by IDs for task-service
 		internal.GET("/users", userHandler.GetUsersByIDs)
+		// Session management (for admin/analytics service)
+		internal.DELETE("/sessions/:session_id", sessionHandler.TerminateSessionInternal)
 	}
 
 	// API v1 routes
@@ -632,6 +641,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		{
 			system.GET("/health", middleware.LogAdminAction("system_health_check"), systemHealthHandler)
 			system.GET("/stats", middleware.LogAdminAction("system_stats"), systemStatsHandler)
+			system.GET("/metrics", middleware.LogAdminAction("get_all_service_metrics"), adminHandler.GetAllServiceMetrics)
 		}
 
 		// Settings endpoints (super admin only)

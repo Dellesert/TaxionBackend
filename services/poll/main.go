@@ -26,6 +26,9 @@ import (
 )
 
 func main() {
+	// Track service start time
+	startTime := time.Now()
+
 	// Initialize logger
 	log := logger.New(&logger.Config{
 		Level:       "info",
@@ -95,9 +98,10 @@ func main() {
 
 	// Initialize handlers
 	pollHandler := handlers.NewPollHandler(pollUsecase)
+	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "poll-service", startTime)
 
 	// Setup routes
-	r := setupRoutes(pollHandler, jwtConfig)
+	r := setupRoutes(pollHandler, metricsHandler, jwtConfig)
 
 	// Start background scheduler for auto-closing expired polls
 	checkInterval := time.Duration(cfg.Poll.AutoCloseCheckInterval) * time.Minute
@@ -183,6 +187,7 @@ func main() {
 
 func setupRoutes(
 	pollHandler *handlers.PollHandler,
+	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -191,6 +196,9 @@ func setupRoutes(
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.Use(requestid.New())
+
+	// Add metrics middleware to track HTTP requests
+	r.Use(metricsHandler.MetricsMiddleware())
 
 	// CORS is handled by Gateway - no need for CORS middleware here
 
@@ -203,6 +211,14 @@ func setupRoutes(
 			"version":   "1.0.0",
 		})
 	})
+
+	// Internal metrics endpoints (no auth required - only accessible from internal network)
+	internalMetrics := r.Group("/internal/metrics")
+	{
+		internalMetrics.GET("/database", metricsHandler.GetDatabaseMetrics)
+		internalMetrics.GET("/redis", metricsHandler.GetRedisMetrics)
+		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
+	}
 
 	// API routes
 	api := r.Group("/api/v1")

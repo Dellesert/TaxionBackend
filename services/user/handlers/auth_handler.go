@@ -253,6 +253,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		AuthMode:   string(loginResponse.AuthMode),
 	})
 
+	// Track device for security monitoring
+	h.analyticsClient.TrackDeviceAsync(userID, userAgent, ipAddress)
+
 	// Send analytics event (legacy)
 	h.analyticsClient.SendEvent(
 		analytics.EventUserLogin,
@@ -398,6 +401,9 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 		AuthMode:     string(loginResponse.AuthMode),
 		IsSuperAdmin: true,
 	})
+
+	// Track device for security monitoring
+	h.analyticsClient.TrackDeviceAsync(userID, userAgent, ipAddress)
 
 	// Send analytics event (legacy)
 	h.analyticsClient.SendEvent(

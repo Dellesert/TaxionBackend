@@ -1,4 +1,3 @@
-// File: services/user/handlers/metrics_handler.go
 package handlers
 
 import (
@@ -40,7 +39,6 @@ func (h *MetricsHandler) GetDatabaseMetrics(c *gin.Context) {
 
 	logger.WithField("request_id", requestID).Debug("Fetching database metrics")
 
-	// Use new GetMetrics function for detailed metrics
 	metrics, err := h.db.GetMetrics()
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -54,13 +52,11 @@ func (h *MetricsHandler) GetDatabaseMetrics(c *gin.Context) {
 		return
 	}
 
-	// Determine status based on health
 	status := "healthy"
 	if !metrics.IsHealthy {
 		status = "unhealthy"
 	}
 
-	// Return detailed metrics
 	response := gin.H{
 		"status":                   status,
 		"max_open_connections":     metrics.MaxOpenConnections,
@@ -142,4 +138,3 @@ func (h *MetricsHandler) MetricsMiddleware() gin.HandlerFunc {
 		h.RecordRequest(c.Writer.Status(), latency)
 	}
 }
-

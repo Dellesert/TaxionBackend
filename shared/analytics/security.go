@@ -69,15 +69,64 @@ func (c *Client) SendLoginAttemptAsync(attempt LoginAttemptRequest) {
 	}()
 }
 
+// DeviceTrackingRequest represents a device to be tracked
+type DeviceTrackingRequest struct {
+	UserID    uint64 `json:"user_id"`
+	UserAgent string `json:"user_agent"`
+	IPAddress string `json:"ip_address"`
+}
+
 // TrackDevice sends device tracking information to analytics
-func (c *Client) TrackDevice(userID uint64, userAgent, ipAddress string) {
-	metadata := map[string]interface{}{
-		"user_agent":  userAgent,
-		"ip_address":  ipAddress,
-		"tracked_at":  time.Now(),
+func (c *Client) TrackDevice(userID uint64, userAgent, ipAddress string) error {
+	req := DeviceTrackingRequest{
+		UserID:    userID,
+		UserAgent: userAgent,
+		IPAddress: ipAddress,
 	}
 
-	c.SendEvent(EventNewDeviceLogin, CategorySecurity, userID, metadata)
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal device tracking request: %w", err)
+	}
+
+	url := fmt.Sprintf("%s/api/v1/analytics/security/track-device", c.analyticsURL)
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		c.log.WithFields(map[string]interface{}{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Warn("Failed to track device in analytics")
+		return nil // Don't fail on analytics error
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		c.log.WithFields(map[string]interface{}{
+			"user_id":     userID,
+			"status_code": resp.StatusCode,
+		}).Warn("Analytics service returned non-OK status for device tracking")
+	}
+
+	return nil
+}
+
+// TrackDeviceAsync tracks a device asynchronously
+func (c *Client) TrackDeviceAsync(userID uint64, userAgent, ipAddress string) {
+	go func() {
+		if err := c.TrackDevice(userID, userAgent, ipAddress); err != nil {
+			c.log.WithFields(map[string]interface{}{
+				"user_id": userID,
+				"error":   err.Error(),
+			}).Debug("Failed to track device (async)")
+		}
+	}()
 }
 
 // SessionTrackingRequest represents a session to be tracked

@@ -2,14 +2,19 @@ package handlers
 
 import (
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/usecase"
 	"tachyon-messenger/shared/logger"
+	"tachyon-messenger/shared/metrics"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 
@@ -1487,4 +1492,120 @@ func (h *AdminHandler) ImportUsers(c *gin.Context) {
 	}).Info("Users imported from CSV")
 
 	c.JSON(http.StatusOK, result)
+}
+
+// GetAllServiceMetrics aggregates metrics from all microservices
+func (h *AdminHandler) GetAllServiceMetrics(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	logger.WithField("request_id", requestID).Info("Fetching aggregated service metrics")
+
+	// Define services to collect metrics from
+	services := map[string]string{
+		"user-service":         os.Getenv("USER_SERVICE_URL"),
+		"analytics-service":    os.Getenv("ANALYTICS_SERVICE_URL"),
+		"chat-service":         os.Getenv("CHAT_SERVICE_URL"),
+		"task-service":         os.Getenv("TASK_SERVICE_URL"),
+		"file-service":         os.Getenv("FILE_SERVICE_URL"),
+		"calendar-service":     os.Getenv("CALENDAR_SERVICE_URL"),
+		"notification-service": os.Getenv("NOTIFICATION_SERVICE_URL"),
+		"poll-service":         os.Getenv("POLL_SERVICE_URL"),
+	}
+
+	// Set default URLs if not in environment
+	if services["user-service"] == "" {
+		services["user-service"] = "http://user-service:8081"
+	}
+	if services["analytics-service"] == "" {
+		services["analytics-service"] = "http://analytics-service:8086"
+	}
+	if services["chat-service"] == "" {
+		services["chat-service"] = "http://chat-service:8082"
+	}
+	if services["task-service"] == "" {
+		services["task-service"] = "http://task-service:8083"
+	}
+	if services["file-service"] == "" {
+		services["file-service"] = "http://file-service:8088"
+	}
+	if services["calendar-service"] == "" {
+		services["calendar-service"] = "http://calendar-service:8084"
+	}
+	if services["notification-service"] == "" {
+		services["notification-service"] = "http://notification-service:8085"
+	}
+	if services["poll-service"] == "" {
+		services["poll-service"] = "http://poll-service:8087"
+	}
+
+	// Collect metrics from each service
+	allMetrics := make(map[string]interface{})
+	errors := make(map[string]string)
+
+	for serviceName, baseURL := range services {
+		metricsURL := fmt.Sprintf("%s/internal/metrics/runtime", baseURL)
+
+		// Create HTTP client with timeout
+		client := &http.Client{
+			Timeout: 5 * time.Second,
+		}
+
+		// Make request
+		resp, err := client.Get(metricsURL)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"service":    serviceName,
+				"url":        metricsURL,
+				"error":      err.Error(),
+			}).Warn("Failed to fetch metrics from service")
+			errors[serviceName] = err.Error()
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Read response
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"service":    serviceName,
+				"error":      err.Error(),
+			}).Warn("Failed to read metrics response")
+			errors[serviceName] = err.Error()
+			continue
+		}
+
+		// Parse JSON
+		var serviceMetrics metrics.ServiceMetrics
+		if err := json.Unmarshal(body, &serviceMetrics); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"service":    serviceName,
+				"error":      err.Error(),
+			}).Warn("Failed to parse metrics JSON")
+			errors[serviceName] = err.Error()
+			continue
+		}
+
+		allMetrics[serviceName] = serviceMetrics
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":      requestID,
+		"services_count":  len(allMetrics),
+		"errors_count":    len(errors),
+	}).Info("Aggregated service metrics collected")
+
+	response := gin.H{
+		"services":   allMetrics,
+		"timestamp":  time.Now(),
+		"request_id": requestID,
+	}
+
+	if len(errors) > 0 {
+		response["errors"] = errors
+	}
+
+	c.JSON(http.StatusOK, response)
 }

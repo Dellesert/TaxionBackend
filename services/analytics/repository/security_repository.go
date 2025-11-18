@@ -124,6 +124,13 @@ func (r *SecurityRepository) GetKnownDevice(deviceFingerprint string) (*models.K
 	return &device, err
 }
 
+// GetKnownDeviceByID retrieves a known device by ID
+func (r *SecurityRepository) GetKnownDeviceByID(id uint64) (*models.KnownDevice, error) {
+	var device models.KnownDevice
+	err := r.db.DB.First(&device, id).Error
+	return &device, err
+}
+
 // GetUserKnownDevices retrieves all known devices for a user
 func (r *SecurityRepository) GetUserKnownDevices(userID uint64) ([]*models.KnownDevice, error) {
 	var devices []*models.KnownDevice

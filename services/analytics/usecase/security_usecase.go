@@ -27,12 +27,14 @@ type SecurityUsecase interface {
 	TrackDevice(userID uint64, userAgent, ipAddress string) (bool, error) // returns isNewDevice
 	GetUserKnownDevices(userID uint64) ([]*models.KnownDevice, error)
 	RemoveKnownDevice(deviceID uint64) error
+	TrustDevice(deviceID uint64) error
 
 	// Session tracking
 	TrackSession(userID uint64, sessionID, ipAddress, userAgent string, expiresAt time.Time) error
 	GetActiveSessions(userID uint64) ([]*models.SecuritySession, error)
 	GetAllActiveSessions() ([]*models.SecuritySession, error)
 	DeactivateSession(sessionID string) error
+	TerminateSession(sessionID string) error
 
 	// Suspicious activity
 	DetectSuspiciousActivity(email, ipAddress string) error
@@ -46,13 +48,20 @@ type SecurityUsecase interface {
 
 type securityUsecase struct {
 	securityRepo *repository.SecurityRepository
+	userClient   UserServiceClient
 	log          *logger.Logger
 }
 
+// UserServiceClient defines the interface for user service client
+type UserServiceClient interface {
+	TerminateSession(sessionID string) error
+}
+
 // NewSecurityUsecase creates a new security usecase
-func NewSecurityUsecase(securityRepo *repository.SecurityRepository, log *logger.Logger) SecurityUsecase {
+func NewSecurityUsecase(securityRepo *repository.SecurityRepository, userClient UserServiceClient, log *logger.Logger) SecurityUsecase {
 	return &securityUsecase{
 		securityRepo: securityRepo,
+		userClient:   userClient,
 		log:          log,
 	}
 }
@@ -134,6 +143,10 @@ func (u *securityUsecase) TrackDevice(userID uint64, userAgent, ipAddress string
 		existingDevice.LoginCount++
 		existingDevice.IPAddress = ipAddress
 
+		// Update trust level based on usage
+		existingDevice.TrustLevel = calculateTrustLevel(existingDevice.LoginCount, existingDevice.FirstSeen)
+		existingDevice.IsTrusted = existingDevice.TrustLevel >= 70 // Trust threshold
+
 		if err := u.securityRepo.UpdateKnownDevice(existingDevice); err != nil {
 			u.log.WithField("error", err.Error()).Warn("Failed to update known device")
 		}
@@ -173,6 +186,21 @@ func (u *securityUsecase) GetUserKnownDevices(userID uint64) ([]*models.KnownDev
 // RemoveKnownDevice removes a known device
 func (u *securityUsecase) RemoveKnownDevice(deviceID uint64) error {
 	return u.securityRepo.DeleteKnownDevice(deviceID)
+}
+
+// TrustDevice manually marks a device as trusted
+func (u *securityUsecase) TrustDevice(deviceID uint64) error {
+	// Get the device
+	device, err := u.securityRepo.GetKnownDeviceByID(deviceID)
+	if err != nil {
+		return err
+	}
+
+	// Mark as trusted with 100% trust level
+	device.IsTrusted = true
+	device.TrustLevel = 100
+
+	return u.securityRepo.UpdateKnownDevice(device)
 }
 
 // TrackSession tracks a user session
@@ -402,4 +430,55 @@ func detectOS(userAgent string) string {
 		return "iOS"
 	}
 	return "Unknown"
+}
+
+// calculateTrustLevel calculates trust level based on login count and device age
+// Trust level is 0-100:
+// - New devices start at 0
+// - Each successful login increases trust
+// - Older devices get bonus trust
+// - 70+ is considered trusted
+func calculateTrustLevel(loginCount int, firstSeen time.Time) int {
+	// Base trust from login count (up to 60 points)
+	loginTrust := loginCount * 10
+	if loginTrust > 60 {
+		loginTrust = 60
+	}
+
+	// Age bonus (up to 40 points)
+	daysSinceFirst := int(time.Since(firstSeen).Hours() / 24)
+	ageTrust := 0
+
+	if daysSinceFirst >= 30 {
+		ageTrust = 40 // 30+ days = max age trust
+	} else if daysSinceFirst >= 14 {
+		ageTrust = 30 // 14-29 days
+	} else if daysSinceFirst >= 7 {
+		ageTrust = 20 // 7-13 days
+	} else if daysSinceFirst >= 3 {
+		ageTrust = 10 // 3-6 days
+	}
+
+	total := loginTrust + ageTrust
+	if total > 100 {
+		total = 100
+	}
+
+	return total
+}
+
+// TerminateSession terminates a session by calling user service
+func (u *securityUsecase) TerminateSession(sessionID string) error {
+	// Call user service to terminate the session
+	if err := u.userClient.TerminateSession(sessionID); err != nil {
+		u.log.WithFields(map[string]interface{}{
+			"session_id": sessionID,
+			"error":      err.Error(),
+		}).Error("Failed to terminate session via user service")
+		return err
+	}
+
+	// Session will be deactivated in analytics by the user service
+	u.log.WithField("session_id", sessionID).Info("Session terminated successfully")
+	return nil
 }

@@ -25,6 +25,9 @@ import (
 )
 
 func main() {
+	// Track service start time
+	startTime := time.Now()
+
 	// Initialize logger
 	log := logger.New(&logger.Config{
 		Level:       "info",
@@ -92,9 +95,10 @@ func main() {
 
 	// Initialize handlers
 	calendarHandler := handlers.NewCalendarHandler(calendarUsecase)
+	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "calendar-service", startTime)
 
 	// Setup routes
-	r := setupRoutes(calendarHandler, jwtConfig)
+	r := setupRoutes(calendarHandler, metricsHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -136,6 +140,7 @@ func main() {
 
 func setupRoutes(
 	calendarHandler *handlers.CalendarHandler,
+	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -144,6 +149,9 @@ func setupRoutes(
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 	r.Use(requestid.New())
+
+	// Add metrics middleware to track HTTP requests
+	r.Use(metricsHandler.MetricsMiddleware())
 
 	// CORS is handled by Gateway - no need for CORS middleware here
 
@@ -156,6 +164,14 @@ func setupRoutes(
 			"version":   "1.0.0",
 		})
 	})
+
+	// Internal metrics endpoints (no auth required - only accessible from internal network)
+	internalMetrics := r.Group("/internal/metrics")
+	{
+		internalMetrics.GET("/database", metricsHandler.GetDatabaseMetrics)
+		internalMetrics.GET("/redis", metricsHandler.GetRedisMetrics)
+		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
+	}
 
 	// API routes
 	api := r.Group("/api/v1")

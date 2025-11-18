@@ -29,6 +29,9 @@ import (
 )
 
 func main() {
+	// Track service start time
+	startTime := time.Now()
+
 	// Initialize logger
 	log := logger.New(&logger.Config{
 		Level:       getLogLevel(),
@@ -134,13 +137,13 @@ func main() {
 
 	// Initialize handlers
 	notificationHandler := handlers.NewNotificationHandler(notificationUC)
-	metricsHandler := handlers.NewMetricsHandler(notificationWorker, redisClient, workerConfig)
+	metricsHandler := handlers.NewMetricsHandler(notificationWorker, db, redisClient, workerConfig, "notification-service", startTime)
 
 	// Create Gin router
 	router := gin.New()
 
 	// Setup common middleware
-	setupCommonMiddleware(router)
+	setupCommonMiddleware(router, metricsHandler)
 
 	// Setup routes
 	setupRoutes(router, notificationHandler, metricsHandler, jwtConfig, notificationWorker, redisClient, workerConfig, notificationUC)
@@ -186,7 +189,7 @@ func main() {
 }
 
 // setupCommonMiddleware sets up common middleware for the router
-func setupCommonMiddleware(router *gin.Engine) {
+func setupCommonMiddleware(router *gin.Engine, metricsHandler *handlers.MetricsHandler) {
 	// Recovery middleware
 	router.Use(gin.Recovery())
 
@@ -197,6 +200,9 @@ func setupCommonMiddleware(router *gin.Engine) {
 
 	// Request ID middleware
 	router.Use(requestid.New())
+
+	// Add metrics middleware to track HTTP requests
+	router.Use(metricsHandler.MetricsMiddleware())
 
 	// CORS is handled by Gateway - no need for CORS middleware here
 
@@ -228,6 +234,9 @@ func setupRoutes(
 	internalMetrics := router.Group("/internal/metrics")
 	{
 		internalMetrics.GET("/worker", metricsHandler.GetWorkerMetrics)
+		internalMetrics.GET("/database", metricsHandler.GetDatabaseMetrics)
+		internalMetrics.GET("/redis", metricsHandler.GetRedisMetrics)
+		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
 	}
 
 	// API v1 routes

@@ -27,6 +27,9 @@ import (
 )
 
 func main() {
+	// Track service start time
+	startTime := time.Now()
+
 	// Initialize logger
 	log := logger.New(&logger.Config{
 		Level:       "info",
@@ -125,10 +128,18 @@ func main() {
 	backupClient := clients.NewBackupClient()
 	log.Info("Backup client initialized")
 
+	// Initialize user service client
+	userServiceURL := os.Getenv("USER_SERVICE_URL")
+	if userServiceURL == "" {
+		userServiceURL = "http://user-service:8081"
+	}
+	userClient := clients.NewUserClient(userServiceURL, log)
+	log.Infof("User client initialized with URL: %s", userServiceURL)
+
 	// Initialize usecases
 	analyticsUsecase := usecase.NewAnalyticsUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient, taskClient, fileClient, backupClient, log)
 	aggregatorUsecase := usecase.NewAggregatorUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient)
-	securityUsecase := usecase.NewSecurityUsecase(securityRepo, log)
+	securityUsecase := usecase.NewSecurityUsecase(securityRepo, userClient, log)
 
 	// Initialize handlers
 	dashboardHandler := handlers.NewDashboardHandler(analyticsUsecase)
@@ -141,6 +152,7 @@ func main() {
 	filesHandler := handlers.NewFilesHandler(analyticsUsecase)
 	systemHandler := handlers.NewSystemHandler(analyticsUsecase)
 	securityHandler := handlers.NewSecurityHandler(securityUsecase)
+	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "analytics-service", startTime)
 
 	// Setup routes
 	r := setupRoutes(
@@ -154,6 +166,7 @@ func main() {
 		filesHandler,
 		systemHandler,
 		securityHandler,
+		metricsHandler,
 		jwtConfig,
 	)
 
@@ -211,6 +224,7 @@ func setupRoutes(
 	filesHandler *handlers.FilesHandler,
 	systemHandler *handlers.SystemHandler,
 	securityHandler *handlers.SecurityHandler,
+	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -220,6 +234,9 @@ func setupRoutes(
 	r.Use(middleware.LoggerMiddleware())
 	r.Use(requestid.New())
 	r.Use(middleware.CORSMiddleware())
+
+	// Add metrics middleware to track HTTP requests
+	r.Use(metricsHandler.MetricsMiddleware())
 
 	// Health check endpoint (no auth required)
 	healthHandler := func(c *gin.Context) {
@@ -232,6 +249,14 @@ func setupRoutes(
 	}
 	r.GET("/health", healthHandler)
 	r.HEAD("/health", healthHandler)
+
+	// Internal metrics endpoints (no auth required - only accessible from internal network)
+	internalMetrics := r.Group("/internal/metrics")
+	{
+		internalMetrics.GET("/database", metricsHandler.GetDatabaseMetrics)
+		internalMetrics.GET("/redis", metricsHandler.GetRedisMetrics)
+		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
+	}
 
 	// API v1 routes
 	v1 := r.Group("/api/v1")
@@ -320,8 +345,10 @@ func setupRoutes(
 				security.POST("/suspicious-activities/:id/resolve", securityHandler.ResolveSuspiciousActivity)
 				security.GET("/active-sessions", securityHandler.GetActiveSessions)
 				security.GET("/users/:user_id/sessions", securityHandler.GetUserActiveSessions)
+				security.DELETE("/sessions/:session_id", securityHandler.TerminateSession)
 				security.GET("/users/:user_id/devices", securityHandler.GetUserKnownDevices)
 				security.DELETE("/devices/:device_id", securityHandler.RemoveKnownDevice)
+				security.POST("/devices/:device_id/trust", securityHandler.TrustDevice)
 			}
 
 			// Reports
@@ -345,6 +372,7 @@ func setupRoutes(
 			// Security events collection - for auth service to send login attempts and track sessions
 			internal.POST("/security/login-attempt", securityHandler.RecordLoginAttempt)
 			internal.POST("/security/track-session", securityHandler.TrackSession)
+			internal.POST("/security/track-device", securityHandler.TrackDevice)
 			internal.POST("/security/sessions/:session_id/deactivate", securityHandler.DeactivateSession)
 		}
 	}

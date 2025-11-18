@@ -243,3 +243,72 @@ func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
 		"request_id":    requestID,
 	})
 }
+
+// TerminateSessionInternal terminates any session (for internal/admin use)
+// DELETE /internal/sessions/:session_id
+func (h *SessionHandler) TerminateSessionInternal(c *gin.Context) {
+	requestID := requestid.Get(c)
+	sessionID := c.Param("session_id")
+
+	if sessionID == "" {
+		logger.WithField("request_id", requestID).Warn("Session ID is required")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Session ID is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	authConfig := middleware.GetAuthConfig()
+	if authConfig == nil || authConfig.SessionStore == nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"session_id": sessionID,
+		}).Error("Session store not configured")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Session management not available",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"session_id": sessionID,
+		"request_id": requestID,
+	}).Info("Terminating session (internal)")
+
+	// Delete the session from Redis
+	if err := authConfig.SessionStore.DeleteSession(c.Request.Context(), sessionID); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"session_id": sessionID,
+			"error":      err.Error(),
+			"request_id": requestID,
+		}).Error("Failed to delete session from Redis")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to terminate session",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Deactivate session in analytics (async)
+	go func() {
+		if err := h.analyticsClient.DeactivateSession(sessionID); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"session_id": sessionID,
+				"error":      err.Error(),
+			}).Warn("Failed to deactivate session in analytics")
+		}
+	}()
+
+	logger.WithFields(map[string]interface{}{
+		"session_id": sessionID,
+		"request_id": requestID,
+	}).Info("Session terminated successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Session terminated successfully",
+		"request_id": requestID,
+	})
+}

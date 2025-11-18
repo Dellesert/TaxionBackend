@@ -119,6 +119,36 @@ func (h *SecurityHandler) DeactivateSession(c *gin.Context) {
 	})
 }
 
+// TrackDevice tracks a device for a user (for internal use by auth service)
+// POST /api/v1/analytics/security/track-device
+func (h *SecurityHandler) TrackDevice(c *gin.Context) {
+	var req struct {
+		UserID    uint64 `json:"user_id" binding:"required"`
+		UserAgent string `json:"user_agent" binding:"required"`
+		IPAddress string `json:"ip_address" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid request body",
+		})
+		return
+	}
+
+	isNewDevice, err := h.securityUsecase.TrackDevice(req.UserID, req.UserAgent, req.IPAddress)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to track device",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message":       "Device tracked successfully",
+		"is_new_device": isNewDevice,
+	})
+}
+
 // GetDashboard returns the main security dashboard with all key metrics
 // GET /api/v1/analytics/security/dashboard?period=7d
 func (h *SecurityHandler) GetDashboard(c *gin.Context) {
@@ -411,6 +441,52 @@ func (h *SecurityHandler) RemoveKnownDevice(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Device removed successfully",
+	})
+}
+
+// TrustDevice manually marks a device as trusted
+// POST /api/v1/analytics/security/devices/:device_id/trust
+func (h *SecurityHandler) TrustDevice(c *gin.Context) {
+	deviceID, err := strconv.ParseUint(c.Param("device_id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Invalid device ID",
+		})
+		return
+	}
+
+	if err := h.securityUsecase.TrustDevice(deviceID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to trust device",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Device marked as trusted successfully",
+	})
+}
+
+// TerminateSession terminates a user session (admin action)
+// DELETE /api/v1/analytics/security/sessions/:session_id
+func (h *SecurityHandler) TerminateSession(c *gin.Context) {
+	sessionID := c.Param("session_id")
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Session ID is required",
+		})
+		return
+	}
+
+	if err := h.securityUsecase.TerminateSession(sessionID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to terminate session",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Session terminated successfully",
 	})
 }
 

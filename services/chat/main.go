@@ -27,6 +27,9 @@ import (
 )
 
 func main() {
+	// Track service start time
+	startTime := time.Now()
+
 	// Initialize logger
 	log := logger.New(&logger.Config{
 		Level:       "info",
@@ -124,13 +127,16 @@ func main() {
 	chatHandler := handlers.NewChatHandler(chatUsecase)
 	messageHandler := handlers.NewMessageHandler(messageUsecase, analyticsClient)
 	wsHandler := handlers.NewWebSocketHandler(wsHub, messageUsecase)
-	metricsHandler := handlers.NewMetricsHandler(wsHub)
+	metricsHandler := handlers.NewMetricsHandler(wsHub, db, redisClient, "chat-service", startTime)
 
 	// Create Gin router
 	router := gin.New()
 
 	// Setup common middleware (without CORS - Gateway handles it)
 	middleware.SetupCommonMiddlewareWithoutCORS(router)
+
+	// Add metrics middleware to track HTTP requests
+	router.Use(metricsHandler.MetricsMiddleware())
 
 	// Setup routes
 	setupRoutes(router, chatHandler, messageHandler, wsHandler, metricsHandler, jwtConfig)
@@ -179,6 +185,9 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 	internal := router.Group("/internal/metrics")
 	{
 		internal.GET("/websocket", metricsHandler.GetWebSocketMetrics)
+		internal.GET("/database", metricsHandler.GetDatabaseMetrics)
+		internal.GET("/redis", metricsHandler.GetRedisMetrics)
+		internal.GET("/runtime", metricsHandler.GetRuntimeMetrics)
 	}
 
 	// WebSocket endpoint БЕЗ JWT middleware (обрабатывает аутентификацию самостоятельно)
