@@ -486,13 +486,17 @@ func generateSecureToken() (string, error) {
 }
 
 // generateInviteLink generates an invitation link
+// This link points to the backend redirect page that handles platform detection
 func generateInviteLink(token string) string {
-	// Get frontend URL from environment or use default
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		frontendURL = "http://localhost:3000" // Default for development
+	backendURL := os.Getenv("BACKEND_URL")
+	if backendURL == "" {
+		// Fallback to user service URL
+		backendURL = os.Getenv("USER_SERVICE_URL")
+		if backendURL == "" {
+			backendURL = "http://localhost:8081"
+		}
 	}
-	return fmt.Sprintf("%s/invite/%s", strings.TrimSuffix(frontendURL, "/"), token)
+	return fmt.Sprintf("%s/invite/%s", strings.TrimSuffix(backendURL, "/"), token)
 }
 
 // sendInvitationEmail sends an invitation email

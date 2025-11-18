@@ -297,13 +297,18 @@ func generateSecureResetToken() (string, error) {
 }
 
 // generateResetLink generates a password reset link
+// This link points to the backend redirect page that handles platform detection
 func generateResetLink(token string) string {
-	frontendURL := os.Getenv("FRONTEND_URL")
-	if frontendURL == "" {
-		frontendURL = "http://localhost:8093"
+	backendURL := os.Getenv("BACKEND_URL")
+	if backendURL == "" {
+		// Fallback to user service URL
+		backendURL = os.Getenv("USER_SERVICE_URL")
+		if backendURL == "" {
+			backendURL = "http://localhost:8081"
+		}
 	}
 
-	return fmt.Sprintf("%s/reset-password/%s", frontendURL, token)
+	return fmt.Sprintf("%s/reset-password/%s", backendURL, token)
 }
 
 // hashPasswordReset hashes a password using bcrypt

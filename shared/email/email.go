@@ -408,14 +408,13 @@ func (s *EmailService) renderPasswordResetTemplate(resetLink, userName string) (
             color: #6c757d;
             font-size: 14px;
         }
-        .link-fallback {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #f8f9fa;
+        .info-box {
+            background-color: #e7f3ff;
+            border: 1px solid #b3d9ff;
             border-radius: 4px;
-            word-break: break-all;
-            font-size: 12px;
-            color: #6c757d;
+            padding: 15px;
+            margin: 20px 0;
+            color: #004085;
         }
     </style>
 </head>
@@ -437,9 +436,14 @@ func (s *EmailService) renderPasswordResetTemplate(resetLink, userName string) (
             <a href="{{.ResetLink}}" class="reset-button" target="_blank" rel="noopener">Сбросить пароль</a>
         </div>
 
-        <p class="message" style="text-align: center; font-size: 13px; color: #6c757d;">
-            Нажмите на кнопку выше, чтобы открыть приложение
-        </p>
+        <div class="info-box">
+            <strong>📱 Как это работает:</strong>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>Нажмите на кнопку "Сбросить пароль"</li>
+                <li>Откроется страница, которая автоматически перенаправит вас в приложение</li>
+                <li>Если приложение не установлено, вы получите инструкции по установке</li>
+            </ul>
+        </div>
 
         <div class="warning">
             <strong>⚠️ Важно:</strong>
@@ -449,17 +453,6 @@ func (s *EmailService) renderPasswordResetTemplate(resetLink, userName string) (
                 <li>Если вы не запрашивали сброс пароля, проигнорируйте это письмо</li>
                 <li>Никому не передавайте эту ссылку</li>
             </ul>
-        </div>
-
-        <div class="link-fallback">
-            <p style="margin: 0 0 10px 0;"><strong>📱 Для мобильного приложения:</strong></p>
-            <p style="margin: 5px 0; font-size: 13px;">Скопируйте ссылку ниже и откройте её в приложении Tachyon Messenger:</p>
-            <div style="background: white; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; margin: 10px 0;">
-                <code style="color: #3498db; word-break: break-all;">{{.ResetLink}}</code>
-            </div>
-            <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d;">
-                Или нажмите на кнопку "Сбросить пароль" выше
-            </p>
         </div>
 
         <div class="footer">

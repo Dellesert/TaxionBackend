@@ -316,6 +316,12 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		})
 	}
 
+	// Public password reset redirect page (HTML page for email links)
+	router.GET("/reset-password/:token", passwordResetHandler.PasswordResetRedirect)
+
+	// Public invitation redirect page (HTML page for email links)
+	router.GET("/invite/:token", invitationHandler.InvitationRedirect)
+
 	// Public authentication routes (no auth required for login/register)
 	auth := router.Group("/auth")
 	{

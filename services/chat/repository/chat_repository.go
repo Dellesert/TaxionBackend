@@ -20,6 +20,7 @@ type ChatRepository interface {
 	Count() (int64, error)
 	GetWithMembers(id uint) (*models.Chat, error)
 	GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) ([]*models.Chat, int64, error)
+	GetPinnedChats(userID uint, chatType string) ([]*models.Chat, error)
 	GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error)
 	GetChatByTaskID(taskID uint) (*models.Chat, error)
 
@@ -195,12 +196,13 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int, chatType s
 		query = query.Where("chat_members.is_pinned = ?", *isPinned)
 	}
 
-	// Get chats with members, sorted by last activity (exclude hidden chats)
+	// Get chats with members, sorted by pinned status first, then by last activity (exclude hidden chats)
+	// Pinned chats always come first, then sorted by last message time
 	// Add secondary sort by id to ensure deterministic ordering for pagination
 	err = query.
 		Limit(limit).
 		Offset(offset).
-		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
+		Order("chat_members.is_pinned DESC, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
 		Find(&chats).Error
 
 	if err != nil {
@@ -208,6 +210,39 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int, chatType s
 	}
 
 	return chats, total, nil
+}
+
+// GetPinnedChats retrieves all pinned chats for a user with optional type filter
+// This returns ALL pinned chats without pagination, sorted by last activity
+func (r *chatRepository) GetPinnedChats(userID uint, chatType string) ([]*models.Chat, error) {
+	var chats []*models.Chat
+
+	// Build query for getting pinned chats
+	query := r.db.
+		Preload("Members.User"). // Load User for each Member
+		Preload("Members", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
+		}).
+		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
+		Where("chat_members.is_pinned = ?", true).
+		Where("chats.is_active = ?", true)
+
+	// Apply type filter if specified
+	if chatType != "" {
+		query = query.Where("chats.type = ?", chatType)
+	}
+
+	// Get all pinned chats sorted by last activity
+	err := query.
+		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
+		Find(&chats).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pinned chats: %w", err)
+	}
+
+	return chats, nil
 }
 
 // AddMember adds a member to a chat

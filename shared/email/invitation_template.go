@@ -11,6 +11,10 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
 	appStoreURL := getEnvOrDefault("APP_STORE_URL", "https://apps.apple.com/app/tachyon-messenger")
 	googlePlayURL := getEnvOrDefault("GOOGLE_PLAY_URL", "https://play.google.com/store/apps/details?id=com.tachyon.messenger")
 
+	// Get backend URL for invitation redirect page
+	backendURL := getEnvOrDefault("BACKEND_URL", getEnvOrDefault("USER_SERVICE_URL", "http://localhost:8081"))
+	inviteURL := backendURL + "/invite/" + inviteToken
+
 	tmpl := `
 <!DOCTYPE html>
 <html>
@@ -160,6 +164,27 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
             Вы приглашены присоединиться к корпоративному мессенджеру <strong>Tachyon</strong>.
         </p>
 
+        <!-- Quick Action Button -->
+        <div style="text-align: center; margin: 30px 0;">
+            <a href="{{.InviteURL}}" class="button" target="_blank" rel="noopener">Принять приглашение</a>
+            <p style="margin: 15px 0 0 0; font-size: 14px; color: #6c757d;">
+                Нажмите кнопку, чтобы автоматически открыть приложение
+            </p>
+        </div>
+
+        <div class="info-box">
+            <strong>📱 Как это работает:</strong>
+            <ul style="margin: 10px 0; padding-left: 20px;">
+                <li>Нажмите на кнопку "Принять приглашение"</li>
+                <li>Откроется страница, которая автоматически перенаправит вас в приложение</li>
+                <li>Если приложение не установлено, вы получите инструкции и код приглашения</li>
+            </ul>
+        </div>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e9ecef;" />
+
+        <h3 style="text-align: center; color: #2c3e50; margin: 20px 0;">Или выполните шаги вручную:</h3>
+
         <!-- Step 1: Install App -->
         <div class="step">
             <div class="step-title">
@@ -262,12 +287,14 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
 		UserName      string
 		InviteToken   string
 		DeepLink      string
+		InviteURL     string
 		AppStoreURL   string
 		GooglePlayURL string
 	}{
 		UserName:      userName,
 		InviteToken:   inviteToken,
 		DeepLink:      deepLink,
+		InviteURL:     inviteURL,
 		AppStoreURL:   appStoreURL,
 		GooglePlayURL: googlePlayURL,
 	}

@@ -109,6 +109,56 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 	})
 }
 
+// GetPinnedChats handles getting all pinned chats for a user
+func (h *ChatHandler) GetPinnedChats(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse filter parameters
+	chatType := c.Query("type") // "private", "group", "channel"
+
+	pinnedChats, err := h.chatUsecase.GetPinnedChats(userID, chatType)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get pinned chats")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get pinned chats",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"count":      len(pinnedChats),
+	}).Info("Pinned chats retrieved successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"chats":      pinnedChats,
+		"count":      len(pinnedChats),
+		"request_id": requestID,
+	})
+}
+
 // CreateChat handles chat creation
 func (h *ChatHandler) CreateChat(c *gin.Context) {
 	requestID := requestid.Get(c)

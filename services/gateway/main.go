@@ -285,6 +285,11 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 	// Legacy WebSocket endpoint for backward compatibility
 	router.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 
+	// Public redirect pages for email links (no /api/v1 prefix)
+	// These are HTML pages that redirect to the mobile app
+	router.GET("/invite/:token", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+	router.GET("/reset-password/:token", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+
 	// Admin routes (direct) - proxy to user service
 	adminDirect := router.Group("/admin")
 	{

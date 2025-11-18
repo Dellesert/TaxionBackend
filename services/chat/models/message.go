@@ -188,11 +188,12 @@ type AddReactionRequest struct {
 
 // GetMessagesRequest represents request parameters for getting messages
 type GetMessagesRequest struct {
-	ChatID uint `form:"chat_id" validate:"omitempty,min=1"`
-	Limit  int  `form:"limit" validate:"omitempty,min=1,max=100"`
-	Offset int  `form:"offset" validate:"omitempty,min=0"`
-	Before uint `form:"before" validate:"omitempty,min=1"` // Get messages before this message ID
-	After  uint `form:"after" validate:"omitempty,min=1"`  // Get messages after this message ID
+	ChatID     uint `form:"chat_id" validate:"omitempty,min=1"`
+	Limit      int  `form:"limit" validate:"omitempty,min=1,max=100"`
+	Offset     int  `form:"offset" validate:"omitempty,min=0"`
+	Before     uint `form:"before" validate:"omitempty,min=1"`     // Get messages before this message ID
+	After      uint `form:"after" validate:"omitempty,min=1"`      // Get messages after this message ID
+	MarkAsRead bool `form:"mark_as_read" validate:"omitempty"`     // Mark messages as read (default: false)
 }
 
 // MessageResponse represents message response

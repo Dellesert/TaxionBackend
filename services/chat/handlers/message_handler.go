@@ -541,11 +541,32 @@ func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 		return
 	}
 
+	// Mark messages as read if requested via mark_as_read parameter
+	if req.MarkAsRead {
+		err := h.messageUsecase.MarkChatAsRead(userID, uint(chatID))
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"user_id":    userID,
+				"chat_id":    chatID,
+				"error":      err.Error(),
+			}).Warn("Failed to mark chat as read after retrieving messages")
+			// Don't fail the request if marking as read fails, just log the warning
+		} else {
+			logger.WithFields(map[string]interface{}{
+				"request_id": requestID,
+				"user_id":    userID,
+				"chat_id":    chatID,
+			}).Info("Chat messages marked as read")
+		}
+	}
+
 	logger.WithFields(map[string]interface{}{
 		"request_id":    requestID,
 		"user_id":       userID,
 		"chat_id":       chatID,
 		"message_count": len(messages.Messages),
+		"mark_as_read":  req.MarkAsRead,
 	}).Info("Messages by chat retrieved successfully")
 
 	c.JSON(http.StatusOK, gin.H{

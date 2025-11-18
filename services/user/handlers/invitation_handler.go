@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -540,6 +541,359 @@ func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
 		"data":       response,
 		"request_id": requestID,
 	})
+}
+
+// InvitationRedirect handles the invitation redirect page (public endpoint)
+// This page detects the platform and redirects to the mobile app or shows instructions
+func (h *InvitationHandler) InvitationRedirect(c *gin.Context) {
+	// Get token from URL
+	token := c.Param("token")
+	if token == "" {
+		c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(getInviteErrorPageHTML("Неверная ссылка", "Ссылка приглашения недействительна.")))
+		return
+	}
+
+	// Validate invitation
+	invitation, err := h.invitationUsecase.ValidateInvitation(token)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"error": err.Error(),
+		}).Warn("Invalid or expired invitation token for redirect page")
+
+		c.Data(http.StatusBadRequest, "text/html; charset=utf-8", []byte(getInviteErrorPageHTML("Приглашение недействительно", "Срок действия приглашения истёк или оно уже было использовано.")))
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"email": invitation.Email,
+	}).Info("Invitation redirect page accessed")
+
+	// Render redirect page with platform detection
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(getInvitationRedirectHTML(token, invitation.Name)))
+}
+
+// getInvitationRedirectHTML returns HTML for the invitation redirect page
+func getInvitationRedirectHTML(token, userName string) string {
+	// Get app store URLs from environment
+	appStoreURL := os.Getenv("APP_STORE_URL")
+	if appStoreURL == "" {
+		appStoreURL = "https://apps.apple.com/app/tachyon-messenger/idXXXXXXXXXX"
+	}
+	googlePlayURL := os.Getenv("GOOGLE_PLAY_URL")
+	if googlePlayURL == "" {
+		googlePlayURL = "https://play.google.com/store/apps/details?id=com.tachyon.messenger"
+	}
+	return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Приглашение в Tachyon Messenger</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #E94444 0%, #c72c2c 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+        }
+        .logo {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 16px;
+            margin-bottom: 30px;
+        }
+        .user-name {
+            color: #E94444;
+            font-weight: bold;
+        }
+        .spinner {
+            width: 50px;
+            height: 50px;
+            margin: 30px auto;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #E94444;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status {
+            color: #666;
+            font-size: 14px;
+            margin: 20px 0;
+        }
+        .instructions {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: left;
+            display: none;
+        }
+        .instructions h3 {
+            color: #333;
+            font-size: 18px;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+        .instructions ol {
+            padding-left: 20px;
+            color: #555;
+        }
+        .instructions li {
+            margin: 10px 0;
+            line-height: 1.6;
+        }
+        .store-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .store-button {
+            display: inline-block;
+            padding: 12px 20px;
+            background: #000;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        .store-button:hover {
+            background: #333;
+        }
+        .app-store { background: #000; }
+        .play-store { background: #01875f; }
+        .play-store:hover { background: #016647; }
+        .token-box {
+            background: white;
+            border: 2px dashed #E94444;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 12px;
+            color: #E94444;
+            display: none;
+            cursor: pointer;
+        }
+        .token-box:hover {
+            background: #fff5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">📱</div>
+        <h1>Добро пожаловать!</h1>
+        <p class="subtitle">Приглашение в <strong>Tachyon Messenger</strong>` +
+		(func() string {
+			if userName != "" {
+				return `<br><span class="user-name">` + userName + `</span>`
+			}
+			return ""
+		})() + `</p>
+
+        <div class="spinner"></div>
+        <p class="status" id="status">Определяем вашу платформу...</p>
+
+        <div class="instructions" id="instructions">
+            <h3>📱 Откройте приложение</h3>
+            <ol>
+                <li>Если у вас установлено приложение Tachyon Messenger, оно откроется автоматически</li>
+                <li>Если приложение не открылось, скопируйте код ниже</li>
+                <li>Откройте приложение Tachyon Messenger вручную</li>
+                <li>Нажмите "Есть приглашение?" или "У меня есть код"</li>
+                <li>Вставьте скопированный код приглашения</li>
+            </ol>
+
+            <div class="token-box" id="tokenBox" title="Нажмите, чтобы скопировать">` + token + `</div>
+
+            <div class="store-buttons" id="storeButtons" style="display: none;">
+                <a href="` + appStoreURL + `" class="store-button app-store">📱 Скачать из App Store</a>
+                <a href="` + googlePlayURL + `" class="store-button play-store">📱 Скачать из Google Play</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const token = '` + token + `';
+        const statusEl = document.getElementById('status');
+        const instructionsEl = document.getElementById('instructions');
+        const tokenBoxEl = document.getElementById('tokenBox');
+        const storeButtonsEl = document.getElementById('storeButtons');
+
+        function detectPlatform() {
+            const ua = navigator.userAgent || navigator.vendor || window.opera;
+
+            if (/iPad|iPhone|iPod/.test(ua) && !window.MSStream) {
+                return 'ios';
+            }
+            if (/android/i.test(ua)) {
+                return 'android';
+            }
+            return 'web';
+        }
+
+        function tryOpenApp() {
+            const platform = detectPlatform();
+
+            // Try to open the app with Universal/App Link
+            let appUrl = '';
+
+            if (platform === 'ios') {
+                // Universal Link for iOS
+                appUrl = 'tachyon://invite/' + token;
+                statusEl.textContent = 'Открываем приложение на iOS...';
+            } else if (platform === 'android') {
+                // App Link for Android
+                appUrl = 'tachyon://invite/' + token;
+                statusEl.textContent = 'Открываем приложение на Android...';
+            } else {
+                // Web - show instructions immediately
+                showInstructions('Откройте эту страницу на мобильном устройстве', true);
+                return;
+            }
+
+            // Try to open the app
+            window.location.href = appUrl;
+
+            // If app didn't open after 2 seconds, show instructions
+            setTimeout(() => {
+                showInstructions('Приложение не установлено?', false);
+            }, 2000);
+        }
+
+        function showInstructions(message, showStoreButtons) {
+            statusEl.textContent = message;
+            instructionsEl.style.display = 'block';
+            tokenBoxEl.style.display = 'block';
+
+            if (showStoreButtons) {
+                storeButtonsEl.style.display = 'flex';
+            }
+
+            document.querySelector('.spinner').style.display = 'none';
+        }
+
+        // Copy token to clipboard when clicked
+        tokenBoxEl.addEventListener('click', () => {
+            navigator.clipboard.writeText(token).then(() => {
+                const originalText = tokenBoxEl.textContent;
+                tokenBoxEl.textContent = '✅ Скопировано!';
+                setTimeout(() => {
+                    tokenBoxEl.textContent = originalText;
+                }, 2000);
+            });
+        });
+
+        // Start the process
+        tryOpenApp();
+    </script>
+</body>
+</html>`
+}
+
+// getInviteErrorPageHTML returns HTML for invitation error page
+func getInviteErrorPageHTML(title, message string) string {
+	return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>` + title + ` - Tachyon Messenger</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #E94444 0%, #c72c2c 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+        }
+        .icon {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 15px;
+        }
+        p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 30px;
+            padding: 12px 30px;
+            background: #E94444;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+        .back-link:hover {
+            background: #c72c2c;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">⚠️</div>
+        <h1>` + title + `</h1>
+        <p>` + message + `</p>
+        <a href="#" onclick="window.close(); return false;" class="back-link">Закрыть</a>
+    </div>
+</body>
+</html>`
 }
 
 // AcceptInvitation handles invitation acceptance (public endpoint)

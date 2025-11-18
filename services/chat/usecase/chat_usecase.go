@@ -17,6 +17,7 @@ import (
 type ChatUsecase interface {
 	CreateChat(userID uint, req *models.CreateChatRequest) (*models.ChatResponse, error)
 	GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) (*models.ChatListResponse, error)
+	GetPinnedChats(userID uint, chatType string) ([]models.ChatResponse, error)
 	GetChat(userID, chatID uint) (*models.ChatResponse, error)
 	UpdateChat(userID, chatID uint, req *models.UpdateChatRequest) (*models.ChatResponse, error)
 	DeleteChat(userID, chatID uint, clearHistory bool) error
@@ -483,6 +484,52 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int, chatType str
 		Limit:  limit,
 		Offset: offset,
 	}, nil
+}
+
+// GetPinnedChats retrieves all pinned chats for a user with optional type filter
+// This is useful for frontend to load all pinned chats at once for better UX
+func (uc *chatUsecase) GetPinnedChats(userID uint, chatType string) ([]models.ChatResponse, error) {
+	chats, err := uc.chatRepo.GetPinnedChats(userID, chatType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pinned chats: %w", err)
+	}
+
+	// Convert to response format and load last message + unread count for each chat
+	chatResponses := make([]models.ChatResponse, len(chats))
+	for i, chat := range chats {
+		// Get last message for this chat
+		lastMessage, err := uc.messageRepo.GetLatestMessage(chat.ID)
+		if err == nil && lastMessage != nil {
+			// Add last message to chat's Messages slice so ToResponse can pick it up
+			chat.Messages = []models.Message{*lastMessage}
+		}
+
+		// Convert to response
+		response := chat.ToResponse(uc.baseURL)
+
+		// Get unread count for this chat
+		unreadCount, err := uc.messageRepo.GetUnreadCount(chat.ID, userID)
+		if err == nil {
+			response.UnreadCount = unreadCount
+		} else {
+			response.UnreadCount = 0
+		}
+
+		// Set favorite and pinned status for current user
+		response.IsFavorite = false
+		response.IsPinned = true // All chats from this method are pinned
+		for _, member := range chat.Members {
+			if member.UserID == userID {
+				response.IsFavorite = member.IsFavorite
+				response.IsPinned = member.IsPinned
+				break
+			}
+		}
+
+		chatResponses[i] = *response
+	}
+
+	return chatResponses, nil
 }
 
 // GetChat retrieves a specific chat
