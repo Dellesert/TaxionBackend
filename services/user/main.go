@@ -238,7 +238,7 @@ func main() {
 	subdepartmentHandler := handlers.NewSubdepartmentHandler(subdepartmentUsecase, departmentUsecase)
 	adminHandler := handlers.NewAdminHandler(adminUsecase, userUsecase)
 	settingsHandler := handlers.NewSettingsHandler(settingsUsecase)
-	sessionHandler := handlers.NewSessionHandler()
+	sessionHandler := handlers.NewSessionHandler(analyticsClient)
 	twoFAHandler := handlers.NewTwoFAHandler(twoFAUsecase, authUsecase, jwtConfig)
 	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase)
 	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)

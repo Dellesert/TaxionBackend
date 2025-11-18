@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 
+	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 
@@ -11,11 +12,15 @@ import (
 )
 
 // SessionHandler handles HTTP requests for session management
-type SessionHandler struct{}
+type SessionHandler struct {
+	analyticsClient *analytics.Client
+}
 
 // NewSessionHandler creates a new session handler
-func NewSessionHandler() *SessionHandler {
-	return &SessionHandler{}
+func NewSessionHandler(analyticsClient *analytics.Client) *SessionHandler {
+	return &SessionHandler{
+		analyticsClient: analyticsClient,
+	}
 }
 
 // GetActiveSessions returns all active sessions for the current user
@@ -143,6 +148,11 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		return
 	}
 
+	// Deactivate session in analytics
+	if h.analyticsClient != nil {
+		h.analyticsClient.DeactivateSessionAsync(sessionID)
+	}
+
 	logger.WithFields(map[string]interface{}{
 		"request_id": requestID,
 		"user_id":    userID,
@@ -211,6 +221,12 @@ func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
 				}).Warn("Failed to delete session")
 				continue
 			}
+
+			// Deactivate session in analytics
+			if h.analyticsClient != nil {
+				h.analyticsClient.DeactivateSessionAsync(session.SessionID)
+			}
+
 			deletedCount++
 		}
 	}

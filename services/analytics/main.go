@@ -57,6 +57,10 @@ func main() {
 		&models.AggregatedMetric{},
 		&models.UserActivity{},
 		&models.DepartmentStats{},
+		&models.LoginAttempt{},
+		&models.KnownDevice{},
+		&models.SecuritySession{},
+		&models.SuspiciousActivity{},
 	); err != nil {
 		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
@@ -99,6 +103,7 @@ func main() {
 	analyticsRepo := repository.NewAnalyticsRepository(db)
 	eventsRepo := repository.NewEventsRepository(db)
 	metricsRepo := repository.NewMetricsRepository(db)
+	securityRepo := repository.NewSecurityRepository(db)
 
 	// Initialize task service client
 	taskServiceURL := os.Getenv("TASK_SERVICE_URL")
@@ -123,6 +128,7 @@ func main() {
 	// Initialize usecases
 	analyticsUsecase := usecase.NewAnalyticsUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient, taskClient, fileClient, backupClient, log)
 	aggregatorUsecase := usecase.NewAggregatorUsecase(analyticsRepo, metricsRepo, eventsRepo, redisClient)
+	securityUsecase := usecase.NewSecurityUsecase(securityRepo, log)
 
 	// Initialize handlers
 	dashboardHandler := handlers.NewDashboardHandler(analyticsUsecase)
@@ -134,6 +140,7 @@ func main() {
 	pollsHandler := handlers.NewPollsHandler(analyticsUsecase)
 	filesHandler := handlers.NewFilesHandler(analyticsUsecase)
 	systemHandler := handlers.NewSystemHandler(analyticsUsecase)
+	securityHandler := handlers.NewSecurityHandler(securityUsecase)
 
 	// Setup routes
 	r := setupRoutes(
@@ -146,6 +153,7 @@ func main() {
 		pollsHandler,
 		filesHandler,
 		systemHandler,
+		securityHandler,
 		jwtConfig,
 	)
 
@@ -202,6 +210,7 @@ func setupRoutes(
 	pollsHandler *handlers.PollsHandler,
 	filesHandler *handlers.FilesHandler,
 	systemHandler *handlers.SystemHandler,
+	securityHandler *handlers.SecurityHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -298,6 +307,23 @@ func setupRoutes(
 				system.GET("/api-usage", systemHandler.GetAPIUsage)
 			}
 
+			// Security analytics
+			security := analytics.Group("/security")
+			{
+				security.GET("/dashboard", securityHandler.GetDashboard)
+				security.GET("/login-attempts", securityHandler.GetLoginAttempts)
+				security.GET("/failed-logins", securityHandler.GetFailedLogins)
+				security.GET("/login-stats", securityHandler.GetLoginStats)
+				security.GET("/top-failed-ips", securityHandler.GetTopFailedIPs)
+				security.GET("/suspicious-activities", securityHandler.GetSuspiciousActivities)
+				security.GET("/suspicious-activities/unresolved", securityHandler.GetUnresolvedSuspiciousActivities)
+				security.POST("/suspicious-activities/:id/resolve", securityHandler.ResolveSuspiciousActivity)
+				security.GET("/active-sessions", securityHandler.GetActiveSessions)
+				security.GET("/users/:user_id/sessions", securityHandler.GetUserActiveSessions)
+				security.GET("/users/:user_id/devices", securityHandler.GetUserKnownDevices)
+				security.DELETE("/devices/:device_id", securityHandler.RemoveKnownDevice)
+			}
+
 			// Reports
 			reports := analytics.Group("/reports")
 			{
@@ -315,6 +341,11 @@ func setupRoutes(
 			// Events collection - can be called by other services without strict auth
 			internal.POST("/events", eventsHandler.CreateEvent)
 			internal.POST("/events/batch", eventsHandler.CreateEventsBatch)
+
+			// Security events collection - for auth service to send login attempts and track sessions
+			internal.POST("/security/login-attempt", securityHandler.RecordLoginAttempt)
+			internal.POST("/security/track-session", securityHandler.TrackSession)
+			internal.POST("/security/sessions/:session_id/deactivate", securityHandler.DeactivateSession)
 		}
 	}
 

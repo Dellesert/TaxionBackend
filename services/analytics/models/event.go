@@ -85,6 +85,22 @@ const (
 	EventAPIRequest     = "api_request"
 	EventAPIError       = "api_error"
 	EventSystemError    = "system_error"
+
+	// Security events
+	EventLoginFailed             = "login_failed"
+	EventLoginSuccess            = "login_success"
+	Event2FAVerified             = "2fa_verified"
+	Event2FAFailed               = "2fa_failed"
+	EventPasswordChanged         = "password_changed"
+	EventPasswordResetRequested  = "password_reset_requested"
+	EventPasswordResetCompleted  = "password_reset_completed"
+	EventPasskeyRegistered       = "passkey_registered"
+	EventPasskeyUsed             = "passkey_used"
+	EventSessionExpired          = "session_expired"
+	EventAccountLocked           = "account_locked"
+	EventAccountUnlocked         = "account_unlocked"
+	EventSuspiciousActivity      = "suspicious_activity"
+	EventNewDeviceLogin          = "new_device_login"
 )
 
 // Event categories
@@ -96,6 +112,7 @@ const (
 	CategoryPoll     = "poll"
 	CategoryFile     = "file"
 	CategorySystem   = "system"
+	CategorySecurity = "security"
 )
 
 // CreateEventRequest represents the request to create an event

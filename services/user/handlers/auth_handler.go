@@ -198,6 +198,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed login attempt")
 
+		// Send failed login attempt to analytics
+		h.analyticsClient.SendLoginAttemptAsync(analytics.LoginAttemptRequest{
+			Email:      req.Email,
+			IPAddress:  ipAddress,
+			UserAgent:  userAgent,
+			Success:    false,
+			FailReason: analytics.DetermineFailReason(err),
+			AuthMode:   "password",
+		})
+
 		// Determine appropriate error based on error message
 		var apiErr *sharedErrors.APIError
 
@@ -232,7 +242,18 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"auth_mode":  loginResponse.AuthMode,
 	}).Info("User logged in successfully")
 
-	// Send analytics event
+	// Send successful login attempt to analytics
+	userID := uint64(loginResponse.User.ID)
+	h.analyticsClient.SendLoginAttemptAsync(analytics.LoginAttemptRequest{
+		Email:      loginResponse.User.Email,
+		UserID:     &userID,
+		IPAddress:  ipAddress,
+		UserAgent:  userAgent,
+		Success:    true,
+		AuthMode:   string(loginResponse.AuthMode),
+	})
+
+	// Send analytics event (legacy)
 	h.analyticsClient.SendEvent(
 		analytics.EventUserLogin,
 		analytics.CategoryUser,
@@ -263,6 +284,16 @@ func (h *AuthHandler) Login(c *gin.Context) {
 			"",
 			false, // secure - set to true in production with HTTPS
 			false, // httpOnly - set to false to allow JS to read it for X-Session-ID header
+		)
+
+		// Track session in analytics
+		expiresAt := time.Unix(loginResponse.Session.ExpiresAt, 0)
+		h.analyticsClient.TrackSessionAsync(
+			uint64(loginResponse.User.ID),
+			loginResponse.Session.SessionID,
+			ipAddress,
+			userAgent,
+			expiresAt,
 		)
 	}
 
@@ -318,6 +349,17 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			"error":      err.Error(),
 		}).Warn("Failed super admin login attempt")
 
+		// Send failed login attempt to analytics
+		h.analyticsClient.SendLoginAttemptAsync(analytics.LoginAttemptRequest{
+			Email:        req.Email,
+			IPAddress:    ipAddress,
+			UserAgent:    userAgent,
+			Success:      false,
+			FailReason:   analytics.DetermineFailReason(err),
+			AuthMode:     "password",
+			IsSuperAdmin: true,
+		})
+
 		// Determine appropriate error based on error message
 		var apiErr *sharedErrors.APIError
 
@@ -345,7 +387,19 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 		"auth_mode":  loginResponse.AuthMode,
 	}).Info("Super admin logged in successfully")
 
-	// Send analytics event
+	// Send successful login attempt to analytics
+	userID := uint64(loginResponse.User.ID)
+	h.analyticsClient.SendLoginAttemptAsync(analytics.LoginAttemptRequest{
+		Email:        loginResponse.User.Email,
+		UserID:       &userID,
+		IPAddress:    ipAddress,
+		UserAgent:    userAgent,
+		Success:      true,
+		AuthMode:     string(loginResponse.AuthMode),
+		IsSuperAdmin: true,
+	})
+
+	// Send analytics event (legacy)
 	h.analyticsClient.SendEvent(
 		analytics.EventUserLogin,
 		analytics.CategoryUser,
@@ -377,6 +431,16 @@ func (h *AuthHandler) LoginSuperAdmin(c *gin.Context) {
 			"",
 			false, // secure - set to true in production with HTTPS
 			false, // httpOnly - set to false to allow JS to read it for X-Session-ID header
+		)
+
+		// Track session in analytics
+		expiresAt := time.Unix(loginResponse.Session.ExpiresAt, 0)
+		h.analyticsClient.TrackSessionAsync(
+			uint64(loginResponse.User.ID),
+			loginResponse.Session.SessionID,
+			ipAddress,
+			userAgent,
+			expiresAt,
 		)
 	}
 
@@ -467,6 +531,11 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 			"session_id": sessionID,
 		},
 	)
+
+	// Deactivate session in analytics if session ID exists
+	if sessionID != "" {
+		h.analyticsClient.DeactivateSessionAsync(sessionID)
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Logout successful",

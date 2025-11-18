@@ -132,6 +132,22 @@ const (
 	EventFileUploaded   = "file_uploaded"
 	EventFileDownloaded = "file_downloaded"
 	EventFileDeleted    = "file_deleted"
+
+	// Security events
+	EventLoginFailed             = "login_failed"
+	EventLoginSuccess            = "login_success"
+	Event2FAVerified             = "2fa_verified"
+	Event2FAFailed               = "2fa_failed"
+	EventPasswordChanged         = "password_changed"
+	EventPasswordResetRequested  = "password_reset_requested"
+	EventPasswordResetCompleted  = "password_reset_completed"
+	EventPasskeyRegistered       = "passkey_registered"
+	EventPasskeyUsed             = "passkey_used"
+	EventSessionExpired          = "session_expired"
+	EventAccountLocked           = "account_locked"
+	EventAccountUnlocked         = "account_unlocked"
+	EventSuspiciousActivity      = "suspicious_activity"
+	EventNewDeviceLogin          = "new_device_login"
 )
 
 // Event category constants
@@ -142,4 +158,5 @@ const (
 	CategoryCalendar = "calendar"
 	CategoryPoll     = "poll"
 	CategoryFile     = "file"
+	CategorySecurity = "security"
 )

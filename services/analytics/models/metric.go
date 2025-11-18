@@ -101,4 +101,21 @@ const (
 	MetricAPIErrors         = "api_errors"
 	MetricAverageResponseTime = "average_response_time"
 	MetricErrorRate         = "error_rate"
+
+	// Security metrics
+	MetricFailedLogins              = "failed_logins"
+	MetricSuccessfulLogins          = "successful_logins"
+	MetricLoginSuccessRate          = "login_success_rate"
+	Metric2FAUsage                  = "2fa_usage_rate"
+	MetricPasskeyUsage              = "passkey_usage_rate"
+	MetricPasswordResets            = "password_resets"
+	MetricSuspiciousActivities      = "suspicious_activities"
+	MetricAccountLockouts           = "account_lockouts"
+	MetricNewDeviceLogins           = "new_device_logins"
+	MetricAverageSessionDuration    = "average_session_duration"
+	MetricConcurrentSessions        = "concurrent_sessions"
+	MetricUniqueIPsPerUser          = "unique_ips_per_user"
+	MetricBruteForceAttempts        = "brute_force_attempts"
+	MetricPasswordChanges           = "password_changes"
+	MetricSessionExpirations        = "session_expirations"
 )
