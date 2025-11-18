@@ -436,6 +436,19 @@ func (s *EmailService) renderPasswordResetTemplate(resetLink, userName string) (
             <a href="{{.ResetLink}}" class="reset-button" target="_blank" rel="noopener">Сбросить пароль</a>
         </div>
 
+        <!-- Fallback link for email clients that don't handle buttons properly -->
+        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 20px 0;">
+            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2c3e50; text-align: center;">
+                <strong>Или скопируйте ссылку:</strong>
+            </p>
+            <div style="background: white; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; word-break: break-all; text-align: center;">
+                <a href="{{.ResetLink}}" style="color: #3498db; text-decoration: none; font-size: 13px;">{{.ResetLink}}</a>
+            </div>
+            <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d; text-align: center;">
+                Скопируйте и вставьте в браузер
+            </p>
+        </div>
+
         <div class="info-box">
             <strong>📱 Как это работает:</strong>
             <ul style="margin: 10px 0; padding-left: 20px;">
