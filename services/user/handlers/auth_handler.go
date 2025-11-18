@@ -154,8 +154,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	requestID := requestid.Get(c)
 
 	var req struct {
-		Email    string `json:"email" binding:"required,email"`
-		Password string `json:"password" binding:"required"`
+		Email      string `json:"email" binding:"required,email"`
+		Password   string `json:"password" binding:"required"`
+		DeviceInfo string `json:"device_info"` // Optional: device info from mobile apps (iOS workaround)
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -188,6 +189,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Extract client info for session tracking
 	ipAddress, userAgent := middleware.ExtractClientInfo(c)
+
+	// If device_info is provided in request body (iOS workaround), use it instead of User-Agent header
+	if req.DeviceInfo != "" {
+		userAgent = req.DeviceInfo
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"device_info": req.DeviceInfo,
+		}).Info("Using device_info from request body (iOS workaround)")
+	}
 
 	// Call usecase to authenticate user
 	loginResponse, err := h.authUsecase.Login(req.Email, req.Password, ipAddress, userAgent)
