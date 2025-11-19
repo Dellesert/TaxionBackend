@@ -118,8 +118,12 @@ func main() {
 	// Initialize WebSocket hub С messageUsecase
 	wsHub := websocket.NewHub(messageUsecase)
 
-	// Set WebSocket hub in messageUsecase to enable broadcasting
+	// Set WebSocket hub in usecases to enable broadcasting
 	messageUsecase.SetWebSocketHub(wsHub)
+	chatUsecase.SetWebSocketHub(wsHub)
+
+	// Set chat repository in WebSocket hub for getting chat members
+	wsHub.SetChatRepository(chatRepo)
 
 	go wsHub.Run()
 
@@ -228,6 +232,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		{
 			messages.GET("", messageHandler.GetMessages)          // GET /api/v1/messages
 			messages.POST("", messageHandler.SendMessage)         // POST /api/v1/messages
+			messages.POST("/bulk-delete", messageHandler.BulkDeleteMessages) // POST /api/v1/messages/bulk-delete
 			messages.GET("/:id", messageHandler.GetMessage)       // GET /api/v1/messages/:id
 			messages.PUT("/:id", messageHandler.UpdateMessage)    // PUT /api/v1/messages/:id
 			messages.DELETE("/:id", messageHandler.DeleteMessage) // DELETE /api/v1/messages/:id

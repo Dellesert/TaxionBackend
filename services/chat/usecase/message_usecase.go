@@ -28,6 +28,7 @@ type MessageUsecase interface {
 	UpdateMessage(userID, messageID uint, req *models.UpdateMessageRequest) (*models.MessageResponse, error)
 	DeleteMessage(userID, messageID uint) error
 	DeleteMessageForUser(userID, messageID uint, deleteFor string) error
+	BulkDeleteMessages(userID uint, req *models.BulkDeleteMessagesRequest) error
 	ClearChatHistory(userID, chatID uint) error
 	RestoreMessage(userID, messageID uint) error
 	PinMessage(userID, messageID uint) (*models.MessageResponse, error)
@@ -139,6 +140,20 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 
 	if err := uc.messageRepo.Create(message); err != nil {
 		return nil, fmt.Errorf("failed to send message: %w", err)
+	}
+
+	// Unhide the chat for all members when a new message is sent
+	// This ensures that hidden/deleted chats reappear when receiving new messages
+	memberIDs, err := uc.chatRepo.GetChatMemberIDs(req.ChatID)
+	if err != nil {
+		fmt.Printf("⚠️ Failed to get chat members to unhide chat: %v\n", err)
+	} else {
+		for _, memberID := range memberIDs {
+			if err := uc.chatRepo.UpdateHiddenStatus(req.ChatID, memberID, false); err != nil {
+				fmt.Printf("⚠️ Failed to unhide chat %d for user %d: %v\n", req.ChatID, memberID, err)
+			}
+		}
+		fmt.Printf("✅ Chat %d unhidden for %d members\n", req.ChatID, len(memberIDs))
 	}
 
 	// Process file attachments if FileIDs are provided
@@ -428,6 +443,139 @@ func (uc *messageUsecase) DeleteMessageForUser(userID, messageID uint, deleteFor
 		}
 	} else {
 		return fmt.Errorf("invalid delete_for value: must be 'everyone' or 'me'")
+	}
+
+	return nil
+}
+
+// BulkDeleteMessages deletes multiple messages at once
+func (uc *messageUsecase) BulkDeleteMessages(userID uint, req *models.BulkDeleteMessagesRequest) error {
+	if len(req.MessageIDs) == 0 {
+		return fmt.Errorf("message_ids cannot be empty")
+	}
+
+	if len(req.MessageIDs) > 100 {
+		return fmt.Errorf("cannot delete more than 100 messages at once")
+	}
+
+	// Default to "everyone" if not specified
+	deleteFor := req.DeleteFor
+	if deleteFor == "" {
+		deleteFor = "everyone"
+	}
+
+	// Validate deleteFor parameter
+	if deleteFor != "everyone" && deleteFor != "me" {
+		return fmt.Errorf("invalid delete_for value: must be 'everyone' or 'me'")
+	}
+
+	fmt.Printf("🗑️ Bulk deleting %d messages for user %d (delete_for=%s)\n", len(req.MessageIDs), userID, deleteFor)
+
+	// Track successful and failed deletions
+	successCount := 0
+	failedCount := 0
+	var firstError error
+
+	// Group messages by chat for efficient WebSocket broadcasting
+	messagesByChatID := make(map[uint][]uint)
+
+	for _, messageID := range req.MessageIDs {
+		// Get message to check permissions and chat
+		message, err := uc.messageRepo.GetByID(messageID)
+		if err != nil {
+			fmt.Printf("⚠️ Message %d not found: %v\n", messageID, err)
+			failedCount++
+			if firstError == nil {
+				firstError = fmt.Errorf("message %d not found", messageID)
+			}
+			continue
+		}
+
+		// Check if user is a member of the chat
+		isMember, err := uc.chatRepo.IsMember(message.ChatID, userID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to check membership for message %d: %v\n", messageID, err)
+			failedCount++
+			if firstError == nil {
+				firstError = fmt.Errorf("failed to check membership for message %d", messageID)
+			}
+			continue
+		}
+		if !isMember {
+			fmt.Printf("⚠️ User %d is not a member of chat %d (message %d)\n", userID, message.ChatID, messageID)
+			failedCount++
+			if firstError == nil {
+				firstError = fmt.Errorf("user is not a member of chat for message %d", messageID)
+			}
+			continue
+		}
+
+		if deleteFor == "everyone" {
+			// Check if user has permission to delete for everyone
+			if message.SenderID != userID {
+				role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+				if err != nil {
+					fmt.Printf("⚠️ Failed to get user role for message %d: %v\n", messageID, err)
+					failedCount++
+					if firstError == nil {
+						firstError = fmt.Errorf("failed to get user role for message %d", messageID)
+					}
+					continue
+				}
+				if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+					fmt.Printf("⚠️ User %d has insufficient permissions to delete message %d for everyone\n", userID, messageID)
+					failedCount++
+					if firstError == nil {
+						firstError = fmt.Errorf("insufficient permissions to delete message %d for everyone", messageID)
+					}
+					continue
+				}
+			}
+
+			// Soft delete the message
+			if err := uc.messageRepo.Delete(messageID); err != nil {
+				fmt.Printf("⚠️ Failed to delete message %d: %v\n", messageID, err)
+				failedCount++
+				if firstError == nil {
+					firstError = fmt.Errorf("failed to delete message %d", messageID)
+				}
+				continue
+			}
+
+			// Track for WebSocket broadcast
+			messagesByChatID[message.ChatID] = append(messagesByChatID[message.ChatID], messageID)
+		} else if deleteFor == "me" {
+			// Delete for this user only (personal deletion)
+			if err := uc.messageRepo.AddMessageDeletion(messageID, userID); err != nil {
+				fmt.Printf("⚠️ Failed to delete message %d for user: %v\n", messageID, err)
+				failedCount++
+				if firstError == nil {
+					firstError = fmt.Errorf("failed to delete message %d for user", messageID)
+				}
+				continue
+			}
+		}
+
+		successCount++
+	}
+
+	// Broadcast deletions to WebSocket clients (only for "everyone" deletions)
+	if deleteFor == "everyone" && uc.wsHub != nil {
+		for chatID, messageIDs := range messagesByChatID {
+			for _, messageID := range messageIDs {
+				uc.wsHub.BroadcastToChat(chatID, map[string]interface{}{
+					"message_id": messageID,
+				}, models.WSMessageTypeMessageDelete, userID)
+			}
+			fmt.Printf("📢 Broadcasted deletion of %d messages in chat %d\n", len(messageIDs), chatID)
+		}
+	}
+
+	fmt.Printf("✅ Bulk delete completed: %d succeeded, %d failed\n", successCount, failedCount)
+
+	// Return error only if all deletions failed
+	if successCount == 0 && failedCount > 0 {
+		return fmt.Errorf("all message deletions failed: %w", firstError)
 	}
 
 	return nil

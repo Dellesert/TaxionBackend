@@ -189,19 +189,6 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 		proxyReq.Header.Set("X-Forwarded-For", c.ClientIP())
 		proxyReq.Header.Set("X-Forwarded-Proto", c.Request.Header.Get("X-Forwarded-Proto"))
 
-		// Debug: Log User-Agent headers
-		logger.WithFields(map[string]interface{}{
-			"request_id":        requestID,
-			"service":           serviceName,
-			"x_device_info_in":  c.Request.Header.Get("X-Device-Info"),
-			"x_user_agent_in":   c.Request.Header.Get("X-User-Agent"),
-			"user_agent_in":     c.Request.Header.Get("User-Agent"),
-			"x_device_info_out": proxyReq.Header.Get("X-Device-Info"),
-			"x_user_agent_out":  proxyReq.Header.Get("X-User-Agent"),
-			"user_agent_out":    proxyReq.Header.Get("User-Agent"),
-			"path":              c.Request.URL.Path,
-		}).Info("Gateway headers forwarding")
-
 		// Log proxy request
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

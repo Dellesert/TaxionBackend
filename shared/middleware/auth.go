@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/models"
 	"tachyon-messenger/shared/session"
 
@@ -242,19 +241,7 @@ func authenticateWithSession(c *gin.Context, config *AuthConfig) bool {
 
 // ExtractClientInfo extracts IP address and user agent from request
 func ExtractClientInfo(c *gin.Context) (ipAddress, userAgent string) {
-	// Get IP address
 	ipAddress = c.ClientIP()
-
-	// Get user agent from standard User-Agent header
-	// Note: Mobile apps override this header with device info
 	userAgent = c.GetHeader("User-Agent")
-
-	// Log for debugging (temporary)
-	logger.WithFields(map[string]interface{}{
-		"ip_address": ipAddress,
-		"user_agent": userAgent,
-		"path":       c.Request.URL.Path,
-	}).Info("Extracted client info")
-
 	return ipAddress, userAgent
 }

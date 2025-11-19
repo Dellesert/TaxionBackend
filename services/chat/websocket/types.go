@@ -67,6 +67,7 @@ type Hub struct {
 	clients map[uint]*Client
 
 	// Chat rooms - maps chat ID to set of user IDs
+	// DEPRECATED: Will be removed in favor of database-backed membership
 	chatRooms map[uint]map[uint]bool
 
 	// Inbound messages from the clients
@@ -87,7 +88,11 @@ type Hub struct {
 	// Metrics for monitoring
 	metrics *HubMetrics
 
+	// Usecase for accessing chat data
 	messageUsecase usecase.MessageUsecase
+
+	// Repository for getting chat members (NEW)
+	chatRepo ChatRepository
 }
 
 // BroadcastMessage represents a message to be broadcasted to a room
@@ -360,4 +365,10 @@ func DefaultHubOptions() *HubOptions {
 		MaxClientsPerRoom:    1000,
 		MaxRoomsPerClient:    100,
 	}
+}
+
+// ChatRepository defines minimal interface for getting chat members
+type ChatRepository interface {
+	GetChatMemberIDs(chatID uint) ([]uint, error)
+	IsMember(chatID uint, userID uint) (bool, error)
 }

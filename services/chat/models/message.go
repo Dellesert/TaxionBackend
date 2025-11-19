@@ -181,6 +181,12 @@ type UpdateMessageRequest struct {
 	Content string `json:"content" binding:"required,max=10000" validate:"required,max=10000"`
 }
 
+// BulkDeleteMessagesRequest represents request for deleting multiple messages
+type BulkDeleteMessagesRequest struct {
+	MessageIDs []uint `json:"message_ids" binding:"required,min=1,max=100" validate:"required,min=1,max=100"`
+	DeleteFor  string `json:"delete_for" binding:"omitempty,oneof=everyone me" validate:"omitempty,oneof=everyone me"` // "everyone" or "me"
+}
+
 // AddReactionRequest represents request for adding a reaction
 type AddReactionRequest struct {
 	Emoji string `json:"emoji" binding:"required,max=10" validate:"required,max=10"`
@@ -347,14 +353,28 @@ type MessageListResponse struct {
 type WSMessageType string
 
 const (
+	// Message events
 	WSMessageTypeNewMessage    WSMessageType = "new_message"
 	WSMessageTypeMessageEdit   WSMessageType = "message_edit"
 	WSMessageTypeMessageDelete WSMessageType = "message_delete"
 	WSMessageTypeTyping        WSMessageType = "typing"
 	WSMessageTypeRead          WSMessageType = "message_read"
 	WSMessageTypeReaction      WSMessageType = "reaction"
+
+	// Chat events
+	WSMessageTypeChatCreate    WSMessageType = "chat_create"
+	WSMessageTypeChatUpdate    WSMessageType = "chat_update"
+	WSMessageTypeChatDelete    WSMessageType = "chat_delete"
+
+	// Member events
+	WSMessageTypeMemberAdd     WSMessageType = "member_add"
+	WSMessageTypeMemberRemove  WSMessageType = "member_remove"
+	WSMessageTypeMemberUpdate  WSMessageType = "member_update"
+
+	// Presence events (deprecated - keeping for backward compatibility)
 	WSMessageTypeUserJoin      WSMessageType = "user_join"
 	WSMessageTypeUserLeave     WSMessageType = "user_leave"
+	WSMessageTypeUserPresence  WSMessageType = "user_presence"
 )
 
 // WSMessage represents a WebSocket message

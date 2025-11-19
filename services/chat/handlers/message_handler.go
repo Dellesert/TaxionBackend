@@ -466,6 +466,96 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 	})
 }
 
+// BulkDeleteMessages handles deleting multiple messages at once
+func (h *MessageHandler) BulkDeleteMessages(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req models.BulkDeleteMessagesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Default to "everyone" if not specified
+	if req.DeleteFor == "" {
+		req.DeleteFor = "everyone"
+	}
+
+	// Delete messages
+	err = h.messageUsecase.BulkDeleteMessages(userID, &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"message_ids": req.MessageIDs,
+			"delete_for":  req.DeleteFor,
+			"error":       err.Error(),
+		}).Error("Failed to bulk delete messages")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to delete messages"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "One or more messages not found"
+		} else if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		} else if strings.Contains(err.Error(), "insufficient permissions") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Insufficient permissions"
+		} else if strings.Contains(err.Error(), "invalid delete_for") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":  requestID,
+		"user_id":     userID,
+		"message_ids": req.MessageIDs,
+		"delete_for":  req.DeleteFor,
+	}).Info("Messages deleted successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Messages deleted successfully",
+		"count":       len(req.MessageIDs),
+		"delete_for":  req.DeleteFor,
+		"request_id":  requestID,
+	})
+}
+
 // GetMessagesByChat handles getting messages for a specific chat
 func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 	requestID := requestid.Get(c)

@@ -193,10 +193,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// If device_info is provided in request body (iOS workaround), use it instead of User-Agent header
 	if req.DeviceInfo != "" {
 		userAgent = req.DeviceInfo
-		logger.WithFields(map[string]interface{}{
-			"request_id":  requestID,
-			"device_info": req.DeviceInfo,
-		}).Info("Using device_info from request body (iOS workaround)")
 	}
 
 	// Call usecase to authenticate user

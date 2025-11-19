@@ -62,10 +62,17 @@ func NewHub(messageUsecase usecase.MessageUsecase) *Hub {
 		unregister:     make(chan *Client),
 		shutdown:       make(chan struct{}),
 		messageUsecase: messageUsecase, // ДОБАВЛЯЕМ messageUsecase
+		chatRepo:       nil,             // Will be set later via SetChatRepository
 		metrics: &HubMetrics{
 			Uptime: time.Now(),
 		},
 	}
+}
+
+// SetChatRepository sets the chat repository for the hub
+func (h *Hub) SetChatRepository(chatRepo ChatRepository) {
+	h.chatRepo = chatRepo
+	log.Println("✅ Chat repository set in WebSocket Hub")
 }
 
 // Run starts the hub and handles client connections
@@ -198,6 +205,7 @@ func (h *Hub) forceDisconnectClient(client *Client) {
 }
 
 // broadcastMessage broadcasts a message to relevant clients
+// NEW ARCHITECTURE: Uses user channels instead of chat rooms
 func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
@@ -211,25 +219,26 @@ func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 
 	sent := 0
 
-	// Get users in the chat room
-	if users, exists := h.chatRooms[broadcastMsg.ChatID]; exists {
-		for userID := range users {
-			// Skip excluded user (e.g., message sender)
-			if broadcastMsg.ExcludeUser != 0 && userID == broadcastMsg.ExcludeUser {
-				continue
-			}
+	// NEW: Get users who should receive this message based on chatID
+	// This retrieves all chat members from the database via messageUsecase
+	targetUserIDs := h.getChatMemberIDs(broadcastMsg.ChatID)
 
-			if client, clientExists := h.clients[userID]; clientExists {
-				select {
-				case client.send <- message:
-					sent++
-				default:
-					// Client's send channel is full, remove client
-					log.Printf("Client %d send channel full, removing", userID)
-					close(client.send)
-					delete(h.clients, userID)
-					delete(users, userID)
-				}
+	for _, userID := range targetUserIDs {
+		// Skip excluded user (e.g., message sender)
+		if broadcastMsg.ExcludeUser != 0 && userID == broadcastMsg.ExcludeUser {
+			continue
+		}
+
+		// Send to user's personal channel if they are connected
+		if client, clientExists := h.clients[userID]; clientExists {
+			select {
+			case client.send <- message:
+				sent++
+			default:
+				// Client's send channel is full, remove client
+				log.Printf("Client %d send channel full, removing", userID)
+				close(client.send)
+				delete(h.clients, userID)
 			}
 		}
 	}
@@ -237,8 +246,53 @@ func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 	h.metrics.MessagesSent += int64(sent)
 
 	if sent > 0 {
-		log.Printf("Broadcasted %s message to %d clients in chat %d", broadcastMsg.Type, sent, broadcastMsg.ChatID)
+		log.Printf("Broadcasted %s message to %d clients (chat %d)", broadcastMsg.Type, sent, broadcastMsg.ChatID)
 	}
+}
+
+// getChatMemberIDs retrieves all member user IDs for a given chat
+// NEW: Uses database repository for accurate membership data
+func (h *Hub) getChatMemberIDs(chatID uint) []uint {
+	if chatID == 0 {
+		// For global broadcasts (like user_presence), return all connected users
+		h.mutex.RLock()
+		defer h.mutex.RUnlock()
+
+		userIDs := make([]uint, 0, len(h.clients))
+		for userID := range h.clients {
+			userIDs = append(userIDs, userID)
+		}
+		return userIDs
+	}
+
+	// NEW: Get chat members from database via chatRepo
+	if h.chatRepo != nil {
+		userIDs, err := h.chatRepo.GetChatMemberIDs(chatID)
+		if err != nil {
+			log.Printf("⚠️ Failed to get chat member IDs from DB for chat %d: %v", chatID, err)
+			// Fall back to chatRooms cache as backup
+			if users, exists := h.chatRooms[chatID]; exists {
+				fallbackIDs := make([]uint, 0, len(users))
+				for userID := range users {
+					fallbackIDs = append(fallbackIDs, userID)
+				}
+				return fallbackIDs
+			}
+			return []uint{}
+		}
+		return userIDs
+	}
+
+	// Fallback: Use in-memory chatRooms if repository not available
+	if users, exists := h.chatRooms[chatID]; exists {
+		userIDs := make([]uint, 0, len(users))
+		for userID := range users {
+			userIDs = append(userIDs, userID)
+		}
+		return userIDs
+	}
+
+	return []uint{}
 }
 
 // broadcastUserPresence broadcasts user presence change

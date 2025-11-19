@@ -28,6 +28,7 @@ type ChatRepository interface {
 	AddMember(member *models.ChatMember) error
 	RemoveMember(chatID, userID uint) error
 	GetChatMembers(chatID uint) ([]*models.ChatMember, error)
+	GetChatMemberIDs(chatID uint) ([]uint, error)
 	IsMember(chatID, userID uint) (bool, error)
 	GetMemberRole(chatID, userID uint) (models.ChatMemberRole, error)
 	UpdateMemberRole(chatID, userID uint, role models.ChatMemberRole) error
@@ -304,6 +305,20 @@ func (r *chatRepository) GetChatMembers(chatID uint) ([]*models.ChatMember, erro
 		return nil, fmt.Errorf("failed to get chat members: %w", err)
 	}
 	return members, nil
+}
+
+// GetChatMemberIDs retrieves only the user IDs of active members in a chat
+// This is optimized for WebSocket broadcasts to avoid loading full member data
+func (r *chatRepository) GetChatMemberIDs(chatID uint) ([]uint, error) {
+	var userIDs []uint
+	err := r.db.Model(&models.ChatMember{}).
+		Where("chat_id = ? AND is_active = ?", chatID, true).
+		Pluck("user_id", &userIDs).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chat member IDs: %w", err)
+	}
+	return userIDs, nil
 }
 
 // IsMember checks if a user is an active member of a chat

@@ -13,6 +13,11 @@ import (
 	"gorm.io/gorm"
 )
 
+// WebSocketHub interface for chat operations (minimal interface to avoid circular dependency)
+type ChatWebSocketHub interface {
+	BroadcastToChat(chatID uint, data interface{}, msgType models.WSMessageType, senderID uint)
+}
+
 // ChatUsecase defines the interface for chat business logic
 type ChatUsecase interface {
 	CreateChat(userID uint, req *models.CreateChatRequest) (*models.ChatResponse, error)
@@ -35,6 +40,7 @@ type ChatUsecase interface {
 	GetOrCreateTaskChat(userID, taskID uint) (*models.ChatResponse, error)
 	GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
+	SetWebSocketHub(hub ChatWebSocketHub)
 }
 
 // chatUsecase implements ChatUsecase interface
@@ -42,6 +48,7 @@ type chatUsecase struct {
 	chatRepo    repository.ChatRepository
 	messageRepo repository.MessageRepository
 	baseURL     string
+	wsHub       ChatWebSocketHub
 }
 
 func (uc *chatUsecase) CreatePersonalChat(userID, targetUserID uint) (*models.ChatResponse, error) {
@@ -340,7 +347,14 @@ func NewChatUsecase(chatRepo repository.ChatRepository, messageRepo repository.M
 		chatRepo:    chatRepo,
 		messageRepo: messageRepo,
 		baseURL:     baseURL,
+		wsHub:       nil, // Will be set later via SetWebSocketHub
 	}
+}
+
+// SetWebSocketHub sets the WebSocket hub for broadcasting chat events
+func (uc *chatUsecase) SetWebSocketHub(hub ChatWebSocketHub) {
+	uc.wsHub = hub
+	fmt.Println("✅ WebSocket hub set in ChatUsecase")
 }
 
 // Chat Usecase Methods
@@ -425,7 +439,15 @@ func (uc *chatUsecase) CreateChat(userID uint, req *models.CreateChatRequest) (*
 		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(uc.baseURL), nil
+	response := chatWithMembers.ToResponse(uc.baseURL)
+
+	// Broadcast chat_create event to all members
+	if uc.wsHub != nil {
+		fmt.Printf("📢 Broadcasting chat_create for chat %d to all members\n", chat.ID)
+		uc.wsHub.BroadcastToChat(chat.ID, response, models.WSMessageTypeChatCreate, userID)
+	}
+
+	return response, nil
 }
 
 // GetUserChats retrieves all chats for a user with optional filters
@@ -593,7 +615,15 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 		return chat.ToResponse(uc.baseURL), nil // Return what we have
 	}
 
-	return updatedChat.ToResponse(uc.baseURL), nil
+	response := updatedChat.ToResponse(uc.baseURL)
+
+	// Broadcast chat_update event to all members
+	if uc.wsHub != nil {
+		fmt.Printf("📢 Broadcasting chat_update for chat %d to all members\n", chatID)
+		uc.wsHub.BroadcastToChat(chatID, response, models.WSMessageTypeChatUpdate, userID)
+	}
+
+	return response, nil
 }
 
 // DeleteChat deletes/hides a chat depending on chat type and user role
@@ -687,6 +717,17 @@ func (uc *chatUsecase) AddMember(userID, chatID uint, req *models.AddChatMemberR
 		return fmt.Errorf("failed to add member: %w", err)
 	}
 
+	// Broadcast member_add event to all chat members (including the new member)
+	if uc.wsHub != nil {
+		memberData := map[string]interface{}{
+			"chat_id": chatID,
+			"user_id": req.UserID,
+			"role":    memberRole,
+		}
+		fmt.Printf("📢 Broadcasting member_add for user %d to chat %d\n", req.UserID, chatID)
+		uc.wsHub.BroadcastToChat(chatID, memberData, models.WSMessageTypeMemberAdd, userID)
+	}
+
 	return nil
 }
 
@@ -722,6 +763,16 @@ func (uc *chatUsecase) RemoveMember(userID, chatID, targetUserID uint) error {
 
 	if err := uc.chatRepo.RemoveMember(chatID, targetUserID); err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
+	}
+
+	// Broadcast member_remove event to all chat members (including the removed user)
+	if uc.wsHub != nil {
+		memberData := map[string]interface{}{
+			"chat_id": chatID,
+			"user_id": targetUserID,
+		}
+		fmt.Printf("📢 Broadcasting member_remove for user %d from chat %d\n", targetUserID, chatID)
+		uc.wsHub.BroadcastToChat(chatID, memberData, models.WSMessageTypeMemberRemove, userID)
 	}
 
 	return nil
