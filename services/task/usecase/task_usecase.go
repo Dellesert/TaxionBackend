@@ -67,13 +67,14 @@ type TaskUsecase interface {
 
 // taskUsecase implements TaskUsecase interface
 type taskUsecase struct {
-	taskRepo          repository.TaskRepository
-	commentRepo       repository.CommentRepository
-	activityRepo      repository.ActivityRepository
-	attachmentRepo    repository.AttachmentRepository
-	checklistRepo     repository.ChecklistRepository
-	attachmentUsecase AttachmentUsecase
-	userClient        *clients.UserClient
+	taskRepo           repository.TaskRepository
+	commentRepo        repository.CommentRepository
+	activityRepo       repository.ActivityRepository
+	attachmentRepo     repository.AttachmentRepository
+	checklistRepo      repository.ChecklistRepository
+	attachmentUsecase  AttachmentUsecase
+	userClient         *clients.UserClient
+	notificationClient *clients.NotificationClient
 }
 
 // NewTaskUsecase creates a new task usecase
@@ -86,13 +87,14 @@ func NewTaskUsecase(
 	attachmentUsecase AttachmentUsecase,
 ) TaskUsecase {
 	return &taskUsecase{
-		taskRepo:          taskRepo,
-		commentRepo:       commentRepo,
-		activityRepo:      activityRepo,
-		attachmentRepo:    attachmentRepo,
-		checklistRepo:     checklistRepo,
-		attachmentUsecase: attachmentUsecase,
-		userClient:        clients.NewUserClient(),
+		taskRepo:           taskRepo,
+		commentRepo:        commentRepo,
+		activityRepo:       activityRepo,
+		attachmentRepo:     attachmentRepo,
+		checklistRepo:      checklistRepo,
+		attachmentUsecase:  attachmentUsecase,
+		userClient:         clients.NewUserClient(),
+		notificationClient: clients.NewNotificationClient(),
 	}
 }
 
@@ -214,6 +216,43 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 	if err := u.enrichTaskWithUserInfo(response); err != nil {
 		// Log error but don't fail the request
 		fmt.Printf("Failed to enrich task with user info: %v\n", err)
+	}
+
+	// Send notifications to assignees
+	if len(assigneeIDs) > 0 {
+		// Don't send notification to creator if they assigned to themselves
+		for _, assigneeID := range assigneeIDs {
+			if assigneeID == userID {
+				continue // Skip notification to creator
+			}
+
+			// Get creator name for notification message
+			creatorName := "Кто-то"
+			if response.Creator != nil {
+				creatorName = response.Creator.Name
+			}
+
+			// Prepare notification
+			priority := string(task.Priority) // Convert task priority to string
+			notificationReq := &clients.NotificationRequest{
+				UserID:      assigneeID,
+				Type:        "task",
+				Title:       "✅ Новая задача назначена",
+				Message:     fmt.Sprintf("%s назначил(а) вам задачу: %s", creatorName, task.Title),
+				Priority:    &priority, // Pointer to priority string
+				RelatedID:   &task.ID,
+				RelatedType: "task",
+				// ActionURL not set - validator requires full URL (with scheme and host), not just path
+				Channels:    []string{"in_app", "email", "push"},
+			}
+
+			// Send notification (async, don't block on error)
+			go func(req *clients.NotificationRequest) {
+				if err := u.notificationClient.SendNotification(req); err != nil {
+					fmt.Printf("Failed to send task notification to user %d: %v\n", req.UserID, err)
+				}
+			}(notificationReq)
+		}
 	}
 
 	return response, nil
@@ -456,6 +495,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 	// Track changes for activity logging
 	changes := make(map[string]interface{})
 	statusChanged := false
+	dueDateChanged := false
+	var oldStatus models.TaskStatus
+	var newStatus models.TaskStatus
 
 	// Update fields if provided
 	if req.Title != nil && strings.TrimSpace(*req.Title) != task.Title {
@@ -481,8 +523,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 			return nil, fmt.Errorf("access denied: insufficient permissions to change task status")
 		}
 
-		oldStatus := task.Status
-		task.Status = *req.Status
+		oldStatus = task.Status
+		newStatus = *req.Status
+		task.Status = newStatus
 		task.LastStatusChangedBy = &userID
 		statusChanged = true
 		fmt.Printf("[UpdateTask] Task ID: %d - statusChanged set to TRUE\n", taskID)
@@ -500,13 +543,145 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		task.AssignedToDepartment = req.AssignedToDepartment
 	}
 	if req.DueDate != nil {
-		task.DueDate = req.DueDate
-		u.logActivity(taskID, userID, "task_updated_due_date", "", req.DueDate.Format("2006-01-02"), nil)
+		// Check if due date actually changed
+		oldDueDate := task.DueDate
+		if oldDueDate == nil || !oldDueDate.Equal(*req.DueDate) {
+			task.DueDate = req.DueDate
+			dueDateChanged = true
+			u.logActivity(taskID, userID, "task_updated_due_date", "", req.DueDate.Format("2006-01-02"), nil)
+		}
 	}
 
 	// Save updated task
 	if err := u.taskRepo.Update(task); err != nil {
 		return nil, fmt.Errorf("failed to update task: %w", err)
+	}
+
+	// Send notification when task moved to review status
+	if statusChanged && newStatus == models.TaskStatusReview && oldStatus != models.TaskStatusReview {
+		// Determine who should receive the notification:
+		// - If task is delegated -> notify delegator (DelegatedFromUserID)
+		// - Otherwise -> notify creator (CreatedByUserID)
+		var recipientID uint
+		if task.DelegatedFromUserID != nil {
+			recipientID = *task.DelegatedFromUserID
+		} else {
+			recipientID = task.CreatedByUserID
+		}
+
+		// Don't send notification to self
+		if recipientID != userID {
+			// Get assignee info for notification message
+			assigneeInfo, err := u.userClient.GetUserByID(userID)
+			assigneeName := "Кто-то"
+			if err == nil && assigneeInfo != nil {
+				assigneeName = assigneeInfo.Name
+			}
+
+			priority := string(task.Priority)
+			notificationReq := &clients.NotificationRequest{
+				UserID:      recipientID,
+				Type:        "task",
+				Title:       "✅ Задача сдана на проверку",
+				Message:     fmt.Sprintf("%s сдал(а) задачу на проверку: %s", assigneeName, task.Title),
+				Priority:    &priority,
+				RelatedID:   &task.ID,
+				RelatedType: "task",
+				Channels:    []string{"in_app", "email", "push"},
+			}
+
+			// Send notification async
+			go func(req *clients.NotificationRequest) {
+				if err := u.notificationClient.SendNotification(req); err != nil {
+					fmt.Printf("Failed to send review notification to user %d: %v\n", req.UserID, err)
+				}
+			}(notificationReq)
+		}
+	}
+
+	// Send notification when task returned to work from review/done
+	if statusChanged &&
+	   (newStatus == models.TaskStatusInProgress || newStatus == models.TaskStatusNew) &&
+	   (oldStatus == models.TaskStatusReview || oldStatus == models.TaskStatusDone) {
+		// Use assignees from task object
+		if len(task.Assignees) > 0 {
+			// Get reviewer info (person who returned the task)
+			reviewerInfo, err := u.userClient.GetUserByID(userID)
+			reviewerName := "Кто-то"
+			if err == nil && reviewerInfo != nil {
+				reviewerName = reviewerInfo.Name
+			}
+
+			priority := string(task.Priority)
+
+			// Send notification to each assignee
+			for _, assignee := range task.Assignees {
+				// Don't send notification to self
+				if assignee.UserID == userID {
+					continue
+				}
+
+				notificationReq := &clients.NotificationRequest{
+					UserID:      assignee.UserID,
+					Type:        "task",
+					Title:       "🔄 Задача возвращена на доработку",
+					Message:     fmt.Sprintf("%s вернул(а) задачу на доработку: %s", reviewerName, task.Title),
+					Priority:    &priority,
+					RelatedID:   &task.ID,
+					RelatedType: "task",
+					Channels:    []string{"in_app", "email", "push"},
+				}
+
+				// Send notification async
+				go func(req *clients.NotificationRequest) {
+					if err := u.notificationClient.SendNotification(req); err != nil {
+						fmt.Printf("Failed to send return-to-work notification to user %d: %v\n", req.UserID, err)
+					}
+				}(notificationReq)
+			}
+		}
+	}
+
+	// Send notification when due date changed
+	if dueDateChanged && task.DueDate != nil {
+		// Use assignees from task object
+		if len(task.Assignees) > 0 {
+			// Get changer info (person who changed the due date)
+			changerInfo, err := u.userClient.GetUserByID(userID)
+			changerName := "Кто-то"
+			if err == nil && changerInfo != nil {
+				changerName = changerInfo.Name
+			}
+
+			priority := string(task.Priority)
+			formattedDate := task.DueDate.Format("02.01.2006")
+
+			// Send notification to each assignee
+			for _, assignee := range task.Assignees {
+				// Don't send notification to self
+				if assignee.UserID == userID {
+					continue
+				}
+
+				notificationReq := &clients.NotificationRequest{
+					UserID:      assignee.UserID,
+					Type:        "task",
+					Title:       "📅 Изменён срок выполнения задачи",
+					Message:     fmt.Sprintf("%s изменил(а) срок выполнения задачи \"%s\" на %s", changerName, task.Title, formattedDate),
+					Priority:    &priority,
+					RelatedID:   &task.ID,
+					RelatedType: "task",
+					Channels:    []string{"in_app", "email", "push"},
+				}
+
+				// Send notification async
+				go func(req *clients.NotificationRequest) {
+					if err := u.notificationClient.SendNotification(req); err != nil {
+						fmt.Printf("Failed to send due date change notification to user %d: %v\n", req.UserID, err)
+					}
+				}(notificationReq)
+			}
+		}
 	}
 
 	// Update assignees if provided
@@ -747,6 +922,90 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 		"new_status": req.Status,
 		"changed_at": time.Now(),
 	})
+
+	// Send notification when task moved to review status
+	if req.Status == models.TaskStatusReview && oldStatus != models.TaskStatusReview {
+		// Determine who should receive the notification:
+		// - If task is delegated -> notify delegator (DelegatedFromUserID)
+		// - Otherwise -> notify creator (CreatedByUserID)
+		var recipientID uint
+		if task.DelegatedFromUserID != nil {
+			recipientID = *task.DelegatedFromUserID
+		} else {
+			recipientID = task.CreatedByUserID
+		}
+
+		// Don't send notification to self
+		if recipientID != userID {
+			// Get assignee info for notification message
+			assigneeInfo, err := u.userClient.GetUserByID(userID)
+			assigneeName := "Кто-то"
+			if err == nil && assigneeInfo != nil {
+				assigneeName = assigneeInfo.Name
+			}
+
+			priority := string(task.Priority)
+			notificationReq := &clients.NotificationRequest{
+				UserID:      recipientID,
+				Type:        "task",
+				Title:       "✅ Задача сдана на проверку",
+				Message:     fmt.Sprintf("%s сдал(а) задачу на проверку: %s", assigneeName, task.Title),
+				Priority:    &priority,
+				RelatedID:   &task.ID,
+				RelatedType: "task",
+				Channels:    []string{"in_app", "email", "push"},
+			}
+
+			// Send notification async
+			go func(req *clients.NotificationRequest) {
+				if err := u.notificationClient.SendNotification(req); err != nil {
+					fmt.Printf("Failed to send review notification to user %d: %v\n", req.UserID, err)
+				}
+			}(notificationReq)
+		}
+	}
+
+	// Send notification when task returned to work from review/done
+	if (req.Status == models.TaskStatusInProgress || req.Status == models.TaskStatusNew) &&
+	   (oldStatus == models.TaskStatusReview || oldStatus == models.TaskStatusDone) {
+		// Use assignees from task object
+		if len(task.Assignees) > 0 {
+			// Get reviewer info (person who returned the task)
+			reviewerInfo, err := u.userClient.GetUserByID(userID)
+			reviewerName := "Кто-то"
+			if err == nil && reviewerInfo != nil {
+				reviewerName = reviewerInfo.Name
+			}
+
+			priority := string(task.Priority)
+
+			// Send notification to each assignee
+			for _, assignee := range task.Assignees {
+				// Don't send notification to self
+				if assignee.UserID == userID {
+					continue
+				}
+
+				notificationReq := &clients.NotificationRequest{
+					UserID:      assignee.UserID,
+					Type:        "task",
+					Title:       "🔄 Задача возвращена на доработку",
+					Message:     fmt.Sprintf("%s вернул(а) задачу на доработку: %s", reviewerName, task.Title),
+					Priority:    &priority,
+					RelatedID:   &task.ID,
+					RelatedType: "task",
+					Channels:    []string{"in_app", "email", "push"},
+				}
+
+				// Send notification async
+				go func(req *clients.NotificationRequest) {
+					if err := u.notificationClient.SendNotification(req); err != nil {
+						fmt.Printf("Failed to send return-to-work notification to user %d: %v\n", req.UserID, err)
+					}
+				}(notificationReq)
+			}
+		}
+	}
 
 	// Recalculate progress (for all tasks, regardless of subtasks/checklists)
 	u.RecalculateTaskProgress(taskID)
@@ -1221,6 +1480,42 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 	response := task.ToResponse()
 	u.enrichTaskWithUserInfo(response)
 
+	// Send notifications to assignees
+	if len(assigneeIDs) > 0 {
+		for _, assigneeID := range assigneeIDs {
+			if assigneeID == userID {
+				continue // Skip notification to creator
+			}
+
+			// Get creator name for notification message
+			creatorName := "Кто-то"
+			if response.Creator != nil {
+				creatorName = response.Creator.Name
+			}
+
+			// Prepare notification
+			priority := string(task.Priority) // Convert task priority to string
+			notificationReq := &clients.NotificationRequest{
+				UserID:      assigneeID,
+				Type:        "task",
+				Title:       "✅ Новая подзадача назначена",
+				Message:     fmt.Sprintf("%s назначил(а) вам подзадачу: %s", creatorName, task.Title),
+				Priority:    &priority, // Pointer to priority string
+				RelatedID:   &task.ID,
+				RelatedType: "task",
+				// ActionURL not set - validator requires full URL (with scheme and host), not just path
+				Channels:    []string{"in_app", "email", "push"},
+			}
+
+			// Send notification (async, don't block on error)
+			go func(req *clients.NotificationRequest) {
+				if err := u.notificationClient.SendNotification(req); err != nil {
+					fmt.Printf("Failed to send subtask notification to user %d: %v\n", req.UserID, err)
+				}
+			}(notificationReq)
+		}
+	}
+
 	return response, nil
 }
 
@@ -1313,6 +1608,35 @@ func (u *taskUsecase) DelegateTask(userID uint, taskID uint, toUserID uint) (*mo
 	}
 	if err := u.taskRepo.CreateAssignee(newAssignee); err != nil {
 		return nil, fmt.Errorf("failed to add new assignee: %w", err)
+	}
+
+	// Send notification to new assignee (if not delegating to self)
+	if toUserID != userID {
+		// Get delegator info for notification message
+		delegatorInfo, err := u.userClient.GetUserByID(userID)
+		delegatorName := "Кто-то"
+		if err == nil && delegatorInfo != nil {
+			delegatorName = delegatorInfo.Name
+		}
+
+		priority := string(task.Priority)
+		notificationReq := &clients.NotificationRequest{
+			UserID:      toUserID,
+			Type:        "task",
+			Title:       "📋 Задача делегирована вам",
+			Message:     fmt.Sprintf("%s делегировал(а) вам задачу: %s", delegatorName, task.Title),
+			Priority:    &priority,
+			RelatedID:   &task.ID,
+			RelatedType: "task",
+			Channels:    []string{"in_app", "email", "push"},
+		}
+
+		// Send notification async
+		go func(req *clients.NotificationRequest) {
+			if err := u.notificationClient.SendNotification(req); err != nil {
+				fmt.Printf("Failed to send delegation notification to user %d: %v\n", req.UserID, err)
+			}
+		}(notificationReq)
 	}
 
 	// Log activity

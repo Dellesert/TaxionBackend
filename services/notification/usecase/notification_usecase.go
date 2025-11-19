@@ -2,6 +2,7 @@
 package usecase
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"tachyon-messenger/services/notification/email"
 	"tachyon-messenger/services/notification/models"
+	"tachyon-messenger/services/notification/push"
 	"tachyon-messenger/services/notification/repository"
 	"tachyon-messenger/shared/logger"
 
@@ -53,7 +55,9 @@ type NotificationUsecase interface {
 // notificationUsecase implements NotificationUsecase interface
 type notificationUsecase struct {
 	notificationRepo repository.NotificationRepository
+	deviceRepo       repository.DeviceTokenRepository
 	emailSender      email.EmailSender
+	pushProvider     push.PushProvider
 }
 
 // Custom request/response models for usecase layer
@@ -99,11 +103,15 @@ type NotificationListResponse struct {
 // NewNotificationUsecase creates a new notification usecase
 func NewNotificationUsecase(
 	notificationRepo repository.NotificationRepository,
+	deviceRepo repository.DeviceTokenRepository,
 	emailSender email.EmailSender,
+	pushProvider push.PushProvider,
 ) NotificationUsecase {
 	return &notificationUsecase{
 		notificationRepo: notificationRepo,
+		deviceRepo:       deviceRepo,
 		emailSender:      emailSender,
+		pushProvider:     pushProvider,
 	}
 }
 
@@ -557,7 +565,7 @@ func (u *notificationUsecase) UpdateUserPreference(userID uint, req *models.User
 		UserID:           userID,
 		NotificationType: req.NotificationType,
 		InAppEnabled:     true,                           // default
-		EmailEnabled:     true,                           // default
+		EmailEnabled:     false,                          // default (отключена)
 		PushEnabled:      true,                           // default
 		SMSEnabled:       false,                          // default
 		MinPriority:      models.NotificationPriorityLow, // default
@@ -622,7 +630,7 @@ func (u *notificationUsecase) GetUserPreference(userID uint, notificationType mo
 			UserID:           userID,
 			NotificationType: notificationType,
 			InAppEnabled:     true,
-			EmailEnabled:     true,
+			EmailEnabled:     false, // default (отключена)
 			PushEnabled:      true,
 			SMSEnabled:       false,
 			MinPriority:      models.NotificationPriorityLow,
@@ -862,6 +870,7 @@ func (u *notificationUsecase) sendThroughChannel(notification *models.Notificati
 		Channel:        channel,
 		Status:         models.NotificationStatusPending,
 		AttemptCount:   0,
+		ChannelData:    "{}", // Empty JSON object (JSONB column requires valid JSON)
 	}
 
 	if err := u.notificationRepo.CreateDelivery(delivery); err != nil {
@@ -877,8 +886,7 @@ func (u *notificationUsecase) sendThroughChannel(notification *models.Notificati
 		return u.sendEmailNotification(notification, delivery)
 
 	case models.DeliveryChannelPush:
-		// TODO: Implement push notification sending
-		return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, "Push notifications not implemented")
+		return u.sendPushNotification(notification, delivery)
 
 	case models.DeliveryChannelSMS:
 		// TODO: Implement SMS sending
@@ -1224,6 +1232,190 @@ func (u *notificationUsecase) validateUserPreferenceRequest(req *models.UserPref
 	}
 
 	return nil
+}
+
+// sendPushNotification sends notification via push notification
+func (u *notificationUsecase) sendPushNotification(notification *models.Notification, delivery *models.NotificationDelivery) error {
+	if u.pushProvider == nil {
+		return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, "Push provider not configured")
+	}
+
+	if u.deviceRepo == nil {
+		return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, "Device repository not configured")
+	}
+
+	// Get active devices for user
+	devices, err := u.deviceRepo.GetUserDevices(notification.UserID, true) // Active only
+	if err != nil {
+		return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, fmt.Sprintf("Failed to get user devices: %v", err))
+	}
+
+	if len(devices) == 0 {
+		// No devices registered - mark as delivered (user will see in-app)
+		logger.WithFields(map[string]interface{}{
+			"user_id":         notification.UserID,
+			"notification_id": notification.ID,
+		}).Debug("No devices registered for push notification")
+		return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusDelivered, "")
+	}
+
+	// Build data payload
+	dataBuilder := push.NewDataBuilder().
+		SetType(notification.Type)
+
+	// Add related object info
+	if notification.RelatedID != nil {
+		switch notification.Type {
+		case models.NotificationTypeMessage:
+			dataBuilder.SetChatID(*notification.RelatedID)
+		case models.NotificationTypeTask:
+			dataBuilder.SetTaskID(*notification.RelatedID)
+		case models.NotificationTypeCalendar:
+			dataBuilder.SetEventID(*notification.RelatedID)
+		case models.NotificationTypePoll:
+			dataBuilder.SetPollID(*notification.RelatedID)
+		}
+	}
+
+	if notification.ActionURL != "" {
+		dataBuilder.SetActionURL(notification.ActionURL)
+	}
+
+	// Determine action based on type
+	action := u.getActionForNotificationType(notification.Type)
+	if action != "" {
+		dataBuilder.SetAction(action)
+	}
+
+	// Create push notifications for each device
+	pushNotifications := make([]*push.PushNotification, 0, len(devices))
+	for _, device := range devices {
+		pushNotif := &push.PushNotification{
+			Token:    device.Token,
+			Title:    notification.Title,
+			Body:     notification.Message,
+			ImageURL: notification.ImageURL,
+			Data:     dataBuilder.Build(),
+			Priority: notification.Priority,
+
+			// Notification metadata
+			NotificationID: notification.ID,
+			Type:           notification.Type,
+			RelatedID:      notification.RelatedID,
+			RelatedType:    notification.RelatedType,
+			ActionURL:      notification.ActionURL,
+
+			// Platform-specific settings
+			Badge:           nil, // TODO: Calculate unread count
+			Sound:           u.getSoundForPriority(notification.Priority),
+			ChannelID:       u.getChannelIDForType(notification.Type),
+			AndroidPriority: u.getAndroidPriority(notification.Priority),
+		}
+
+		// Set category for iOS
+		pushNotif.Category = string(notification.Type)
+
+		pushNotifications = append(pushNotifications, pushNotif)
+	}
+
+	// Send push notifications
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if len(pushNotifications) == 1 {
+		// Single device - use SendPush
+		if err := u.pushProvider.SendPush(ctx, pushNotifications[0]); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"notification_id": notification.ID,
+				"user_id":         notification.UserID,
+				"error":           err.Error(),
+			}).Error("Failed to send push notification")
+			return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, err.Error())
+		}
+	} else {
+		// Multiple devices - use batch send
+		if err := u.pushProvider.SendBatchPush(ctx, pushNotifications); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"notification_id": notification.ID,
+				"user_id":         notification.UserID,
+				"device_count":    len(devices),
+				"error":           err.Error(),
+			}).Error("Failed to send batch push notifications")
+			return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusFailed, err.Error())
+		}
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"notification_id": notification.ID,
+		"user_id":         notification.UserID,
+		"device_count":    len(devices),
+	}).Info("Push notifications sent successfully")
+
+	return u.notificationRepo.UpdateDeliveryStatus(delivery.ID, models.NotificationStatusDelivered, "")
+}
+
+// getActionForNotificationType returns the action for a notification type
+func (u *notificationUsecase) getActionForNotificationType(notifType models.NotificationType) string {
+	switch notifType {
+	case models.NotificationTypeMessage:
+		return "open_chat"
+	case models.NotificationTypeTask:
+		return "open_task"
+	case models.NotificationTypeCalendar:
+		return "open_event"
+	case models.NotificationTypePoll:
+		return "open_poll"
+	case models.NotificationTypeMention:
+		return "open_chat"
+	default:
+		return "open_app"
+	}
+}
+
+// getSoundForPriority returns sound name based on priority
+func (u *notificationUsecase) getSoundForPriority(priority models.NotificationPriority) string {
+	switch priority {
+	case models.NotificationPriorityCritical:
+		return "critical.wav"
+	case models.NotificationPriorityHigh:
+		return "urgent.wav"
+	default:
+		return "default"
+	}
+}
+
+// getChannelIDForType returns Android notification channel ID for type
+func (u *notificationUsecase) getChannelIDForType(notifType models.NotificationType) string {
+	switch notifType {
+	case models.NotificationTypeMessage:
+		return "messages"
+	case models.NotificationTypeTask:
+		return "tasks"
+	case models.NotificationTypeCalendar:
+		return "calendar"
+	case models.NotificationTypeSystem:
+		return "system"
+	case models.NotificationTypeMention:
+		return "mentions"
+	case models.NotificationTypePoll:
+		return "polls"
+	case models.NotificationTypeReminder:
+		return "reminders"
+	case models.NotificationTypeAnnounce:
+		return "announcements"
+	default:
+		return "default"
+	}
+}
+
+// getAndroidPriority returns Android priority string
+func (u *notificationUsecase) getAndroidPriority(priority models.NotificationPriority) string {
+	switch priority {
+	case models.NotificationPriorityCritical, models.NotificationPriorityHigh:
+		return "high"
+	default:
+		return "normal"
+	}
 }
 
 // isValidChannel checks if delivery channel is valid

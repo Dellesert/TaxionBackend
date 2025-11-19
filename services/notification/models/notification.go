@@ -85,6 +85,7 @@ type Notification struct {
 type NotificationDelivery struct {
 	models.BaseModel
 	NotificationID uint               `gorm:"not null;index" json:"notification_id"`
+	Notification   *Notification      `gorm:"foreignKey:NotificationID" json:"-"` // Связь с уведомлением
 	Channel        DeliveryChannel    `gorm:"not null;size:20" json:"channel" validate:"required,oneof=in_app email push sms slack webhook"`
 	Status         NotificationStatus `gorm:"not null;default:'pending';size:20" json:"status" validate:"required,oneof=pending delivered read failed"`
 	AttemptCount   int                `gorm:"not null;default:0" json:"attempt_count"`
@@ -120,7 +121,7 @@ type UserNotificationPreference struct {
 
 	// Channel preferences
 	InAppEnabled bool `gorm:"not null;default:true" json:"in_app_enabled"`
-	EmailEnabled bool `gorm:"not null;default:true" json:"email_enabled"`
+	EmailEnabled bool `gorm:"not null;default:false" json:"email_enabled"`
 	PushEnabled  bool `gorm:"not null;default:true" json:"push_enabled"`
 	SMSEnabled   bool `gorm:"not null;default:false" json:"sms_enabled"`
 

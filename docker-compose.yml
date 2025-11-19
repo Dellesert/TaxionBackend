@@ -315,6 +315,10 @@ services:
       - NOTIFICATION_CONCURRENT_WORKERS=${NOTIFICATION_CONCURRENT_WORKERS:-5}
       - NOTIFICATION_QUEUE_SIZE=${NOTIFICATION_QUEUE_SIZE:-1000}
       - NOTIFICATION_RETRY_ATTEMPTS=${NOTIFICATION_RETRY_ATTEMPTS:-3}
+      # FCM Push Notifications configuration
+      - FCM_ENABLED=${FCM_ENABLED:-false}
+      - FCM_CREDENTIALS_FILE=${FCM_CREDENTIALS_FILE:-/app/credentials/firebase-credentials.json}
+      - FCM_PROJECT_ID=${FCM_PROJECT_ID}
     depends_on:
       postgres:
         condition: service_healthy
@@ -333,10 +337,12 @@ services:
       retries: 3
     volumes:
       - ./logs:/app/logs
+      # Firebase credentials for FCM push notifications
+      - ./credentials/firebase-credentials.json:/app/credentials/firebase-credentials.json:ro
     labels:
       - "com.tachyon.service=notification-service"
       - "com.tachyon.version=1.0.0"
-      - "com.tachyon.description=Tachyon Notification Service with Email Support"
+      - "com.tachyon.description=Tachyon Notification Service with Email and Push Support"
 
   # Analytics Service
   analytics-service:

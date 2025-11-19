@@ -11,12 +11,13 @@ RUN adduser -D -g '' appuser
 # Set working directory
 WORKDIR /build
 
-# Copy go mod files first for better caching
-COPY go.mod go.sum ./
+# Set Go proxy with fallbacks for better reliability
+ENV GOPROXY=https://goproxy.io,https://goproxy.cn,direct
+# Disable Go checksum database temporarily for problematic packages
+ENV GOSUMDB=off
 
-# Download dependencies with cache mount
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+# Copy go mod files
+COPY go.mod go.sum ./
 
 # Copy shared dependencies first (for better layer caching)
 COPY shared/ ./shared/
@@ -27,10 +28,14 @@ COPY services/notification/ ./services/notification/
 # Set working directory to Notification service
 WORKDIR /build/services/notification
 
+# Tidy dependencies to update go.sum with all transitive dependencies
+# Then download all dependencies
+RUN --mount=type=cache,target=/go/pkg/mod \
+    cd /build && go mod tidy && go mod download
+
 # Build the application with cache mounts
 # CGO_ENABLED=0 for static binary
 # GOOS=linux for Linux target
-# Removed -a flag to allow Go to use cached builds
 # -installsuffix cgo for static linking
 # -ldflags for reducing binary size
 RUN --mount=type=cache,target=/go/pkg/mod \

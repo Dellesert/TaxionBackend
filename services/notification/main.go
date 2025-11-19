@@ -13,6 +13,7 @@ import (
 	"tachyon-messenger/services/notification/email"
 	"tachyon-messenger/services/notification/handlers"
 	"tachyon-messenger/services/notification/models"
+	"tachyon-messenger/services/notification/push"
 	"tachyon-messenger/services/notification/repository"
 	"tachyon-messenger/services/notification/usecase"
 	"tachyon-messenger/services/notification/worker"
@@ -61,6 +62,7 @@ func main() {
 		&models.EmailTemplate{},
 		&models.UserNotificationPreference{},
 		&models.NotificationTemplate{},
+		&models.DeviceToken{},
 	); err != nil {
 		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
@@ -114,12 +116,39 @@ func main() {
 		log.Info("Email notifications disabled by configuration")
 	}
 
+	// Initialize Push Provider (FCM)
+	var pushProvider push.PushProvider
+	if os.Getenv("FCM_ENABLED") == "true" {
+		fcmConfig := &push.PushConfig{
+			CredentialsFile: os.Getenv("FCM_CREDENTIALS_FILE"),
+			ProjectID:       os.Getenv("FCM_PROJECT_ID"),
+			Provider:        "fcm",
+		}
+
+		pushProvider, err = push.NewFCMProvider(fcmConfig)
+		if err != nil {
+			log.Warnf("Failed to initialize FCM provider: %v", err)
+			log.Info("Push notifications will be disabled")
+		} else {
+			log.Info("FCM push provider initialized successfully")
+		}
+	} else {
+		log.Info("FCM push notifications disabled by configuration")
+	}
+
 	// Initialize repositories
 	notificationRepo := repository.NewNotificationRepository(db)
+	deviceRepo := repository.NewDeviceTokenRepository(db)
 
 
 	// Initialize usecases
-	notificationUC := usecase.NewNotificationUsecase(notificationRepo, emailSender)
+	notificationUC := usecase.NewNotificationUsecase(
+		notificationRepo,
+		deviceRepo,
+		emailSender,
+		pushProvider,
+	)
+	deviceUC := usecase.NewDeviceUsecase(deviceRepo, pushProvider)
 
 	// Initialize background worker
 	workerConfig := worker.DefaultWorkerConfig()
@@ -137,6 +166,7 @@ func main() {
 
 	// Initialize handlers
 	notificationHandler := handlers.NewNotificationHandler(notificationUC)
+	deviceHandler := handlers.NewDeviceHandler(deviceUC)
 	metricsHandler := handlers.NewMetricsHandler(notificationWorker, db, redisClient, workerConfig, "notification-service", startTime)
 
 	// Create Gin router
@@ -146,7 +176,7 @@ func main() {
 	setupCommonMiddleware(router, metricsHandler)
 
 	// Setup routes
-	setupRoutes(router, notificationHandler, metricsHandler, jwtConfig, notificationWorker, redisClient, workerConfig, notificationUC)
+	setupRoutes(router, notificationHandler, deviceHandler, metricsHandler, jwtConfig, notificationWorker, redisClient, workerConfig, notificationUC)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -163,7 +193,7 @@ func main() {
 	}()
 
 	// Start background tasks
-	startBackgroundTasks(notificationUC, notificationWorker)
+	startBackgroundTasks(notificationUC, deviceUC, notificationWorker)
 
 	// Wait for interrupt signal to gracefully shutdown the server
 	quit := make(chan os.Signal, 1)
@@ -220,6 +250,7 @@ func setupCommonMiddleware(router *gin.Engine, metricsHandler *handlers.MetricsH
 func setupRoutes(
 	router *gin.Engine,
 	notificationHandler *handlers.NotificationHandler,
+	deviceHandler *handlers.DeviceHandler,
 	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 	notificationWorker *worker.Worker,
@@ -261,6 +292,20 @@ func setupRoutes(
 		// User preferences endpoints
 		notifications.GET("/preferences", notificationHandler.GetUserPreferences)         // GET /api/v1/notifications/preferences
 		notifications.PUT("/preferences/:type", notificationHandler.UpdateUserPreference) // PUT /api/v1/notifications/preferences/:type
+	}
+
+	// Device management endpoints (require JWT authentication)
+	devices := v1.Group("/devices")
+	devices.Use(middleware.AuthMiddleware())
+	{
+		devices.POST("", deviceHandler.RegisterDevice)                  // POST /api/v1/devices
+		devices.GET("", deviceHandler.GetUserDevices)                   // GET /api/v1/devices
+		devices.GET("/stats", deviceHandler.GetDeviceStats)             // GET /api/v1/devices/stats
+		devices.POST("/validate", deviceHandler.ValidateToken)          // POST /api/v1/devices/validate
+		devices.GET("/:id", deviceHandler.GetDevice)                    // GET /api/v1/devices/:id
+		devices.PUT("/:id", deviceHandler.UpdateDevice)                 // PUT /api/v1/devices/:id
+		devices.DELETE("/:id", deviceHandler.DeleteDevice)              // DELETE /api/v1/devices/:id
+		devices.POST("/:id/deactivate", deviceHandler.DeactivateDevice) // POST /api/v1/devices/:id/deactivate
 	}
 
 	// Admin routes (require admin role)
@@ -309,7 +354,7 @@ func healthHandler(c *gin.Context) {
 }
 
 // startBackgroundTasks starts background maintenance tasks
-func startBackgroundTasks(notificationUC usecase.NotificationUsecase, notificationWorker *worker.Worker) {
+func startBackgroundTasks(notificationUC usecase.NotificationUsecase, deviceUC usecase.DeviceUsecase, notificationWorker *worker.Worker) {
 	// Initialize logger for background tasks
 	log := logger.New(&logger.Config{
 		Level:       getLogLevel(),
@@ -366,6 +411,37 @@ func startBackgroundTasks(notificationUC usecase.NotificationUsecase, notificati
 			}
 		}
 	}()
+
+	// Start inactive device cleanup (daily)
+	if deviceUC != nil {
+		go func() {
+			ticker := time.NewTicker(24 * time.Hour) // Run daily
+			defer ticker.Stop()
+
+			// Run on startup after 1 minute, then daily
+			time.Sleep(1 * time.Minute)
+
+			for {
+				// Deactivate devices inactive for 30 days
+				deactivatedCount, err := deviceUC.CleanupInactiveDevices(30)
+				if err != nil {
+					log.WithField("error", err.Error()).Error("Failed to cleanup inactive devices")
+				} else if deactivatedCount > 0 {
+					log.WithField("deactivated_count", deactivatedCount).Info("Deactivated inactive devices")
+				}
+
+				// Delete devices inactive for 90 days
+				deletedCount, err := deviceUC.CleanupOldDevices(90)
+				if err != nil {
+					log.WithField("error", err.Error()).Error("Failed to cleanup old devices")
+				} else if deletedCount > 0 {
+					log.WithField("deleted_count", deletedCount).Info("Deleted old inactive devices")
+				}
+
+				<-ticker.C
+			}
+		}()
+	}
 
 	log.Info("Background tasks started")
 }

@@ -73,6 +73,11 @@ uploads/
 .env.production
 .env copy
 
+# Firebase credentials (НИКОГДА не коммитить в Git!)
+credentials/
+firebase-credentials.json
+*-firebase-adminsdk-*.json
+
 #Other
 Курсовая/
 Курсовая_Краткая/
