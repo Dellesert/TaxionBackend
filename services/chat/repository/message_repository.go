@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"tachyon-messenger/services/chat/models"
@@ -727,13 +728,13 @@ func (r *messageRepository) CleanupOldMessages(olderThan time.Time) (int64, erro
 
 // AddMessageDeletion adds a personal deletion record for a user
 func (r *messageRepository) AddMessageDeletion(messageID, userID uint) error {
-	// Check if deletion already exists
+	// Check if deletion already exists (use Unscoped to bypass soft delete filter)
 	var existing models.MessageDeletion
-	err := r.db.Where("message_id = ? AND user_id = ?", messageID, userID).
+	err := r.db.Unscoped().Where("message_id = ? AND user_id = ?", messageID, userID).
 		First(&existing).Error
 
 	if err == nil {
-		// Already deleted for this user
+		// Already deleted for this user - just return success
 		return nil
 	}
 
@@ -749,6 +750,10 @@ func (r *messageRepository) AddMessageDeletion(messageID, userID uint) error {
 	}
 
 	if err := r.db.Create(deletion).Error; err != nil {
+		// If error is duplicate key, just return success (race condition)
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "idx_message_deletions_unique") {
+			return nil
+		}
 		return fmt.Errorf("failed to add message deletion: %w", err)
 	}
 
