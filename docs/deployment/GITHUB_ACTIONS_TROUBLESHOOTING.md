@@ -1,54 +1,106 @@
 # GitHub Actions Troubleshooting
 
-## Проблема: Ошибка attestation (Unable to get ACTIONS_ID_TOKEN_REQUEST_URL)
+## Проблема: Ошибка attestation
 
-### Описание ошибки
+### Описание ошибок
 
+**Ошибка 1:**
 ```
 Run actions/attest-build-provenance@v1
 Error: Failed to get ID token: Error message: Unable to get ACTIONS_ID_TOKEN_REQUEST_URL env variable
 ```
 
+**Ошибка 2 (для приватных репозиториев):**
+```
+Error: Failed to persist attestation: Feature not available for user-owned private repositories.
+To enable this feature, please make this repository public.
+```
+
 ### Причина
 
-Attestation (подпись образов) - это новая функция безопасности GitHub для проверки подлинности образов. Для её работы требуются дополнительные permissions в workflow.
+Attestation (подпись образов) - это функция безопасности GitHub:
+- ❌ **НЕ работает для приватных репозиториев** бесплатных аккаунтов
+- ✅ Работает только для публичных репозиториев
+- ✅ Работает для приватных репозиториев в GitHub Enterprise
 
 ---
 
-## Решение 1: Добавить необходимые права ✅ (рекомендуется)
+## Решение 1: Убрать attestation ✅ (рекомендуется для приватных репозиториев)
 
 Обновлён файл [.github/workflows/docker-publish.yml](../../.github/workflows/docker-publish.yml)
 
-### Что добавлено:
+### Что убрано:
+
+```yaml
+# Убрано:
+# - name: Generate artifact attestation
+#   if: github.event_name != 'pull_request'
+#   uses: actions/attest-build-provenance@v1
+#   with:
+#     subject-name: ...
+#     subject-digest: ...
+```
+
+Заменено на простой вывод:
+```yaml
+- name: Image digest
+  if: github.event_name != 'pull_request'
+  run: echo "✅ Image pushed - ${{ matrix.service }}:${{ steps.meta.outputs.version }}"
+```
+
+### Преимущества:
+- ✅ Работает для приватных репозиториев
+- ✅ Проще и надёжнее
+- ✅ Не требует дополнительных прав
+
+### Когда использовать:
+- ✅ Приватный репозиторий (бесплатный аккаунт)
+- ✅ Не нужна подпись образов
+- ✅ Хотите простоту
+
+---
+
+## Решение 2: Включить attestation (только для публичных репозиториев)
+
+Если ваш репозиторий **публичный** или у вас **GitHub Enterprise**, можно включить attestation.
+
+### Что добавить:
 
 ```yaml
 permissions:
   contents: read
   packages: write
-  id-token: write      # ← Добавлено для attestation
-  attestations: write  # ← Добавлено для attestation
-```
+  id-token: write      # ← Для attestation
+  attestations: write  # ← Для attestation
 
-И добавлен `id` для шага сборки:
+steps:
+  - name: Build and push Docker image
+    id: build  # ← Важно для ссылки
+    uses: docker/build-push-action@v5
+    # ...
 
-```yaml
-- name: Build and push Docker image
-  id: build  # ← Добавлено для ссылки в attestation
-  uses: docker/build-push-action@v5
+  - name: Generate artifact attestation
+    if: github.event_name != 'pull_request'
+    uses: actions/attest-build-provenance@v1
+    with:
+      subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.service }}
+      subject-digest: ${{ steps.build.outputs.digest }}
+      push-to-registry: true
 ```
 
 ### Преимущества:
 - ✅ Повышенная безопасность
-- ✅ Подпись образов для проверки подлинности
-- ✅ Соответствие best practices
+- ✅ Подпись образов
+- ✅ Проверка подлинности
 
-### Недостатки:
-- ⚠️ Требует дополнительных прав
-- ⚠️ Может не работать в некоторых организациях
+### Когда использовать:
+- ✅ Публичный репозиторий
+- ✅ GitHub Enterprise
+- ✅ Нужна максимальная безопасность
 
 ---
 
-## Решение 2: Использовать упрощённый workflow (альтернатива)
+## Решение 3: Использовать упрощённый workflow (альтернатива)
 
 Создан альтернативный файл [.github/workflows/docker-publish-simple.yml](../../.github/workflows/docker-publish-simple.yml)
 
