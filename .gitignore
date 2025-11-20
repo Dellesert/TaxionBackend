@@ -81,3 +81,5 @@ firebase-credentials.json
 #Other
 Курсовая/
 Курсовая_Краткая/
+*.docx
+*.py
