@@ -85,3 +85,4 @@ firebase-credentials.json
 Курсовая_Краткая/
 *.docx
 *.py
+.well-known/apple-app-site-association
