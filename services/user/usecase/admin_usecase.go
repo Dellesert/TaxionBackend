@@ -17,10 +17,10 @@ import (
 // AdminUsecase defines the interface for admin business logic
 type AdminUsecase interface {
 	GetUserStats() (*models.UserStatsResponse, error)
-	UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest, adminRole sharedmodels.Role) (*models.UserResponse, error)
-	UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest) (*models.UserResponse, error)
-	ActivateUser(id uint) (*models.UserResponse, error)
-	DeactivateUser(id uint) (*models.UserResponse, error)
+	UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest, adminID uint, adminRole sharedmodels.Role) (*models.UserResponse, error)
+	UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest, adminID uint) (*models.UserResponse, error)
+	ActivateUser(id uint, adminID uint) (*models.UserResponse, error)
+	DeactivateUser(id uint, adminID uint, adminRole sharedmodels.Role) (*models.UserResponse, error)
 	AssignDepartmentToUser(id uint, departmentID *uint) (*models.UserResponse, error)
 	ResetUserPassword(id uint, newPassword string) error
 	UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARequest) (*models.UserResponse, error)
@@ -64,7 +64,7 @@ func (a *adminUsecase) GetUserStats() (*models.UserStatsResponse, error) {
 }
 
 // UpdateUserRole updates a user's role (admin only)
-func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest, adminRole sharedmodels.Role) (*models.UserResponse, error) {
+func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRequest, adminID uint, adminRole sharedmodels.Role) (*models.UserResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, fmt.Errorf("request is required")
@@ -72,6 +72,11 @@ func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRe
 
 	if !isValidRole(string(req.Role)) {
 		return nil, fmt.Errorf("invalid role: %s", req.Role)
+	}
+
+	// Security check 1: Prevent self-modification
+	if id == adminID {
+		return nil, fmt.Errorf("cannot modify your own role")
 	}
 
 	// Get user
@@ -89,6 +94,18 @@ func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRe
 
 	if (isTargetingAdminRole || isCurrentAdminRole) && adminRole != sharedmodels.RoleSuperAdmin {
 		return nil, fmt.Errorf("only super admin can assign or remove admin roles")
+	}
+
+	// Security check 2: Prevent removing the last super admin
+	if user.Role == sharedmodels.RoleSuperAdmin && req.Role != sharedmodels.RoleSuperAdmin {
+		superAdminCount, err := a.userRepo.CountByRole(string(sharedmodels.RoleSuperAdmin))
+		if err != nil {
+			return nil, fmt.Errorf("failed to check super admin count: %w", err)
+		}
+
+		if superAdminCount <= 1 {
+			return nil, fmt.Errorf("cannot remove the last super admin from the system")
+		}
 	}
 
 	// Update role
@@ -110,7 +127,7 @@ func (a *adminUsecase) UpdateUserRole(id uint, req *models.AdminUpdateUserRoleRe
 }
 
 // UpdateUserStatus updates a user's status (admin only)
-func (a *adminUsecase) UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest) (*models.UserResponse, error) {
+func (a *adminUsecase) UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest, adminID uint) (*models.UserResponse, error) {
 	// Validate request
 	if req == nil {
 		return nil, fmt.Errorf("request is required")
@@ -118,6 +135,11 @@ func (a *adminUsecase) UpdateUserStatus(id uint, req *models.AdminUpdateUserStat
 
 	if !isValidStatus(req.Status) {
 		return nil, fmt.Errorf("invalid status: %s", req.Status)
+	}
+
+	// Security check: Prevent self-modification
+	if id == adminID {
+		return nil, fmt.Errorf("cannot modify your own status")
 	}
 
 	// Get user
@@ -148,7 +170,12 @@ func (a *adminUsecase) UpdateUserStatus(id uint, req *models.AdminUpdateUserStat
 }
 
 // ActivateUser activates a user account
-func (a *adminUsecase) ActivateUser(id uint) (*models.UserResponse, error) {
+func (a *adminUsecase) ActivateUser(id uint, adminID uint) (*models.UserResponse, error) {
+	// Security check: Prevent self-modification
+	if id == adminID {
+		return nil, fmt.Errorf("cannot modify your own activation status")
+	}
+
 	// Get user
 	user, err := a.userRepo.GetByID(id)
 	if err != nil {
@@ -177,7 +204,12 @@ func (a *adminUsecase) ActivateUser(id uint) (*models.UserResponse, error) {
 }
 
 // DeactivateUser deactivates a user account
-func (a *adminUsecase) DeactivateUser(id uint) (*models.UserResponse, error) {
+func (a *adminUsecase) DeactivateUser(id uint, adminID uint, adminRole sharedmodels.Role) (*models.UserResponse, error) {
+	// Security check 1: Prevent self-deactivation
+	if id == adminID {
+		return nil, fmt.Errorf("cannot deactivate your own account")
+	}
+
 	// Get user
 	user, err := a.userRepo.GetByID(id)
 	if err != nil {
@@ -185,6 +217,20 @@ func (a *adminUsecase) DeactivateUser(id uint) (*models.UserResponse, error) {
 			return nil, fmt.Errorf("user not found")
 		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Security check 2: Prevent deactivating the last active super admin
+	if user.Role == sharedmodels.RoleSuperAdmin && user.IsActive {
+		// Count active super admins
+		activeSuperAdminCount, err := a.userRepo.CountByRoleAndActive(string(sharedmodels.RoleSuperAdmin), true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check active super admin count: %w", err)
+		}
+
+		// If this is the only active super admin, prevent deactivation
+		if activeSuperAdminCount <= 1 {
+			return nil, fmt.Errorf("cannot deactivate the last active super admin in the system")
+		}
 	}
 
 	// Deactivate user

@@ -23,9 +23,9 @@ type TwoFAUsecase interface {
 
 // twoFAUsecase implements TwoFAUsecase interface
 type twoFAUsecase struct {
-	userRepo   repository.UserRepository
-	twoFARepo  repository.TwoFARepository
-	emailSvc   *email.EmailService
+	userRepo    repository.UserRepository
+	twoFARepo   repository.TwoFARepository
+	emailSvc    *email.EmailService
 	authUsecase AuthUsecase
 }
 

@@ -18,9 +18,9 @@ const (
 type AuthMode string
 
 const (
-	AuthModePassword          AuthMode = "password"            // Password only
-	AuthModePasskey           AuthMode = "passkey"             // Passkey only
-	AuthModePasswordOrPasskey AuthMode = "password_or_passkey" // Password OR Passkey (user choice)
+	AuthModePassword           AuthMode = "password"             // Password only
+	AuthModePasskey            AuthMode = "passkey"              // Passkey only
+	AuthModePasswordOrPasskey  AuthMode = "password_or_passkey"  // Password OR Passkey (user choice)
 	AuthModePasswordAndPasskey AuthMode = "password_and_passkey" // Password AND Passkey (both required)
 )
 
@@ -28,9 +28,9 @@ const (
 type SecondFactorMode string
 
 const (
-	SecondFactorMode2FANone          SecondFactorMode = "none"              // No 2FA
-	SecondFactorMode2FAOptional      SecondFactorMode = "optional"          // 2FA optional
-	SecondFactorMode2FARequired      SecondFactorMode = "required"          // 2FA required
+	SecondFactorMode2FANone           SecondFactorMode = "none"             // No 2FA
+	SecondFactorMode2FAOptional       SecondFactorMode = "optional"         // 2FA optional
+	SecondFactorMode2FARequired       SecondFactorMode = "required"         // 2FA required
 	SecondFactorMode2FAPasskeyOrEmail SecondFactorMode = "passkey_or_email" // Passkey OR Email
 )
 
@@ -236,22 +236,22 @@ type UpdateCustomSettingsRequest struct {
 
 // SecuritySummaryResponse represents current security configuration summary
 type SecuritySummaryResponse struct {
-	CurrentLevel   SecurityLevel `json:"current_level"`
-	IsCustom       bool          `json:"is_custom"`
-	LevelName      string        `json:"level_name"`
-	Description    string        `json:"description"`
-	ActiveFeatures []string      `json:"active_features"`
+	CurrentLevel   SecurityLevel      `json:"current_level"`
+	IsCustom       bool               `json:"is_custom"`
+	LevelName      string             `json:"level_name"`
+	Description    string             `json:"description"`
+	ActiveFeatures []string           `json:"active_features"`
 	Settings       SystemAuthSettings `json:"settings"`
 	Statistics     SecurityStatistics `json:"statistics"`
 }
 
 // SecurityStatistics represents statistics about user security adoption
 type SecurityStatistics struct {
-	TotalUsers         int `json:"total_users"`
-	UsersWith2FA       int `json:"users_with_2fa"`
-	UsersWithPasskey   int `json:"users_with_passkey"`
-	ActiveSessions     int `json:"active_sessions"`
-	TotalPasskeys      int `json:"total_passkeys"`
+	TotalUsers       int `json:"total_users"`
+	UsersWith2FA     int `json:"users_with_2fa"`
+	UsersWithPasskey int `json:"users_with_passkey"`
+	ActiveSessions   int `json:"active_sessions"`
+	TotalPasskeys    int `json:"total_passkeys"`
 }
 
 // UserSettings represents individual user preferences and settings

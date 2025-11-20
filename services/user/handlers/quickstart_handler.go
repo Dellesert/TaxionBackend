@@ -160,11 +160,11 @@ func (h *QuickStartHandler) ImportQuickStart(c *gin.Context) {
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"request_id":   requestID,
-		"files_found":  foundFiles,
-		"departments":  len(departmentsCSV),
+		"request_id":     requestID,
+		"files_found":    foundFiles,
+		"departments":    len(departmentsCSV),
 		"subdepartments": len(subdepartmentsCSV),
-		"users":        len(usersCSV),
+		"users":          len(usersCSV),
 	}).Info("ZIP extraction completed")
 
 	// Validate required files
@@ -467,9 +467,9 @@ func (h *QuickStartHandler) importSubdepartments(csvData []byte, departmentMap m
 		if idx, ok := headerMap["department_name"]; ok && idx < len(row) {
 			deptName := strings.TrimSpace(row[idx])
 			logger.WithFields(map[string]interface{}{
-				"row":              rowNum,
-				"department_name":  deptName,
-				"available_depts":  departmentMap,
+				"row":             rowNum,
+				"department_name": deptName,
+				"available_depts": departmentMap,
 			}).Debug("Looking up department for subdepartment")
 			if id, exists := departmentMap[deptName]; exists {
 				departmentID = id

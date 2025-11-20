@@ -40,20 +40,20 @@ func (Subdepartment) TableName() string {
 // User represents a user in the user service
 type User struct {
 	models.BaseModel
-	Email          string            `gorm:"uniqueIndex;not null;size:255" json:"email" validate:"required,email,max=255"`
-	Name           string            `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
-	FirstName      string            `gorm:"size:100" json:"first_name,omitempty" validate:"omitempty,max=100"`
-	LastName       string            `gorm:"size:100" json:"last_name,omitempty" validate:"omitempty,max=100"`
-	MiddleName     string            `gorm:"size:100" json:"middle_name,omitempty" validate:"omitempty,max=100"`
-	BirthDate      *time.Time        `gorm:"type:date" json:"birth_date,omitempty"`
-	HashedPassword *string           `gorm:"size:255" json:"-"` // Nullable for passkey-only users
-	Role           models.Role       `gorm:"not null;default:'employee';size:20" json:"role" validate:"required,oneof=super_admin admin department_head employee"`
-	Status         models.UserStatus `gorm:"not null;default:'offline';size:20" json:"status" validate:"oneof=online busy away offline"`
-	DepartmentID   *uint             `gorm:"index" json:"department_id,omitempty"`
-	Department     *Department       `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
-	SubdepartmentID *uint            `gorm:"index" json:"subdepartment_id,omitempty"`
-	Subdepartment   *Subdepartment   `gorm:"foreignKey:SubdepartmentID" json:"subdepartment,omitempty"`
-	Avatar         string            `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
+	Email              string            `gorm:"uniqueIndex;not null;size:255" json:"email" validate:"required,email,max=255"`
+	Name               string            `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
+	FirstName          string            `gorm:"size:100" json:"first_name,omitempty" validate:"omitempty,max=100"`
+	LastName           string            `gorm:"size:100" json:"last_name,omitempty" validate:"omitempty,max=100"`
+	MiddleName         string            `gorm:"size:100" json:"middle_name,omitempty" validate:"omitempty,max=100"`
+	BirthDate          *time.Time        `gorm:"type:date" json:"birth_date,omitempty"`
+	HashedPassword     *string           `gorm:"size:255" json:"-"` // Nullable for passkey-only users
+	Role               models.Role       `gorm:"not null;default:'employee';size:20" json:"role" validate:"required,oneof=super_admin admin department_head employee"`
+	Status             models.UserStatus `gorm:"not null;default:'offline';size:20" json:"status" validate:"oneof=online busy away offline"`
+	DepartmentID       *uint             `gorm:"index" json:"department_id,omitempty"`
+	Department         *Department       `gorm:"foreignKey:DepartmentID" json:"department,omitempty"`
+	SubdepartmentID    *uint             `gorm:"index" json:"subdepartment_id,omitempty"`
+	Subdepartment      *Subdepartment    `gorm:"foreignKey:SubdepartmentID" json:"subdepartment,omitempty"`
+	Avatar             string            `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
 	Phone              string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
 	Position           string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
 	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
@@ -61,10 +61,10 @@ type User struct {
 	MustChangePassword bool              `gorm:"not null;default:false" json:"must_change_password"`
 
 	// Authentication settings
-	TwoFactorEnabled   bool              `gorm:"not null;default:false" json:"two_factor_enabled"`
-	PasskeyEnabled     bool              `gorm:"not null;default:false" json:"passkey_enabled"` // True if user has at least one passkey
-	PreferredSecondFactor string         `gorm:"size:20;default:'email'" json:"preferred_second_factor"` // "email" | "passkey"
-	PasswordChangedAt  *time.Time        `json:"password_changed_at,omitempty"` // Track password age for expiration
+	TwoFactorEnabled      bool       `gorm:"not null;default:false" json:"two_factor_enabled"`
+	PasskeyEnabled        bool       `gorm:"not null;default:false" json:"passkey_enabled"`          // True if user has at least one passkey
+	PreferredSecondFactor string     `gorm:"size:20;default:'email'" json:"preferred_second_factor"` // "email" | "passkey"
+	PasswordChangedAt     *time.Time `json:"password_changed_at,omitempty"`                          // Track password age for expiration
 }
 
 // TableName returns the table name for User model
@@ -139,7 +139,7 @@ type CreateDepartmentRequest struct {
 // UpdateDepartmentRequest represents request for updating a department
 type UpdateDepartmentRequest struct {
 	HeadID *uint   `json:"head_id,omitempty"`
-	Name *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	Name   *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
 }
 
 // CreateSubdepartmentRequest represents request for creating a subdepartment
@@ -171,20 +171,19 @@ type CreateUserRequest struct {
 	Position        string     `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 }
 
-// UpdateUserRequest represents request for updating a user
+// UpdateUserRequest represents request for updating a user's profile information
+// Note: Status and IsActive are managed through dedicated endpoints and should not be included here
 type UpdateUserRequest struct {
-	Name            *string            `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
-	FirstName       *string            `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	LastName        *string            `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	MiddleName      *string            `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	BirthDate       *time.Time         `json:"birth_date,omitempty"`
-	Status          *models.UserStatus `json:"status,omitempty" binding:"omitempty,oneof=online busy away offline" validate:"omitempty,oneof=online busy away offline"`
-	Avatar          *string            `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	Phone           *string            `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
-	Position        *string            `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	DepartmentID    *uint              `json:"department_id,omitempty"`
-	SubdepartmentID *uint              `json:"subdepartment_id,omitempty"`
-	IsActive        *bool              `json:"is_active,omitempty"`
+	Name            *string    `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	FirstName       *string    `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	LastName        *string    `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	MiddleName      *string    `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	BirthDate       *time.Time `json:"birth_date,omitempty"`
+	Avatar          *string    `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	Phone           *string    `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
+	Position        *string    `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	DepartmentID    *uint      `json:"department_id,omitempty"`
+	SubdepartmentID *uint      `json:"subdepartment_id,omitempty"`
 }
 
 // DepartmentResponse represents department response
@@ -211,31 +210,31 @@ type SubdepartmentResponse struct {
 
 // UserResponse represents user response (without sensitive data)
 type UserResponse struct {
-	ID              uint                   `json:"id"`
-	Email           string                 `json:"email"`
-	Name            string                 `json:"name"`
-	FirstName       string                 `json:"first_name,omitempty"`
-	LastName        string                 `json:"last_name,omitempty"`
-	MiddleName      string                 `json:"middle_name,omitempty"`
-	BirthDate       *string                `json:"birth_date,omitempty"`
-	Role            models.Role            `json:"role"`
-	Status          models.UserStatus      `json:"status"`
-	DepartmentID    *uint                  `json:"department_id,omitempty"`
-	Department      *DepartmentResponse    `json:"department,omitempty"`
-	SubdepartmentID *uint                  `json:"subdepartment_id,omitempty"`
-	Subdepartment   *SubdepartmentResponse `json:"subdepartment,omitempty"`
-	Avatar          string                 `json:"avatar,omitempty"`
-	Phone              string              `json:"phone,omitempty"`
-	Position           string              `json:"position,omitempty"`
-	LastActiveAt       *time.Time          `json:"last_active_at,omitempty"`
-	IsActive           bool                `json:"is_active"`
-	MustChangePassword bool                `json:"must_change_password"`
-	TwoFactorEnabled   bool                `json:"two_factor_enabled"`
-	PasskeyEnabled     bool                `json:"passkey_enabled"`
-	PreferredSecondFactor string           `json:"preferred_second_factor,omitempty"`
-	PasswordChangedAt  *time.Time          `json:"password_changed_at,omitempty"`
-	CreatedAt          time.Time           `json:"created_at"`
-	UpdatedAt          time.Time           `json:"updated_at"`
+	ID                    uint                   `json:"id"`
+	Email                 string                 `json:"email"`
+	Name                  string                 `json:"name"`
+	FirstName             string                 `json:"first_name,omitempty"`
+	LastName              string                 `json:"last_name,omitempty"`
+	MiddleName            string                 `json:"middle_name,omitempty"`
+	BirthDate             *string                `json:"birth_date,omitempty"`
+	Role                  models.Role            `json:"role"`
+	Status                models.UserStatus      `json:"status"`
+	DepartmentID          *uint                  `json:"department_id,omitempty"`
+	Department            *DepartmentResponse    `json:"department,omitempty"`
+	SubdepartmentID       *uint                  `json:"subdepartment_id,omitempty"`
+	Subdepartment         *SubdepartmentResponse `json:"subdepartment,omitempty"`
+	Avatar                string                 `json:"avatar,omitempty"`
+	Phone                 string                 `json:"phone,omitempty"`
+	Position              string                 `json:"position,omitempty"`
+	LastActiveAt          *time.Time             `json:"last_active_at,omitempty"`
+	IsActive              bool                   `json:"is_active"`
+	MustChangePassword    bool                   `json:"must_change_password"`
+	TwoFactorEnabled      bool                   `json:"two_factor_enabled"`
+	PasskeyEnabled        bool                   `json:"passkey_enabled"`
+	PreferredSecondFactor string                 `json:"preferred_second_factor,omitempty"`
+	PasswordChangedAt     *time.Time             `json:"password_changed_at,omitempty"`
+	CreatedAt             time.Time              `json:"created_at"`
+	UpdatedAt             time.Time              `json:"updated_at"`
 }
 
 // ToResponse converts User to UserResponse
@@ -248,29 +247,29 @@ func (u *User) ToResponse() *UserResponse {
 	}
 
 	response := &UserResponse{
-		ID:              u.ID,
-		Email:           u.Email,
-		Name:            u.Name,
-		FirstName:       u.FirstName,
-		LastName:        u.LastName,
-		MiddleName:      u.MiddleName,
-		BirthDate:       birthDateStr,
-		Role:            u.Role,
-		Status:          u.Status,
-		DepartmentID:    u.DepartmentID,
-		SubdepartmentID: u.SubdepartmentID,
-		Avatar:             u.Avatar,
-		Phone:              u.Phone,
-		Position:           u.Position,
-		LastActiveAt:       u.LastActiveAt,
-		IsActive:           u.IsActive,
-		MustChangePassword: u.MustChangePassword,
-		TwoFactorEnabled:   u.TwoFactorEnabled,
-		PasskeyEnabled:     u.PasskeyEnabled,
+		ID:                    u.ID,
+		Email:                 u.Email,
+		Name:                  u.Name,
+		FirstName:             u.FirstName,
+		LastName:              u.LastName,
+		MiddleName:            u.MiddleName,
+		BirthDate:             birthDateStr,
+		Role:                  u.Role,
+		Status:                u.Status,
+		DepartmentID:          u.DepartmentID,
+		SubdepartmentID:       u.SubdepartmentID,
+		Avatar:                u.Avatar,
+		Phone:                 u.Phone,
+		Position:              u.Position,
+		LastActiveAt:          u.LastActiveAt,
+		IsActive:              u.IsActive,
+		MustChangePassword:    u.MustChangePassword,
+		TwoFactorEnabled:      u.TwoFactorEnabled,
+		PasskeyEnabled:        u.PasskeyEnabled,
 		PreferredSecondFactor: u.PreferredSecondFactor,
-		PasswordChangedAt:  u.PasswordChangedAt,
-		CreatedAt:          u.CreatedAt,
-		UpdatedAt:          u.UpdatedAt,
+		PasswordChangedAt:     u.PasswordChangedAt,
+		CreatedAt:             u.CreatedAt,
+		UpdatedAt:             u.UpdatedAt,
 	}
 
 	// Include department if loaded
@@ -411,11 +410,11 @@ type CSVUserRow struct {
 
 // ImportUsersResponse represents response from CSV import
 type ImportUsersResponse struct {
-	TotalRows      int                    `json:"total_rows"`
-	SuccessCount   int                    `json:"success_count"`
-	ErrorCount     int                    `json:"error_count"`
-	SuccessUsers   []*UserResponse        `json:"success_users"`
-	Errors         []ImportError          `json:"errors"`
+	TotalRows    int             `json:"total_rows"`
+	SuccessCount int             `json:"success_count"`
+	ErrorCount   int             `json:"error_count"`
+	SuccessUsers []*UserResponse `json:"success_users"`
+	Errors       []ImportError   `json:"errors"`
 }
 
 // ImportError represents an error that occurred during import

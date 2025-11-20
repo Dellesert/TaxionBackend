@@ -133,9 +133,9 @@ func (h *PasswordResetHandler) ValidateResetToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"valid":        true,
-		"reset_info":   passwordReset,
-		"request_id":   requestID,
+		"valid":      true,
+		"reset_info": passwordReset,
+		"request_id": requestID,
 	})
 }
 

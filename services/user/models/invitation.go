@@ -64,13 +64,13 @@ func (i *Invitation) IsExpired() bool {
 
 // CreateInvitationRequest represents request for creating an invitation
 type CreateInvitationRequest struct {
-	Email         string      `json:"email" binding:"required,email,max=255" validate:"required,email,max=255"`
-	Name          string      `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
-	Role          string      `json:"role" binding:"required,oneof=super_admin admin department_head employee" validate:"required,oneof=super_admin admin department_head employee"`
-	DepartmentID  *uint       `json:"department_id,omitempty"`
-	Position      string      `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	Phone         string      `json:"phone,omitempty" binding:"omitempty,max=20" validate:"omitempty,max=20"`
-	ExpiresInDays int         `json:"expires_in_days" binding:"required,min=1,max=365" validate:"required,min=1,max=365"` // Configurable expiration
+	Email         string `json:"email" binding:"required,email,max=255" validate:"required,email,max=255"`
+	Name          string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
+	Role          string `json:"role" binding:"required,oneof=super_admin admin department_head employee" validate:"required,oneof=super_admin admin department_head employee"`
+	DepartmentID  *uint  `json:"department_id,omitempty"`
+	Position      string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	Phone         string `json:"phone,omitempty" binding:"omitempty,max=20" validate:"omitempty,max=20"`
+	ExpiresInDays int    `json:"expires_in_days" binding:"required,min=1,max=365" validate:"required,min=1,max=365"` // Configurable expiration
 }
 
 // BulkCreateInvitationsRequest represents request for bulk creating invitations
@@ -87,27 +87,27 @@ type AcceptInvitationRequest struct {
 
 // InvitationResponse represents invitation response
 type InvitationResponse struct {
-	ID            uint                `json:"id"`
-	Token         string              `json:"token"`
-	Email         string              `json:"email"`
-	Name          string              `json:"name"`
-	Role          models.Role         `json:"role"`
-	DepartmentID  *uint               `json:"department_id,omitempty"`
-	Department    *DepartmentResponse `json:"department,omitempty"`
-	Position      string              `json:"position,omitempty"`
-	Phone         string              `json:"phone,omitempty"`
-	Status        InvitationStatus    `json:"status"`
-	ExpiresAt     time.Time           `json:"expires_at"`
-	AcceptedAt    *time.Time          `json:"accepted_at,omitempty"`
-	CreatedByID   uint                `json:"created_by_id"`
-	CreatedBy     *UserResponse       `json:"created_by,omitempty"`
-	UserID        *uint               `json:"user_id,omitempty"`
-	User          *UserResponse       `json:"user,omitempty"`
-	InviteLink    string              `json:"invite_link,omitempty"` // Only included when creating
-	IsValid       bool                `json:"is_valid"`
-	IsExpired     bool                `json:"is_expired"`
-	CreatedAt     time.Time           `json:"created_at"`
-	UpdatedAt     time.Time           `json:"updated_at"`
+	ID           uint                `json:"id"`
+	Token        string              `json:"token"`
+	Email        string              `json:"email"`
+	Name         string              `json:"name"`
+	Role         models.Role         `json:"role"`
+	DepartmentID *uint               `json:"department_id,omitempty"`
+	Department   *DepartmentResponse `json:"department,omitempty"`
+	Position     string              `json:"position,omitempty"`
+	Phone        string              `json:"phone,omitempty"`
+	Status       InvitationStatus    `json:"status"`
+	ExpiresAt    time.Time           `json:"expires_at"`
+	AcceptedAt   *time.Time          `json:"accepted_at,omitempty"`
+	CreatedByID  uint                `json:"created_by_id"`
+	CreatedBy    *UserResponse       `json:"created_by,omitempty"`
+	UserID       *uint               `json:"user_id,omitempty"`
+	User         *UserResponse       `json:"user,omitempty"`
+	InviteLink   string              `json:"invite_link,omitempty"` // Only included when creating
+	IsValid      bool                `json:"is_valid"`
+	IsExpired    bool                `json:"is_expired"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    time.Time           `json:"updated_at"`
 }
 
 // ToResponse converts Invitation to InvitationResponse
@@ -213,11 +213,11 @@ type CSVInvitationRow struct {
 
 // ImportInvitationsResponse represents response from CSV import
 type ImportInvitationsResponse struct {
-	TotalRows          int                    `json:"total_rows"`
-	SuccessCount       int                    `json:"success_count"`
-	ErrorCount         int                    `json:"error_count"`
-	SuccessInvitations []*InvitationResponse  `json:"success_invitations"`
-	Errors             []ImportError          `json:"errors"`
+	TotalRows          int                   `json:"total_rows"`
+	SuccessCount       int                   `json:"success_count"`
+	ErrorCount         int                   `json:"error_count"`
+	SuccessInvitations []*InvitationResponse `json:"success_invitations"`
+	Errors             []ImportError         `json:"errors"`
 }
 
 // BulkSendInvitationsRequest represents request for sending invitations to selected users
@@ -227,11 +227,11 @@ type BulkSendInvitationsRequest struct {
 
 // BulkSendInvitationsResponse represents response from bulk sending invitations
 type BulkSendInvitationsResponse struct {
-	TotalUsers       int                    `json:"total_users"`
-	SuccessCount     int                    `json:"success_count"`
-	ErrorCount       int                    `json:"error_count"`
-	SentInvitations  []*InvitationResponse  `json:"sent_invitations"`
-	Errors           []BulkInvitationError  `json:"errors"`
+	TotalUsers      int                   `json:"total_users"`
+	SuccessCount    int                   `json:"success_count"`
+	ErrorCount      int                   `json:"error_count"`
+	SentInvitations []*InvitationResponse `json:"sent_invitations"`
+	Errors          []BulkInvitationError `json:"errors"`
 }
 
 // BulkInvitationError represents error for a single user in bulk operation

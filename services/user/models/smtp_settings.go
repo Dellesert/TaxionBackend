@@ -23,11 +23,11 @@ type SMTPSettings struct {
 	UseSSL bool `gorm:"not null;default:false" json:"use_ssl"`
 
 	// Performance Settings
-	TimeoutSeconds     int `gorm:"not null;default:30" json:"timeout_seconds" validate:"min=1,max=300"`
-	MaxRetries         int `gorm:"not null;default:3" json:"max_retries" validate:"min=0,max=10"`
-	RetryDelaySeconds  int `gorm:"not null;default:5" json:"retry_delay_seconds" validate:"min=1,max=60"`
-	PoolSize           int `gorm:"not null;default:10" json:"pool_size" validate:"min=1,max=100"`
-	RateLimitRPS       int `gorm:"not null;default:5" json:"rate_limit_rps" validate:"min=1,max=100"`
+	TimeoutSeconds    int `gorm:"not null;default:30" json:"timeout_seconds" validate:"min=1,max=300"`
+	MaxRetries        int `gorm:"not null;default:3" json:"max_retries" validate:"min=0,max=10"`
+	RetryDelaySeconds int `gorm:"not null;default:5" json:"retry_delay_seconds" validate:"min=1,max=60"`
+	PoolSize          int `gorm:"not null;default:10" json:"pool_size" validate:"min=1,max=100"`
+	RateLimitRPS      int `gorm:"not null;default:5" json:"rate_limit_rps" validate:"min=1,max=100"`
 
 	// Metadata
 	CreatedAt time.Time `json:"created_at"`
@@ -101,14 +101,14 @@ type UpdateSMTPSettingsRequest struct {
 
 // TestSMTPConnectionRequest represents request to test SMTP connection
 type TestSMTPConnectionRequest struct {
-	Host       string `json:"host" binding:"required" validate:"required"`
-	Port       int    `json:"port" binding:"required,min=1,max=65535" validate:"required,min=1,max=65535"`
-	Username   string `json:"username" binding:"required" validate:"required"`
-	Password   string `json:"password" binding:"required" validate:"required"`
-	FromEmail  string `json:"from_email" binding:"required,email" validate:"required,email"`
-	UseTLS     bool   `json:"use_tls"`
-	UseSSL     bool   `json:"use_ssl"`
-	TestEmail  string `json:"test_email" binding:"required,email" validate:"required,email"`
+	Host      string `json:"host" binding:"required" validate:"required"`
+	Port      int    `json:"port" binding:"required,min=1,max=65535" validate:"required,min=1,max=65535"`
+	Username  string `json:"username" binding:"required" validate:"required"`
+	Password  string `json:"password" binding:"required" validate:"required"`
+	FromEmail string `json:"from_email" binding:"required,email" validate:"required,email"`
+	UseTLS    bool   `json:"use_tls"`
+	UseSSL    bool   `json:"use_ssl"`
+	TestEmail string `json:"test_email" binding:"required,email" validate:"required,email"`
 }
 
 // TestSMTPConnectionResponse represents response of SMTP connection test

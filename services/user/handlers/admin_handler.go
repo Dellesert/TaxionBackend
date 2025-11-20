@@ -295,8 +295,9 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		return
 	}
 
-	var req models.UpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	// First, check for protected fields in raw JSON
+	var rawBody map[string]interface{}
+	if err := c.ShouldBindJSON(&rawBody); err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
 			"admin_id":   adminID,
@@ -307,6 +308,60 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid request body",
 			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check for protected fields that should use dedicated endpoints
+	protectedFields := []string{"is_active", "status", "role", "email", "password", "hashed_password"}
+	var foundProtectedFields []string
+
+	for _, field := range protectedFields {
+		if _, exists := rawBody[field]; exists {
+			foundProtectedFields = append(foundProtectedFields, field)
+		}
+	}
+
+	if len(foundProtectedFields) > 0 {
+		var errorMsg string
+		for _, field := range foundProtectedFields {
+			switch field {
+			case "is_active":
+				errorMsg = "Cannot change 'is_active' through this endpoint. Use /users/:id/activate or /users/:id/deactivate instead"
+			case "status":
+				errorMsg = "Cannot change 'status' through this endpoint. Use /users/:id/status instead"
+			case "role":
+				errorMsg = "Cannot change 'role' through this endpoint. Use /users/:id/role instead"
+			case "email":
+				errorMsg = "Cannot change 'email' - it is used as the user identifier"
+			case "password", "hashed_password":
+				errorMsg = "Cannot change password through this endpoint. Use the password reset endpoint instead"
+			}
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"request_id":       requestID,
+			"admin_id":         adminID,
+			"user_id":          id,
+			"protected_fields": foundProtectedFields,
+		}).Warn("Attempt to modify protected fields through update endpoint")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":            "Cannot modify protected fields",
+			"message":          errorMsg,
+			"protected_fields": foundProtectedFields,
+			"request_id":       requestID,
+		})
+		return
+	}
+
+	// Parse into proper struct
+	var req models.UpdateUserRequest
+	bodyBytes, _ := json.Marshal(rawBody)
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request format",
 			"request_id": requestID,
 		})
 		return
@@ -468,7 +523,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminUsecase.UpdateUserRole(uint(id), &req, adminRole)
+	user, err := h.adminUsecase.UpdateUserRole(uint(id), &req, adminID, adminRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -486,6 +541,15 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 			errorMessage = "User not found"
 		} else if strings.Contains(err.Error(), "invalid role") {
 			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		} else if strings.Contains(err.Error(), "cannot modify your own role") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot modify your own role"
+		} else if strings.Contains(err.Error(), "cannot remove the last super admin") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot remove the last super admin from the system"
+		} else if strings.Contains(err.Error(), "only super admin") {
+			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
 		}
 
@@ -564,7 +628,7 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminUsecase.UpdateUserStatus(uint(id), &req)
+	user, err := h.adminUsecase.UpdateUserStatus(uint(id), &req, adminID)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -583,6 +647,9 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		} else if strings.Contains(err.Error(), "invalid status") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
+		} else if strings.Contains(err.Error(), "cannot modify your own status") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot modify your own status"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -643,7 +710,7 @@ func (h *AdminHandler) ActivateUser(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminUsecase.ActivateUser(uint(id))
+	user, err := h.adminUsecase.ActivateUser(uint(id), adminID)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -658,6 +725,9 @@ func (h *AdminHandler) ActivateUser(c *gin.Context) {
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
 			errorMessage = "User not found"
+		} else if strings.Contains(err.Error(), "cannot modify your own activation status") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot modify your own activation status"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -717,7 +787,23 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 		return
 	}
 
-	user, err := h.adminUsecase.DeactivateUser(uint(id))
+	// Get admin role from context
+	adminRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin role not found",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	user, err := h.adminUsecase.DeactivateUser(uint(id), adminID, adminRole)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -732,6 +818,12 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
 			errorMessage = "User not found"
+		} else if strings.Contains(err.Error(), "cannot deactivate your own account") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot deactivate your own account"
+		} else if strings.Contains(err.Error(), "cannot deactivate the last active super admin") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Cannot deactivate the last active super admin in the system"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1054,7 +1146,7 @@ func parseCSVFile(file interface{ Read([]byte) (int, error) }) ([]models.CSVUser
 	for i, col := range header {
 		// Remove BOM (Byte Order Mark) and other invisible characters
 		cleanCol := strings.TrimSpace(col)
-		cleanCol = strings.TrimPrefix(cleanCol, "\uFEFF") // Remove UTF-8 BOM
+		cleanCol = strings.TrimPrefix(cleanCol, "\uFEFF")       // Remove UTF-8 BOM
 		cleanCol = strings.TrimPrefix(cleanCol, "\xEF\xBB\xBF") // Remove UTF-8 BOM bytes
 		colIndices[strings.ToLower(cleanCol)] = i
 	}
@@ -1177,7 +1269,7 @@ func (h *AdminHandler) BulkActivateUsers(c *gin.Context) {
 	var errors []map[string]interface{}
 
 	for _, userID := range req.UserIDs {
-		user, err := h.adminUsecase.ActivateUser(userID)
+		user, err := h.adminUsecase.ActivateUser(userID, adminID)
 		if err != nil {
 			errorCount++
 			errors = append(errors, map[string]interface{}{
@@ -1205,10 +1297,10 @@ func (h *AdminHandler) BulkActivateUsers(c *gin.Context) {
 	}).Info("Bulk user activation completed")
 
 	response := gin.H{
-		"success_count":  successCount,
-		"error_count":    errorCount,
-		"updated_users":  updatedUsers,
-		"request_id":     requestID,
+		"success_count": successCount,
+		"error_count":   errorCount,
+		"updated_users": updatedUsers,
+		"request_id":    requestID,
 	}
 
 	if len(errors) > 0 {
@@ -1232,6 +1324,22 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get admin role from context
+	adminRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin role from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin role not found",
 			"request_id": requestID,
 		})
 		return
@@ -1271,7 +1379,7 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 	var errors []map[string]interface{}
 
 	for _, userID := range req.UserIDs {
-		user, err := h.adminUsecase.DeactivateUser(userID)
+		user, err := h.adminUsecase.DeactivateUser(userID, adminID, adminRole)
 		if err != nil {
 			errorCount++
 			errors = append(errors, map[string]interface{}{
@@ -1299,10 +1407,10 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 	}).Info("Bulk user deactivation completed")
 
 	response := gin.H{
-		"success_count":  successCount,
-		"error_count":    errorCount,
-		"updated_users":  updatedUsers,
-		"request_id":     requestID,
+		"success_count": successCount,
+		"error_count":   errorCount,
+		"updated_users": updatedUsers,
+		"request_id":    requestID,
 	}
 
 	if len(errors) > 0 {
@@ -1484,11 +1592,11 @@ func (h *AdminHandler) ImportUsers(c *gin.Context) {
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"request_id":     requestID,
-		"admin_id":       adminID,
-		"total_rows":     result.TotalRows,
-		"success_count":  result.SuccessCount,
-		"error_count":    result.ErrorCount,
+		"request_id":    requestID,
+		"admin_id":      adminID,
+		"total_rows":    result.TotalRows,
+		"success_count": result.SuccessCount,
+		"error_count":   result.ErrorCount,
 	}).Info("Users imported from CSV")
 
 	c.JSON(http.StatusOK, result)
@@ -1592,9 +1700,9 @@ func (h *AdminHandler) GetAllServiceMetrics(c *gin.Context) {
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"request_id":      requestID,
-		"services_count":  len(allMetrics),
-		"errors_count":    len(errors),
+		"request_id":     requestID,
+		"services_count": len(allMetrics),
+		"errors_count":   len(errors),
 	}).Info("Aggregated service metrics collected")
 
 	response := gin.H{

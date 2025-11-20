@@ -18,9 +18,12 @@ type UserRepository interface {
 	GetByIDs(ids []uint) ([]*models.User, error)
 	GetAll(limit, offset int) ([]*models.User, error)
 	Update(user *models.User) error
+	UpdateFields(id uint, fields map[string]interface{}) error
 	Delete(id uint) error
 	Count() (int64, error)
 	CountWithFilters(departmentID *uint, isActive *bool) (int64, error)
+	CountByRole(role string) (int64, error)
+	CountByRoleAndActive(role string, isActive bool) (int64, error)
 	CountByTwoFactorEnabled() (int64, error)
 	CountByPasskeyEnabled() (int64, error)
 	GetWithDepartment(id uint) (*models.User, error)
@@ -166,6 +169,22 @@ func (r *userRepository) Update(user *models.User) error {
 	return nil
 }
 
+// UpdateFields updates specific fields of a user (selective update)
+// This method is used to update only specified fields without touching other fields
+func (r *userRepository) UpdateFields(id uint, fields map[string]interface{}) error {
+	result := r.db.Model(&models.User{}).Where("id = ?", id).Updates(fields)
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrDuplicatedKey) {
+			return fmt.Errorf("email already exists")
+		}
+		return fmt.Errorf("failed to update user fields: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user not found")
+	}
+	return nil
+}
+
 // Delete soft deletes a user by ID
 func (r *userRepository) Delete(id uint) error {
 	result := r.db.Delete(&models.User{}, id)
@@ -247,6 +266,26 @@ func (r *userRepository) CountWithFilters(departmentID *uint, isActive *bool) (i
 	err := query.Count(&count).Error
 	if err != nil {
 		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	return count, nil
+}
+
+// CountByRole counts users by their role
+func (r *userRepository) CountByRole(role string) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.User{}).Where("role = ?", role).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users by role: %w", err)
+	}
+	return count, nil
+}
+
+// CountByRoleAndActive counts users by their role and active status
+func (r *userRepository) CountByRoleAndActive(role string, isActive bool) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.User{}).Where("role = ? AND is_active = ?", role, isActive).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users by role and active status: %w", err)
 	}
 	return count, nil
 }

@@ -16,7 +16,7 @@ type PasskeyCredential struct {
 	AttestationType string     `gorm:"not null;size:50" json:"attestation_type"`
 	AAGUID          []byte     `gorm:"size:16" json:"aaguid,omitempty"`
 	SignCount       uint32     `gorm:"not null;default:0" json:"sign_count"`
-	Name            string     `gorm:"size:100" json:"name"` // User-friendly name (e.g., "iPhone 15", "MacBook Pro")
+	Name            string     `gorm:"size:100" json:"name"`                 // User-friendly name (e.g., "iPhone 15", "MacBook Pro")
 	Transports      string     `gorm:"size:255" json:"transports,omitempty"` // JSON array: ["usb","nfc","ble","internal"]
 	LastUsedAt      *time.Time `json:"last_used_at,omitempty"`
 	BackupEligible  bool       `gorm:"not null;default:false" json:"backup_eligible"`
@@ -30,11 +30,11 @@ func (PasskeyCredential) TableName() string {
 
 // PasskeyCredentialResponse represents passkey credential in API responses
 type PasskeyCredentialResponse struct {
-	ID          uint       `json:"id"`
-	Name        string     `json:"name"`
-	Transports  string     `json:"transports,omitempty"`
-	LastUsedAt  *time.Time `json:"last_used_at,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID         uint       `json:"id"`
+	Name       string     `json:"name"`
+	Transports string     `json:"transports,omitempty"`
+	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
+	CreatedAt  time.Time  `json:"created_at"`
 }
 
 // ToResponse converts PasskeyCredential to PasskeyCredentialResponse

@@ -142,4 +142,3 @@ func (h *MetricsHandler) MetricsMiddleware() gin.HandlerFunc {
 		h.RecordRequest(c.Writer.Status(), latency)
 	}
 }
-

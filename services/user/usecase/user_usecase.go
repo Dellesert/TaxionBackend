@@ -196,10 +196,11 @@ func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint,
 	return responses, total, nil
 }
 
-// UpdateUser updates an existing user
+// UpdateUser updates an existing user's profile information
+// Note: This method does NOT update Status, IsActive, or Role - those have dedicated secure endpoints
 func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error) {
-	// Get existing user
-	user, err := u.userRepo.GetByID(id)
+	// Check if user exists first
+	existingUser, err := u.userRepo.GetByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("user not found")
@@ -207,60 +208,68 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Update fields if provided
+	// Build a map of fields to update (selective update to avoid changing protected fields)
+	updates := make(map[string]interface{})
+
 	if req.Name != nil {
-		user.Name = *req.Name
+		updates["name"] = *req.Name
 	}
 	if req.FirstName != nil {
-		user.FirstName = *req.FirstName
+		updates["first_name"] = *req.FirstName
 	}
 	if req.LastName != nil {
-		user.LastName = *req.LastName
+		updates["last_name"] = *req.LastName
 	}
 	if req.MiddleName != nil {
-		user.MiddleName = *req.MiddleName
+		updates["middle_name"] = *req.MiddleName
 	}
 	if req.BirthDate != nil {
-		user.BirthDate = req.BirthDate
-	}
-	if req.Status != nil {
-		user.Status = *req.Status
+		updates["birth_date"] = req.BirthDate
 	}
 	if req.Avatar != nil {
-		user.Avatar = *req.Avatar
+		updates["avatar"] = *req.Avatar
 	}
 	if req.Phone != nil {
-		user.Phone = *req.Phone
+		updates["phone"] = *req.Phone
 	}
 	if req.Position != nil {
-		user.Position = *req.Position
+		updates["position"] = *req.Position
 	}
 	if req.DepartmentID != nil {
-		// If DepartmentID is 0, set to nil to remove from department
 		if *req.DepartmentID == 0 {
-			user.DepartmentID = nil
+			updates["department_id"] = nil
 		} else {
-			user.DepartmentID = req.DepartmentID
+			updates["department_id"] = *req.DepartmentID
 		}
 	}
 	if req.SubdepartmentID != nil {
-		// If SubdepartmentID is 0, set to nil to remove from subdepartment
 		if *req.SubdepartmentID == 0 {
-			user.SubdepartmentID = nil
+			updates["subdepartment_id"] = nil
 		} else {
-			user.SubdepartmentID = req.SubdepartmentID
+			updates["subdepartment_id"] = *req.SubdepartmentID
 		}
 	}
-	if req.IsActive != nil {
-		user.IsActive = *req.IsActive
+
+	// If no fields to update, return current user
+	if len(updates) == 0 {
+		return existingUser.ToResponse(), nil
 	}
 
-	// Save updated user
-	if err := u.userRepo.Update(user); err != nil {
+	// Perform selective update - this ensures Status, IsActive, and Role are NEVER touched
+	// Even if someone somehow passes them in the request, they won't be updated
+	if err := u.userRepo.UpdateFields(id, updates); err != nil {
 		return nil, fmt.Errorf("failed to update user: %w", err)
 	}
 
-	return user.ToResponse(), nil
+	// Get updated user with department for response
+	updatedUser, err := u.userRepo.GetWithDepartment(id)
+	if err != nil {
+		// Fallback to basic user data
+		user, _ := u.userRepo.GetByID(id)
+		return user.ToResponse(), nil
+	}
+
+	return updatedUser.ToResponse(), nil
 }
 
 // DeleteUser deletes a user by ID

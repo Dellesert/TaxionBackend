@@ -31,6 +31,7 @@ import (
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/services/user/repository"
 	"tachyon-messenger/services/user/usecase"
+	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/email"
@@ -38,7 +39,6 @@ import (
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 	sharedredis "tachyon-messenger/shared/redis"
-	"tachyon-messenger/shared/analytics"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -346,8 +346,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		passkey := auth.Group("/passkey")
 		{
 			// Public endpoints (no auth required for login)
-			passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)                              // Legacy: requires email
-			passkey.POST("/login/discoverable/begin", passkeyHandler.BeginDiscoverableAuthentication)    // New: no email required
+			passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)                          // Legacy: requires email
+			passkey.POST("/login/discoverable/begin", passkeyHandler.BeginDiscoverableAuthentication) // New: no email required
 			passkey.POST("/login/finish", passkeyHandler.FinishAuthentication)
 
 			// Protected endpoints (require auth for registration and management)
@@ -408,8 +408,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			v1Passkey := v1Auth.Group("/passkey")
 			{
 				// Public endpoints (no auth required for login)
-				v1Passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)                              // Legacy: requires email
-				v1Passkey.POST("/login/discoverable/begin", passkeyHandler.BeginDiscoverableAuthentication)    // New: no email required
+				v1Passkey.POST("/login/begin", passkeyHandler.BeginAuthentication)                          // Legacy: requires email
+				v1Passkey.POST("/login/discoverable/begin", passkeyHandler.BeginDiscoverableAuthentication) // New: no email required
 				v1Passkey.POST("/login/finish", passkeyHandler.FinishAuthentication)
 
 				// Protected endpoints (require auth for registration and management)
@@ -467,8 +467,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		sessions := v1.Group("/sessions")
 		sessions.Use(middleware.AuthMiddleware())
 		{
-			sessions.GET("", sessionHandler.GetActiveSessions)           // GET /api/v1/sessions - get all active sessions
-			sessions.DELETE("", sessionHandler.DeleteAllSessions)        // DELETE /api/v1/sessions - delete all other sessions
+			sessions.GET("", sessionHandler.GetActiveSessions)            // GET /api/v1/sessions - get all active sessions
+			sessions.DELETE("", sessionHandler.DeleteAllSessions)         // DELETE /api/v1/sessions - delete all other sessions
 			sessions.DELETE("/:session_id", sessionHandler.DeleteSession) // DELETE /api/v1/sessions/:id - delete specific session
 		}
 
@@ -488,11 +488,11 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		subdepartments := v1.Group("/subdepartments")
 		subdepartments.Use(middleware.AuthMiddleware())
 		{
-			subdepartments.GET("", subdepartmentHandler.GetSubdepartments)              // GET /api/v1/subdepartments?department_id=1 - get all or filter by department
-			subdepartments.GET("/:id", subdepartmentHandler.GetSubdepartment)            // GET /api/v1/subdepartments/:id - get specific subdepartment
-			subdepartments.POST("", middleware.RequireAdminRole(), subdepartmentHandler.CreateSubdepartment)        // POST /api/v1/subdepartments - create new subdepartment (admin only)
-			subdepartments.PUT("/:id", middleware.RequireAdminRole(), subdepartmentHandler.UpdateSubdepartment)      // PUT /api/v1/subdepartments/:id - update subdepartment (admin only)
-			subdepartments.DELETE("/:id", middleware.RequireAdminRole(), subdepartmentHandler.DeleteSubdepartment)   // DELETE /api/v1/subdepartments/:id - delete subdepartment (admin only)
+			subdepartments.GET("", subdepartmentHandler.GetSubdepartments)                                         // GET /api/v1/subdepartments?department_id=1 - get all or filter by department
+			subdepartments.GET("/:id", subdepartmentHandler.GetSubdepartment)                                      // GET /api/v1/subdepartments/:id - get specific subdepartment
+			subdepartments.POST("", middleware.RequireAdminRole(), subdepartmentHandler.CreateSubdepartment)       // POST /api/v1/subdepartments - create new subdepartment (admin only)
+			subdepartments.PUT("/:id", middleware.RequireAdminRole(), subdepartmentHandler.UpdateSubdepartment)    // PUT /api/v1/subdepartments/:id - update subdepartment (admin only)
+			subdepartments.DELETE("/:id", middleware.RequireAdminRole(), subdepartmentHandler.DeleteSubdepartment) // DELETE /api/v1/subdepartments/:id - delete subdepartment (admin only)
 		}
 
 		// Admin routes within /api/v1 for gateway compatibility
@@ -506,9 +506,9 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			{
 				v1AdminUsers.GET("", middleware.LogAdminAction("list_users"), adminHandler.GetUsers)
 				v1AdminUsers.POST("", middleware.LogAdminAction("create_user"), adminHandler.CreateUser)
-				v1AdminUsers.POST("/import", middleware.LogAdminAction("import_users"), adminHandler.ImportUsers)                         // Import users from CSV
-				v1AdminUsers.POST("/bulk-activate", middleware.LogAdminAction("bulk_activate_users"), adminHandler.BulkActivateUsers)           // Bulk activate users
-				v1AdminUsers.POST("/bulk-deactivate", middleware.LogAdminAction("bulk_deactivate_users"), adminHandler.BulkDeactivateUsers)   // Bulk deactivate users
+				v1AdminUsers.POST("/import", middleware.LogAdminAction("import_users"), adminHandler.ImportUsers)                                    // Import users from CSV
+				v1AdminUsers.POST("/bulk-activate", middleware.LogAdminAction("bulk_activate_users"), adminHandler.BulkActivateUsers)                // Bulk activate users
+				v1AdminUsers.POST("/bulk-deactivate", middleware.LogAdminAction("bulk_deactivate_users"), adminHandler.BulkDeactivateUsers)          // Bulk deactivate users
 				v1AdminUsers.POST("/bulk-assign-department", middleware.LogAdminAction("bulk_assign_department"), adminHandler.BulkAssignDepartment) // Bulk assign department
 				v1AdminUsers.PUT("/:id", middleware.LogAdminAction("update_user"), adminHandler.UpdateUser)
 				v1AdminUsers.GET("/stats", middleware.LogAdminAction("get_user_stats"), adminHandler.GetUserStats)
@@ -516,7 +516,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 				v1AdminUsers.PUT("/:id/status", middleware.LogAdminAction("update_user_status"), adminHandler.UpdateUserStatus)
 				v1AdminUsers.PUT("/:id/activate", middleware.LogAdminAction("activate_user"), adminHandler.ActivateUser)
 				v1AdminUsers.PUT("/:id/deactivate", middleware.LogAdminAction("deactivate_user"), adminHandler.DeactivateUser)
-				v1AdminUsers.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA)                         // Super admin only
+				v1AdminUsers.PUT("/:id/2fa", middleware.LogAdminAction("update_user_2fa"), adminHandler.UpdateUser2FA)                     // Super admin only
 				v1AdminUsers.POST("/:id/reset-password", middleware.LogAdminAction("reset_user_password"), adminHandler.ResetUserPassword) // Super admin only
 				v1AdminUsers.DELETE("/:id", middleware.LogAdminAction("delete_user"), adminHandler.DeleteUser)
 			}

@@ -41,9 +41,9 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 	}
 
 	wconfig := &webauthn.Config{
-		RPDisplayName: rpDisplayName,
-		RPID:          rpID,
-		RPOrigins:     rpOrigins,
+		RPDisplayName:         rpDisplayName,
+		RPID:                  rpID,
+		RPOrigins:             rpOrigins,
 		AttestationPreference: protocol.PreferNoAttestation,
 		// Default settings for registration - use preferred for resident keys
 		// This allows both resident and non-resident keys
@@ -157,6 +157,6 @@ func containsTransport(haystack, needle string) bool {
 	// Simple substring check - in production use proper parsing
 	return len(haystack) > 0 && len(needle) > 0 &&
 		(haystack == needle ||
-		 haystack[:len(needle)] == needle ||
-		 haystack[len(haystack)-len(needle):] == needle)
+			haystack[:len(needle)] == needle ||
+			haystack[len(haystack)-len(needle):] == needle)
 }

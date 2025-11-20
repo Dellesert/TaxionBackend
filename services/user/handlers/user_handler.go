@@ -133,7 +133,6 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		}
 	}
 
-
 	// Get current user's department ID for filtering
 	var currentUserDeptID *uint
 	if userID, exists := c.Get("user_id"); exists {

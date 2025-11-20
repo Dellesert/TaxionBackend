@@ -251,12 +251,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Send successful login attempt to analytics
 	userID := uint64(loginResponse.User.ID)
 	h.analyticsClient.SendLoginAttemptAsync(analytics.LoginAttemptRequest{
-		Email:      loginResponse.User.Email,
-		UserID:     &userID,
-		IPAddress:  ipAddress,
-		UserAgent:  userAgent,
-		Success:    true,
-		AuthMode:   string(loginResponse.AuthMode),
+		Email:     loginResponse.User.Email,
+		UserID:    &userID,
+		IPAddress: ipAddress,
+		UserAgent: userAgent,
+		Success:   true,
+		AuthMode:  string(loginResponse.AuthMode),
 	})
 
 	// Track device for security monitoring

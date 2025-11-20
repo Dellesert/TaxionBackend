@@ -433,9 +433,9 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		}).Info("Passkey authentication successful, session created")
 
 		c.JSON(http.StatusOK, gin.H{
-			"success":    true,
-			"message":    "Authentication successful",
-			"user":       user.ToResponse(),
+			"success": true,
+			"message": "Authentication successful",
+			"user":    user.ToResponse(),
 			"session": gin.H{
 				"session_id": session.SessionID,
 			},
@@ -470,11 +470,11 @@ func (h *PasskeyHandler) ListPasskeys(c *gin.Context) {
 	response := make([]gin.H, len(passkeys))
 	for i, pk := range passkeys {
 		response[i] = gin.H{
-			"id":          pk.ID,
-			"name":        pk.Name,
-			"created_at":  pk.CreatedAt,
-			"last_used":   pk.LastUsedAt,
-			"transports":  pk.Transports,
+			"id":         pk.ID,
+			"name":       pk.Name,
+			"created_at": pk.CreatedAt,
+			"last_used":  pk.LastUsedAt,
+			"transports": pk.Transports,
 		}
 	}
 

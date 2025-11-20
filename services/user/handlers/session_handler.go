@@ -119,10 +119,10 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 	// Check if the session belongs to the current user
 	if session.UserID != userID {
 		logger.WithFields(map[string]interface{}{
-			"request_id":        requestID,
-			"user_id":           userID,
-			"session_id":        sessionID,
-			"session_owner_id":  session.UserID,
+			"request_id":       requestID,
+			"user_id":          userID,
+			"session_id":       sessionID,
+			"session_owner_id": session.UserID,
 		}).Warn("User attempted to delete another user's session")
 
 		c.JSON(http.StatusForbidden, gin.H{

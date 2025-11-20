@@ -211,9 +211,9 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 
 	// Create response based on auth mode
 	response := &sharedmodels.LoginResponse{
-		User:                *responseUser,
-		AuthMode:            authMode,
-		MustChangePassword:  passwordExpired || user.MustChangePassword,
+		User:               *responseUser,
+		AuthMode:           authMode,
+		MustChangePassword: passwordExpired || user.MustChangePassword,
 	}
 
 	switch authMode {
@@ -316,8 +316,8 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 			}
 
 			logger.WithFields(map[string]interface{}{
-				"user_id":                 user.ID,
-				"email":                   user.Email,
+				"user_id":                  user.ID,
+				"email":                    user.Email,
 				"password_expiration_days": settings.PasswordExpirationDays,
 			}).Warn("Password expired for user during super admin login")
 		}

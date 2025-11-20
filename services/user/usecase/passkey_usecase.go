@@ -284,8 +284,8 @@ func (u *passkeyUsecase) BeginDiscoverableAuthentication() (*protocol.Credential
 	)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
-			"error":       err.Error(),
-			"error_type":  fmt.Sprintf("%T", err),
+			"error":      err.Error(),
+			"error_type": fmt.Sprintf("%T", err),
 		}).Error("Failed to begin discoverable passkey authentication")
 		return nil, fmt.Errorf("failed to begin passkey authentication: %w", err)
 	}
@@ -398,8 +398,8 @@ func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.Par
 	passkeyCredential, err := u.passkeyRepo.GetByCredentialID(credentialID)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
-			"error":              err.Error(),
-			"credential_id_len":  len(credentialID),
+			"error":             err.Error(),
+			"credential_id_len": len(credentialID),
 		}).Error("Credential not found in database")
 		return nil, fmt.Errorf("credential not found")
 	}
@@ -450,8 +450,8 @@ func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.Par
 
 	if !ok {
 		logger.WithFields(map[string]interface{}{
-			"challenge":     challenge,
-			"user_email":    user.Email,
+			"challenge":      challenge,
+			"user_email":     user.Email,
 			"available_keys": fmt.Sprintf("%v", getSessionStoreKeys(u.sessionStore)),
 		}).Error("Authentication session not found or expired")
 		return nil, fmt.Errorf("authentication session not found or expired")
@@ -466,12 +466,12 @@ func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.Par
 
 	// Log the session data details for debugging
 	logger.WithFields(map[string]interface{}{
-		"session_user_id":        string(webAuthnSessionData.UserID),
-		"webauthn_user_id":       string(webAuthnUser.WebAuthnID()),
-		"actual_user_id":         user.ID,
-		"session_challenge":      string(webAuthnSessionData.Challenge),
-		"session_user_id_len":    len(webAuthnSessionData.UserID),
-		"webauthn_user_id_len":   len(webAuthnUser.WebAuthnID()),
+		"session_user_id":      string(webAuthnSessionData.UserID),
+		"webauthn_user_id":     string(webAuthnUser.WebAuthnID()),
+		"actual_user_id":       user.ID,
+		"session_challenge":    string(webAuthnSessionData.Challenge),
+		"session_user_id_len":  len(webAuthnSessionData.UserID),
+		"webauthn_user_id_len": len(webAuthnUser.WebAuthnID()),
 	}).Info("Comparing User IDs before validation")
 
 	// CRITICAL FIX: Update the session's User ID to match the actual user we found
