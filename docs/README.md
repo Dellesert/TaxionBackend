@@ -50,6 +50,16 @@
   - Стратегии версионирования
   - CI/CD настройка
 
+- **[deployment/CI_CD_CHEATSHEET.md](deployment/CI_CD_CHEATSHEET.md)** 🟡
+  - Когда собираются образы автоматически
+  - Как проверить статус сборки
+  - Workflow для релизов
+
+- **[deployment/VIEWING_IMAGES.md](deployment/VIEWING_IMAGES.md)** 🟡
+  - Где посмотреть собранные образы
+  - Просмотр через веб и CLI
+  - Управление образами
+
 ---
 
 ### ⚙️ Configuration - Конфигурация
