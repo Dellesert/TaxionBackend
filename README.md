@@ -2,14 +2,16 @@
 
 ## 🚀 Quick Links
 
+### 📖 Документация
+- **[Вся документация →](docs/)** - Полный список документации
 - **Development Setup**: См. ниже
-- **Configuration**:
-  - ⚙️ [Environment Configuration Guide](docs/ENV_CONFIGURATION.md) - Настройка .env файлов
-  - 🔄 [Environment Comparison](docs/ENVIRONMENT_COMPARISON.md) - Development vs Production
-- **Production Deployment**:
-  - 📖 [Quick Start Guide](docs/PRODUCTION_QUICKSTART.md) - Быстрый старт в production (20 минут)
-  - 📚 [Full Production Guide](docs/PRODUCTION_DEPLOYMENT.md) - Полная документация по production
-  - 🔒 [Security Checklist](docs/PRODUCTION_DEPLOYMENT.md#security-checklist)
+
+### 🐳 Docker & Production
+- **[Быстрый деплой →](docs/QUICK_DEPLOY.md)** - Деплой за 20 минут
+- **[Настройка авторизации →](docs/GITHUB_AUTH_SETUP.md)** - Доступ к приватным образам
+- **[Краткая справка →](docs/DOCKER_README.md)** - Основные команды
+- **[Полное руководство →](docs/deployment/DEPLOYMENT.md)** - Детальная документация
+- **[Версионирование →](docs/deployment/DOCKER_VERSIONING.md)** - Управление версиями образов
 
 ---
 

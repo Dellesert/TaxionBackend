@@ -46,6 +46,7 @@ logs/
 # Docker
 *.pid
 .dockerignore
+docker-compose.prod.yml.backup
 
 # Build artifacts
 dist/
@@ -62,7 +63,9 @@ NUL
 .env copy
 
 # Production files (НИКОГДА не коммитить в Git!)
+.env.production
 .env.production.local
+.github-credentials
 backups/
 *.sql
 *.sql.gz
@@ -70,7 +73,6 @@ backups/
 
 # Uploads (в production)
 uploads/
-.env.production
 .env copy
 
 # Firebase credentials (НИКОГДА не коммитить в Git!)
