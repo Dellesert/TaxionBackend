@@ -132,6 +132,7 @@ func main() {
 	messageHandler := handlers.NewMessageHandler(messageUsecase, analyticsClient)
 	wsHandler := handlers.NewWebSocketHandler(wsHub, messageUsecase)
 	metricsHandler := handlers.NewMetricsHandler(wsHub, db, redisClient, "chat-service", startTime)
+	internalHandler := handlers.NewInternalHandler(wsHub)
 
 	// Create Gin router
 	router := gin.New()
@@ -143,7 +144,7 @@ func main() {
 	router.Use(metricsHandler.MetricsMiddleware())
 
 	// Setup routes
-	setupRoutes(router, chatHandler, messageHandler, wsHandler, metricsHandler, jwtConfig)
+	setupRoutes(router, chatHandler, messageHandler, wsHandler, metricsHandler, internalHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -181,17 +182,27 @@ func main() {
 }
 
 // setupRoutes configures all routes for the chat service
-func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageHandler *handlers.MessageHandler, wsHandler *handlers.WebSocketHandler, metricsHandler *handlers.MetricsHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageHandler *handlers.MessageHandler, wsHandler *handlers.WebSocketHandler, metricsHandler *handlers.MetricsHandler, internalHandler *handlers.InternalHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.Any("/health", healthHandler)
 
-	// Internal metrics endpoints (no auth required - only accessible from internal network)
-	internal := router.Group("/internal/metrics")
+	// Internal endpoints (no auth required - only accessible from internal network)
+	internal := router.Group("/api/v1/internal")
 	{
-		internal.GET("/websocket", metricsHandler.GetWebSocketMetrics)
-		internal.GET("/database", metricsHandler.GetDatabaseMetrics)
-		internal.GET("/redis", metricsHandler.GetRedisMetrics)
-		internal.GET("/runtime", metricsHandler.GetRuntimeMetrics)
+		// Metrics endpoints
+		metrics := internal.Group("/metrics")
+		{
+			metrics.GET("/websocket", metricsHandler.GetWebSocketMetrics)
+			metrics.GET("/database", metricsHandler.GetDatabaseMetrics)
+			metrics.GET("/redis", metricsHandler.GetRedisMetrics)
+			metrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
+		}
+
+		// WebSocket broadcast endpoints
+		ws := internal.Group("/ws")
+		{
+			ws.POST("/broadcast/user", internalHandler.BroadcastToUser)
+		}
 	}
 
 	// WebSocket endpoint БЕЗ JWT middleware (обрабатывает аутентификацию самостоятельно)

@@ -243,7 +243,10 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 				RelatedID:   &task.ID,
 				RelatedType: "task",
 				// ActionURL not set - validator requires full URL (with scheme and host), not just path
-				Channels:    []string{"in_app", "email", "push"},
+				Data: map[string]interface{}{
+					"task_id": task.ID,
+				},
+				Channels: []string{"in_app", "email", "push"},
 			}
 
 			// Send notification (async, don't block on error)
@@ -587,6 +590,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 				Priority:    &priority,
 				RelatedID:   &task.ID,
 				RelatedType: "task",
+				Data: map[string]interface{}{
+					"task_id": task.ID,
+				},
 				Channels:    []string{"in_app", "email", "push"},
 			}
 
@@ -629,6 +635,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 					Priority:    &priority,
 					RelatedID:   &task.ID,
 					RelatedType: "task",
+					Data: map[string]interface{}{
+						"task_id": task.ID,
+					},
 					Channels:    []string{"in_app", "email", "push"},
 				}
 
@@ -671,6 +680,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 					Priority:    &priority,
 					RelatedID:   &task.ID,
 					RelatedType: "task",
+					Data: map[string]interface{}{
+						"task_id": task.ID,
+					},
 					Channels:    []string{"in_app", "email", "push"},
 				}
 
@@ -953,6 +965,9 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 				Priority:    &priority,
 				RelatedID:   &task.ID,
 				RelatedType: "task",
+				Data: map[string]interface{}{
+					"task_id": task.ID,
+				},
 				Channels:    []string{"in_app", "email", "push"},
 			}
 
@@ -994,6 +1009,9 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 					Priority:    &priority,
 					RelatedID:   &task.ID,
 					RelatedType: "task",
+					Data: map[string]interface{}{
+						"task_id": task.ID,
+					},
 					Channels:    []string{"in_app", "email", "push"},
 				}
 
@@ -1504,6 +1522,9 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 				RelatedID:   &task.ID,
 				RelatedType: "task",
 				// ActionURL not set - validator requires full URL (with scheme and host), not just path
+				Data: map[string]interface{}{
+					"task_id": task.ID,
+				},
 				Channels:    []string{"in_app", "email", "push"},
 			}
 
@@ -1628,6 +1649,9 @@ func (u *taskUsecase) DelegateTask(userID uint, taskID uint, toUserID uint) (*mo
 			Priority:    &priority,
 			RelatedID:   &task.ID,
 			RelatedType: "task",
+			Data: map[string]interface{}{
+				"task_id": task.ID,
+			},
 			Channels:    []string{"in_app", "email", "push"},
 		}
 

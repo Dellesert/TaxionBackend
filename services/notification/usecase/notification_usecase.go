@@ -3,11 +3,13 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/notification/client"
 	"tachyon-messenger/services/notification/email"
 	"tachyon-messenger/services/notification/models"
 	"tachyon-messenger/services/notification/push"
@@ -58,6 +60,7 @@ type notificationUsecase struct {
 	deviceRepo       repository.DeviceTokenRepository
 	emailSender      email.EmailSender
 	pushProvider     push.PushProvider
+	wsClient         *client.WebSocketClient
 }
 
 // Custom request/response models for usecase layer
@@ -112,6 +115,7 @@ func NewNotificationUsecase(
 		deviceRepo:       deviceRepo,
 		emailSender:      emailSender,
 		pushProvider:     pushProvider,
+		wsClient:         client.NewWebSocketClient(),
 	}
 }
 
@@ -159,6 +163,14 @@ func (u *notificationUsecase) SendNotification(req *models.CreateNotificationReq
 		notification.Priority = *req.Priority
 	}
 
+	// Set data if provided
+	if req.Data != nil {
+		dataJSON, err := json.Marshal(req.Data)
+		if err == nil {
+			notification.Data = dataJSON
+		}
+	}
+
 	// Save notification to database
 	if err := u.notificationRepo.CreateNotification(notification); err != nil {
 		return nil, fmt.Errorf("failed to create notification: %w", err)
@@ -183,6 +195,17 @@ func (u *notificationUsecase) SendNotification(req *models.CreateNotificationReq
 	if err := u.notificationRepo.UpdateNotification(notification); err != nil {
 		logger.WithField("notification_id", notification.ID).Error("Failed to update notification status")
 	}
+
+	// Send real-time WebSocket notification
+	go func() {
+		if err := u.broadcastNotificationViaWebSocket(notification); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"notification_id": notification.ID,
+				"user_id":         notification.UserID,
+				"error":           err.Error(),
+			}).Warn("Failed to broadcast notification via WebSocket")
+		}
+	}()
 
 	logger.WithFields(map[string]interface{}{
 		"notification_id": notification.ID,
@@ -1427,4 +1450,27 @@ func (u *notificationUsecase) isValidChannel(channel models.DeliveryChannel) boo
 	default:
 		return false
 	}
+}
+
+// broadcastNotificationViaWebSocket sends notification to user via WebSocket
+func (u *notificationUsecase) broadcastNotificationViaWebSocket(notification *models.Notification) error {
+	if u.wsClient == nil {
+		return fmt.Errorf("WebSocket client not initialized")
+	}
+
+	// Convert notification to response format
+	notificationData := notification.ToResponse()
+
+	// Broadcast to user
+	if err := u.wsClient.BroadcastToUser(notification.UserID, "notification:new", notificationData); err != nil {
+		return fmt.Errorf("failed to broadcast via WebSocket: %w", err)
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"notification_id": notification.ID,
+		"user_id":         notification.UserID,
+		"type":            notification.Type,
+	}).Info("Notification broadcast via WebSocket")
+
+	return nil
 }

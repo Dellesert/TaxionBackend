@@ -43,11 +43,12 @@ type MessageUsecase interface {
 
 // messageUsecase implements MessageUsecase interface
 type messageUsecase struct {
-	messageRepo repository.MessageRepository
-	chatRepo    repository.ChatRepository
-	wsHub       WebSocketHub
-	fileClient  *client.FileClient
-	baseURL     string
+	messageRepo        repository.MessageRepository
+	chatRepo           repository.ChatRepository
+	wsHub              WebSocketHub
+	fileClient         *client.FileClient
+	notificationClient *client.NotificationClient
+	baseURL            string
 }
 
 // NewMessageUsecase creates a new message usecase
@@ -59,11 +60,12 @@ func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo reposi
 	}
 
 	return &messageUsecase{
-		messageRepo: messageRepo,
-		chatRepo:    chatRepo,
-		wsHub:       nil, // Will be set later to avoid circular dependency
-		fileClient:  client.NewFileClient(),
-		baseURL:     baseURL,
+		messageRepo:        messageRepo,
+		chatRepo:           chatRepo,
+		wsHub:              nil, // Will be set later to avoid circular dependency
+		fileClient:         client.NewFileClient(),
+		notificationClient: client.NewNotificationClient(),
+		baseURL:            baseURL,
 	}
 }
 
@@ -207,6 +209,13 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	} else {
 		fmt.Println("❌ wsHub is nil - cannot broadcast!")
 	}
+
+	// Send notifications
+	go func() {
+		if err := uc.sendMessageNotifications(userID, req.ChatID, message, response); err != nil {
+			fmt.Printf("Failed to send message notifications: %v\n", err)
+		}
+	}()
 
 	return response, nil
 }
@@ -989,6 +998,117 @@ func (uc *messageUsecase) validateSendMessageRequest(req *models.SendMessageRequ
 		req.Type == models.MessageTypeVideo || req.Type == models.MessageTypeAudio {
 		if req.FileURL == "" {
 			return fmt.Errorf("file_url is required for file messages")
+		}
+	}
+
+	return nil
+}
+
+
+// sendMessageNotifications sends notifications to chat members about new message
+func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, message *models.Message, response *models.MessageResponse) error {
+	// Get chat information
+	chat, err := uc.chatRepo.GetByID(chatID)
+	if err != nil {
+		return fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	// Get all chat members
+	memberIDs, err := uc.chatRepo.GetChatMemberIDs(chatID)
+	if err != nil {
+		return fmt.Errorf("failed to get chat members: %w", err)
+	}
+
+	// Get sender information for notification
+	var senderName string
+	if response.Sender != nil {
+		senderName = response.Sender.Name
+	} else {
+		senderName = "Кто-то"
+	}
+
+	// Truncate message content for notification (max 100 characters)
+	messageContent := message.Content
+	if len(messageContent) > 100 {
+		messageContent = messageContent[:97] + "..."
+	}
+
+	// Determine notification type based on chat type and message type
+	var notificationTitle string
+	var notificationMessage string
+	priority := "medium"
+
+	// Check if this is a reply to a message
+	isReply := message.ReplyToID != nil
+	var replyToAuthorID uint
+
+	if isReply {
+		// Get the original message to find its author
+		originalMsg, err := uc.messageRepo.GetByID(*message.ReplyToID)
+		if err == nil {
+			replyToAuthorID = originalMsg.SenderID
+			// Set high priority for replies
+			priority = "high"
+		}
+	}
+
+	switch chat.Type {
+	case models.ChatTypePrivate:
+		// Personal message
+		notificationTitle = fmt.Sprintf("📩 %s", senderName)
+		notificationMessage = messageContent
+		priority = "high" // Personal messages are always high priority
+
+	case models.ChatTypeGroup, models.ChatTypeChannel:
+		// Group message
+		chatName := chat.Name
+		if chatName == "" {
+			chatName = "Групповой чат"
+		}
+
+		if isReply {
+			notificationTitle = fmt.Sprintf("💬 %s ответил в \"%s\"", senderName, chatName)
+		} else {
+			notificationTitle = fmt.Sprintf("👥 %s в \"%s\"", senderName, chatName)
+		}
+		notificationMessage = messageContent
+	}
+
+	// Send notifications to all members except sender
+	for _, memberID := range memberIDs {
+		// Skip sender
+		if memberID == senderID {
+			continue
+		}
+
+		// If this is a reply, only notify the original author (and skip others in group chats)
+		if isReply && chat.Type != models.ChatTypePrivate {
+			// In group chats, only notify the person being replied to
+			if memberID != replyToAuthorID {
+				continue
+			}
+			// Update title for reply notification
+			notificationTitle = "💬 Ответ на ваше сообщение"
+		}
+
+		notificationReq := &client.NotificationRequest{
+			UserID:      memberID,
+			Type:        "message",
+			Title:       notificationTitle,
+			Message:     notificationMessage,
+			Priority:    &priority,
+			RelatedID:   &message.ID,
+			RelatedType: "message",
+			Data: map[string]interface{}{
+				"chat_id":    chatID,
+				"message_id": message.ID,
+			},
+			Channels: []string{"in_app", "push"},
+		}
+
+		// Send notification async (don't block on errors)
+		if err := uc.notificationClient.SendNotification(notificationReq); err != nil {
+			fmt.Printf("Failed to send message notification to user %d: %v\n", memberID, err)
 		}
 	}
 

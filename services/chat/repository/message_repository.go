@@ -255,6 +255,7 @@ func (r *messageRepository) CountByChatID(chatID uint) (int64, error) {
 func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 	var message models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")

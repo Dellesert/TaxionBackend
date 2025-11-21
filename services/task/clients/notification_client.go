@@ -34,15 +34,16 @@ func NewNotificationClient() *NotificationClient {
 
 // NotificationRequest represents a notification to be sent (matches models.CreateNotificationRequest)
 type NotificationRequest struct {
-	UserID      uint     `json:"user_id"`
-	Type        string   `json:"type"` // NotificationType: "message", "task", "calendar", etc.
-	Title       string   `json:"title"`
-	Message     string   `json:"message,omitempty"`
-	Priority    *string  `json:"priority,omitempty"`    // Pointer to priority string
-	RelatedID   *uint    `json:"related_id,omitempty"`
-	RelatedType string   `json:"related_type,omitempty"`
-	ActionURL   string   `json:"action_url,omitempty"`
-	Channels    []string `json:"channels,omitempty"`
+	UserID      uint                   `json:"user_id"`
+	Type        string                 `json:"type"` // NotificationType: "message", "task", "calendar", etc.
+	Title       string                 `json:"title"`
+	Message     string                 `json:"message,omitempty"`
+	Priority    *string                `json:"priority,omitempty"`    // Pointer to priority string
+	RelatedID   *uint                  `json:"related_id,omitempty"`
+	RelatedType string                 `json:"related_type,omitempty"`
+	ActionURL   string                 `json:"action_url,omitempty"`
+	Data        map[string]interface{} `json:"data,omitempty"` // Дополнительные данные (task_id, chat_id, и т.д.)
+	Channels    []string               `json:"channels,omitempty"`
 }
 
 // notificationTaskPayload represents the worker.NotificationTask format

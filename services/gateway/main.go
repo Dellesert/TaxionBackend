@@ -212,6 +212,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// Notification routes - proxy to notification service
 		notifications := v1.Group("/notifications")
 		{
+			notifications.Any("", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
 			notifications.Any("/*path", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
 		}
 

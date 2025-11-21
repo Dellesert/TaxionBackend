@@ -2,10 +2,12 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"tachyon-messenger/shared/models"
 
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 )
 
@@ -72,6 +74,7 @@ type Notification struct {
 	RelatedType string `gorm:"size:50" json:"related_type,omitempty"` // Тип связанного объекта
 	ActionURL   string `gorm:"size:500" json:"action_url,omitempty"`  // URL для действия
 	ImageURL    string `gorm:"size:500" json:"image_url,omitempty"`   // URL изображения
+	Data        datatypes.JSON `gorm:"type:jsonb" json:"data,omitempty"` // Дополнительные данные для навигации и обработки
 
 	// Delivery tracking
 	DeliveryChannels []NotificationDelivery `gorm:"foreignKey:NotificationID;constraint:OnDelete:CASCADE" json:"delivery_channels,omitempty"`
@@ -227,18 +230,19 @@ func (nt *NotificationTemplate) BeforeCreate(tx *gorm.DB) error {
 
 // CreateNotificationRequest represents request for creating a notification
 type CreateNotificationRequest struct {
-	UserID      uint                  `json:"user_id" binding:"required,min=1" validate:"required,min=1"`
-	Type        NotificationType      `json:"type" binding:"required,oneof=message task calendar system mention poll reminder announce" validate:"required,oneof=message task calendar system mention poll reminder announce"`
-	Title       string                `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
-	Message     string                `json:"message,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Priority    *NotificationPriority `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
-	RelatedID   *uint                 `json:"related_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
-	RelatedType string                `json:"related_type,omitempty" binding:"omitempty,max=50" validate:"omitempty,max=50"`
-	ActionURL   string                `json:"action_url,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	ImageURL    string                `json:"image_url,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	ScheduledAt *time.Time            `json:"scheduled_at,omitempty"`
-	ExpiresAt   *time.Time            `json:"expires_at,omitempty"`
-	Channels    []DeliveryChannel     `json:"channels,omitempty" validate:"omitempty,dive,oneof=in_app email push sms slack webhook"`
+	UserID      uint                   `json:"user_id" binding:"required,min=1" validate:"required,min=1"`
+	Type        NotificationType       `json:"type" binding:"required,oneof=message task calendar system mention poll reminder announce" validate:"required,oneof=message task calendar system mention poll reminder announce"`
+	Title       string                 `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
+	Message     string                 `json:"message,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Priority    *NotificationPriority  `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
+	RelatedID   *uint                  `json:"related_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	RelatedType string                 `json:"related_type,omitempty" binding:"omitempty,max=50" validate:"omitempty,max=50"`
+	ActionURL   string                 `json:"action_url,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	ImageURL    string                 `json:"image_url,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	Data        map[string]interface{} `json:"data,omitempty"` // Дополнительные данные (chat_id, task_id, и т.д.)
+	ScheduledAt *time.Time             `json:"scheduled_at,omitempty"`
+	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
+	Channels    []DeliveryChannel      `json:"channels,omitempty" validate:"omitempty,dive,oneof=in_app email push sms slack webhook"`
 }
 
 // BulkCreateNotificationRequest represents request for creating multiple notifications
@@ -321,6 +325,7 @@ type NotificationResponse struct {
 	RelatedType      string                         `json:"related_type,omitempty"`
 	ActionURL        string                         `json:"action_url,omitempty"`
 	ImageURL         string                         `json:"image_url,omitempty"`
+	Data             map[string]interface{}         `json:"data,omitempty"`
 	ScheduledAt      *time.Time                     `json:"scheduled_at,omitempty"`
 	ExpiresAt        *time.Time                     `json:"expires_at,omitempty"`
 	CreatedAt        time.Time                      `json:"created_at"`
@@ -369,6 +374,14 @@ func (n *Notification) ToResponse() *NotificationResponse {
 		ExpiresAt:   n.ExpiresAt,
 		CreatedAt:   n.CreatedAt,
 		UpdatedAt:   n.UpdatedAt,
+	}
+
+	// Convert Data from datatypes.JSON to map[string]interface{}
+	if len(n.Data) > 0 {
+		var dataMap map[string]interface{}
+		if err := json.Unmarshal(n.Data, &dataMap); err == nil {
+			response.Data = dataMap
+		}
 	}
 
 	// Convert delivery channels if loaded
