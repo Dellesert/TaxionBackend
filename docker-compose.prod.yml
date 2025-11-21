@@ -85,7 +85,7 @@ services:
 
   # User Management Service
   user-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-user:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-user:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-user-service-prod
     env_file:
       - .env.production
@@ -126,7 +126,7 @@ services:
 
   # Chat & Messaging Service
   chat-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-chat:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-chat:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-chat-service-prod
     env_file:
       - .env.production
@@ -169,7 +169,7 @@ services:
 
   # Task Management Service
   task-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-task:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-task:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-task-service-prod
     env_file:
       - .env.production
@@ -212,7 +212,7 @@ services:
 
   # File Storage Service
   file-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-file:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-file:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-file-service-prod
     env_file:
       - .env.production
@@ -257,7 +257,7 @@ services:
 
   # Calendar & Events Service
   calendar-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-calendar:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-calendar:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-calendar-service-prod
     env_file:
       - .env.production
@@ -301,7 +301,7 @@ services:
 
   # Polls & Surveys Service
   poll-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-poll:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-poll:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-poll-service-prod
     env_file:
       - .env.production
@@ -344,7 +344,7 @@ services:
 
   # Notification Service
   notification-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-notification:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-notification:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-notification-service-prod
     env_file:
       - .env.production
@@ -398,7 +398,7 @@ services:
 
   # Analytics Service
   analytics-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-analytics:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-analytics:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-analytics-service-prod
     env_file:
       - .env.production
@@ -446,7 +446,7 @@ services:
 
   # Backup Service
   backup-service:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-backup:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-backup:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-backup-service-prod
     env_file:
       - .env.production
@@ -494,7 +494,7 @@ services:
   # ==============================================
 
   gateway:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tachyon-gateway:latest  # Change :latest to :v1.0.0 for specific version
+    image: ghcr.io/mishkajackson/tachyon-gateway:latest  # Change :latest to :v1.0.0 for specific version
     container_name: tachyon-gateway-prod
     ports:
       # Production: открываем только gateway
