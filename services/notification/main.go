@@ -344,6 +344,7 @@ func setupRoutes(
 	internal := v1.Group("/internal")
 	{
 		internal.POST("/notifications/task", createAddTaskHandler(notificationWorker))            // POST /api/v1/internal/notifications/task
+		internal.POST("/notifications/poll", createAddTaskHandler(notificationWorker))            // POST /api/v1/internal/notifications/poll
 		internal.POST("/notifications/scheduled", createScheduledTaskHandler(notificationWorker)) // POST /api/v1/internal/notifications/scheduled
 	}
 }

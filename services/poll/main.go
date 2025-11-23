@@ -10,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"tachyon-messenger/services/poll/clients"
 	"tachyon-messenger/services/poll/handlers"
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/services/poll/repository"
 	"tachyon-messenger/services/poll/usecase"
+	"tachyon-messenger/services/poll/worker"
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
@@ -99,6 +101,12 @@ func main() {
 	// Initialize handlers
 	pollHandler := handlers.NewPollHandler(pollUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "poll-service", startTime)
+
+	// Start notification worker for poll reminders
+	notificationClient := clients.NewNotificationClient()
+	userClient := clients.NewUserClient()
+	notificationWorker := worker.NewNotificationWorker(pollRepo, participantRepo, voteRepo, notificationClient, userClient)
+	notificationWorker.Start()
 
 	// Setup routes
 	r := setupRoutes(pollHandler, metricsHandler, jwtConfig)

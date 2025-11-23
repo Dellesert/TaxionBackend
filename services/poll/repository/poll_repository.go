@@ -30,6 +30,7 @@ type PollRepository interface {
 	GetParticipatedPolls(userID uint, filter *models.PollFilterRequest) ([]*models.Poll, int64, error)
 	GetPollsByStatus(status models.PollStatus, filter *models.PollFilterRequest) ([]*models.Poll, int64, error)
 	GetExpiredPolls() ([]*models.Poll, error)
+	GetExpiringPolls(expiryTime time.Time) ([]*models.Poll, error)
 	UpdateStatus(id uint, status models.PollStatus) error
 	BatchUpdateStatus(ids []uint, status models.PollStatus) (int64, error)
 	Count() (int64, error)
@@ -428,6 +429,27 @@ func (r *pollRepository) GetExpiredPolls() ([]*models.Poll, error) {
 		Find(&polls).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get expired polls: %w", err)
+	}
+
+	return polls, nil
+}
+
+// GetExpiringPolls returns active polls expiring before the given time
+func (r *pollRepository) GetExpiringPolls(expiryTime time.Time) ([]*models.Poll, error) {
+	var polls []*models.Poll
+	now := time.Now()
+
+	// Get active polls that:
+	// 1. Have an end_time
+	// 2. End time is between now and expiryTime
+	// 3. Are currently active
+	err := r.db.
+		Where("status = ? AND end_time IS NOT NULL AND end_time > ? AND end_time <= ?",
+			models.PollStatusActive, now, expiryTime).
+		Limit(100).
+		Find(&polls).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get expiring polls: %w", err)
 	}
 
 	return polls, nil

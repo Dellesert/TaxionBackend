@@ -20,6 +20,7 @@ type UserUsecase interface {
 	GetUsers(limit, offset int) ([]*models.UserResponse, int64, error)
 	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string, currentUserRole string) ([]*models.UserResponse, int64, error)
 	GetUsersByIDs(ids []uint, currentUserRole string) ([]*models.UserResponse, error)
+	GetUsersByDepartment(departmentID uint) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteUser(id uint) error
 }
@@ -311,6 +312,22 @@ func (u *userUsecase) GetUsersByIDs(ids []uint, currentUserRole string) ([]*mode
 			}
 		}
 		users = filteredUsers
+	}
+
+	// Convert to response format
+	responses := make([]*models.UserResponse, len(users))
+	for i, user := range users {
+		responses[i] = user.ToResponse()
+	}
+
+	return responses, nil
+}
+
+// GetUsersByDepartment retrieves all active users in a specific department
+func (u *userUsecase) GetUsersByDepartment(departmentID uint) ([]*models.UserResponse, error) {
+	users, err := u.userRepo.GetUsersByDepartment(departmentID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users by department: %w", err)
 	}
 
 	// Convert to response format

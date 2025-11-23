@@ -7,8 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/poll/clients"
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/services/poll/repository"
+	"tachyon-messenger/shared/logger"
 	sharedModels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
@@ -49,11 +51,13 @@ type PollUsecase interface {
 
 // pollUsecase implements PollUsecase interface
 type pollUsecase struct {
-	pollRepo        repository.PollRepository
-	optionRepo      repository.PollOptionRepository
-	voteRepo        repository.PollVoteRepository
-	participantRepo repository.PollParticipantRepository
-	commentRepo     repository.PollCommentRepository
+	pollRepo           repository.PollRepository
+	optionRepo         repository.PollOptionRepository
+	voteRepo           repository.PollVoteRepository
+	participantRepo    repository.PollParticipantRepository
+	commentRepo        repository.PollCommentRepository
+	notificationClient *clients.NotificationClient
+	userClient         *clients.UserClient
 }
 
 // NewPollUsecase creates a new poll usecase
@@ -65,11 +69,13 @@ func NewPollUsecase(
 	commentRepo repository.PollCommentRepository,
 ) PollUsecase {
 	return &pollUsecase{
-		pollRepo:        pollRepo,
-		optionRepo:      optionRepo,
-		voteRepo:        voteRepo,
-		participantRepo: participantRepo,
-		commentRepo:     commentRepo,
+		pollRepo:           pollRepo,
+		optionRepo:         optionRepo,
+		voteRepo:           voteRepo,
+		participantRepo:    participantRepo,
+		commentRepo:        commentRepo,
+		notificationClient: clients.NewNotificationClient(),
+		userClient:         clients.NewUserClient(),
 	}
 }
 
@@ -177,6 +183,39 @@ func (u *pollUsecase) CreatePoll(userID uint, req *models.CreatePollRequest) (*m
 			// Log error but don't fail the entire operation
 			// In production, you might want to handle this differently
 		}
+
+		// Send notifications to invited participants (async)
+		go u.sendPollCreatedNotification(poll, userID, req.ParticipantIDs)
+	}
+
+	// Send notifications for department polls
+	if poll.Visibility == models.PollVisibilityDepartment && poll.DepartmentID != nil {
+		go func() {
+			logger.WithFields(map[string]interface{}{
+				"poll_id":       poll.ID,
+				"department_id": *poll.DepartmentID,
+			}).Info("Fetching department users for poll notification")
+
+			// Get all users in the department
+			departmentUsers, err := u.userClient.GetUsersByDepartment(*poll.DepartmentID)
+			if err != nil {
+				logger.WithFields(map[string]interface{}{
+					"poll_id":       poll.ID,
+					"department_id": *poll.DepartmentID,
+					"error":         err.Error(),
+				}).Error("Failed to get department users for poll notification")
+				return
+			}
+
+			logger.WithFields(map[string]interface{}{
+				"poll_id":       poll.ID,
+				"department_id": *poll.DepartmentID,
+				"user_count":    len(departmentUsers),
+			}).Info("Sending poll created notifications to department users")
+
+			// Send notifications
+			u.sendPollCreatedNotification(poll, userID, departmentUsers)
+		}()
 	}
 
 	// Get the created poll with all details
@@ -453,6 +492,71 @@ func (u *pollUsecase) UpdatePollStatus(userID, pollID uint, status models.PollSt
 	// Update status
 	if err := u.pollRepo.UpdateStatus(pollID, status); err != nil {
 		return fmt.Errorf("failed to update poll status: %w", err)
+	}
+
+	// Send notifications based on status change
+	oldStatus := poll.Status
+	if oldStatus != status {
+		// Get participants to notify
+		var participantIDs []uint
+
+		if poll.Visibility == models.PollVisibilityInviteOnly {
+			// For invite-only polls, notify invited participants
+			participants, err := u.participantRepo.GetByPollID(pollID)
+			if err == nil {
+				for _, participant := range participants {
+					participantIDs = append(participantIDs, participant.UserID)
+				}
+			}
+		} else if poll.Visibility == models.PollVisibilityDepartment && poll.DepartmentID != nil {
+			// For department polls, notify all department users
+			logger.WithFields(map[string]interface{}{
+				"poll_id":       pollID,
+				"department_id": *poll.DepartmentID,
+				"status":        status,
+			}).Info("Fetching department users for poll status notification")
+
+			departmentUsers, err := u.userClient.GetUsersByDepartment(*poll.DepartmentID)
+			if err == nil {
+				participantIDs = departmentUsers
+				logger.WithFields(map[string]interface{}{
+					"poll_id":    pollID,
+					"user_count": len(departmentUsers),
+				}).Info("Department users fetched for status notification")
+			} else {
+				logger.WithFields(map[string]interface{}{
+					"poll_id":       pollID,
+					"department_id": *poll.DepartmentID,
+					"error":         err.Error(),
+				}).Error("Failed to get department users for status notification")
+			}
+		}
+
+		// Send notification when poll becomes active
+		if status == models.PollStatusActive && oldStatus == models.PollStatusDraft {
+			go u.sendPollActivatedNotification(poll, participantIDs)
+		}
+
+		// Send notification when poll is closed
+		if status == models.PollStatusClosed {
+			// Get users who voted
+			votes, err := u.voteRepo.GetByPollID(pollID)
+			if err == nil {
+				voterIDs := make(map[uint]bool)
+				for _, vote := range votes {
+					if vote.UserID != nil {
+						voterIDs[*vote.UserID] = true
+					}
+				}
+
+				var voters []uint
+				for voterID := range voterIDs {
+					voters = append(voters, voterID)
+				}
+
+				go u.sendPollClosedNotification(poll, voters)
+			}
+		}
 	}
 
 	return nil
@@ -808,6 +912,9 @@ func (u *pollUsecase) CreateComment(userID, pollID uint, req *models.CreateComme
 	if err := u.commentRepo.Create(comment); err != nil {
 		return nil, fmt.Errorf("failed to create comment: %w", err)
 	}
+
+	// Send notifications (async)
+	go u.sendPollCommentNotification(poll, comment, userID)
 
 	return comment.ToResponse(), nil
 }

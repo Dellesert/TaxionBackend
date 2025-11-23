@@ -29,6 +29,7 @@ type UserRepository interface {
 	GetWithDepartment(id uint) (*models.User, error)
 	GetAllWithDepartments(limit, offset int) ([]*models.User, error)
 	GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error)
+	GetUsersByDepartment(departmentID uint) ([]*models.User, error)
 	SuperAdminExists() (bool, error)
 	UpdateTwoFactorStatus(userID uint, enabled bool) error
 	UpdatePasskeyStatus(userID uint, enabled bool) error
@@ -268,6 +269,16 @@ func (r *userRepository) CountWithFilters(departmentID *uint, isActive *bool) (i
 		return 0, fmt.Errorf("failed to count users: %w", err)
 	}
 	return count, nil
+}
+
+// GetUsersByDepartment retrieves all active users in a specific department
+func (r *userRepository) GetUsersByDepartment(departmentID uint) ([]*models.User, error) {
+	var users []*models.User
+	err := r.db.Where("department_id = ? AND is_active = ?", departmentID, true).Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users by department: %w", err)
+	}
+	return users, nil
 }
 
 // CountByRole counts users by their role

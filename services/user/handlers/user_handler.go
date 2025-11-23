@@ -412,6 +412,62 @@ func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
 	})
 }
 
+// GetUsersByDepartment retrieves all user IDs in a department (internal endpoint)
+// GET /internal/users/department/:department_id
+func (h *UserHandler) GetUsersByDepartment(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Parse department ID from URL parameter
+	departmentIDStr := c.Param("department_id")
+	departmentID, err := strconv.ParseUint(departmentIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":    requestID,
+			"department_id": departmentIDStr,
+			"error":         err.Error(),
+		}).Warn("Invalid department ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid department ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get all users in the department
+	users, err := h.userUsecase.GetUsersByDepartment(uint(departmentID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":    requestID,
+			"department_id": departmentID,
+			"error":         err.Error(),
+		}).Error("Failed to get users by department")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get department users",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Extract user IDs
+	userIDs := make([]uint, len(users))
+	for i, user := range users {
+		userIDs[i] = user.ID
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"department_id": departmentID,
+		"user_count":    len(userIDs),
+	}).Info("Department users retrieved successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"user_ids":   userIDs,
+		"request_id": requestID,
+	})
+}
+
 // splitAndTrim splits a string by separator and trims whitespace
 func splitAndTrim(s, sep string) []string {
 	if s == "" {

@@ -368,6 +368,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		internal.GET("/users/:id", userHandler.GetUser)
 		// Get multiple users by IDs for task-service
 		internal.GET("/users", userHandler.GetUsersByIDs)
+		// Get users by department for poll-service
+		internal.GET("/users/department/:department_id", userHandler.GetUsersByDepartment)
 		// Session management (for admin/analytics service)
 		internal.DELETE("/sessions/:session_id", sessionHandler.TerminateSessionInternal)
 	}
