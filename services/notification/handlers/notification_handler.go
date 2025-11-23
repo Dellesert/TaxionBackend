@@ -866,3 +866,127 @@ func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
 		"request_id":    requestID,
 	})
 }
+
+// GetGroupedNotificationTasks handles getting tasks from a grouped notification
+// GET /api/v1/notifications/:id/tasks
+func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse notification ID from URL parameter
+	idStr := c.Param("id")
+	notificationID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":      requestID,
+			"user_id":         userID,
+			"notification_id": idStr,
+			"error":           err.Error(),
+		}).Warn("Invalid notification ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid notification ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get notification to extract task_ids from data
+	notification, err := h.notificationUsecase.GetNotificationByID(userID, uint(notificationID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":      requestID,
+			"user_id":         userID,
+			"notification_id": notificationID,
+			"error":           err.Error(),
+		}).Error("Failed to get notification")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get notification"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Notification not found"
+		} else if strings.Contains(err.Error(), "access denied") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check if this is a grouped notification
+	if notification.Data == nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "This notification does not contain grouped tasks",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Extract task_ids from notification data
+	taskIDsInterface, ok := notification.Data["task_ids"]
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "This notification does not contain task information",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Convert task_ids to []uint
+	var taskIDs []uint
+	switch v := taskIDsInterface.(type) {
+	case []interface{}:
+		for _, id := range v {
+			switch idValue := id.(type) {
+			case float64:
+				taskIDs = append(taskIDs, uint(idValue))
+			case uint:
+				taskIDs = append(taskIDs, idValue)
+			case int:
+				taskIDs = append(taskIDs, uint(idValue))
+			}
+		}
+	case []uint:
+		taskIDs = v
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Invalid task_ids format in notification",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":      requestID,
+		"user_id":         userID,
+		"notification_id": notificationID,
+		"task_count":      len(taskIDs),
+	}).Info("Grouped notification tasks retrieved successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"task_ids":   taskIDs,
+		"task_count": len(taskIDs),
+		"category":   notification.Data["category"],
+		"request_id": requestID,
+	})
+}

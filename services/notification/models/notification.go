@@ -248,6 +248,10 @@ type CreateNotificationRequest struct {
 	ScheduledAt *time.Time             `json:"scheduled_at,omitempty"`
 	ExpiresAt   *time.Time             `json:"expires_at,omitempty"`
 	Channels    []DeliveryChannel      `json:"channels,omitempty" validate:"omitempty,dive,oneof=in_app email push sms slack webhook"`
+
+	// Grouping fields (for grouped notifications like multiple tasks)
+	GroupKey  string `json:"group_key,omitempty" binding:"omitempty,max=100"`  // Ключ группировки
+	TaskCount int    `json:"task_count,omitempty" binding:"omitempty,min=0"`   // Количество элементов в группе (задачи, сообщения и т.д.)
 }
 
 // BulkCreateNotificationRequest represents request for creating multiple notifications

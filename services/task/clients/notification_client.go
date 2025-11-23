@@ -44,6 +44,10 @@ type NotificationRequest struct {
 	ActionURL   string                 `json:"action_url,omitempty"`
 	Data        map[string]interface{} `json:"data,omitempty"` // Дополнительные данные (task_id, chat_id, и т.д.)
 	Channels    []string               `json:"channels,omitempty"`
+
+	// Grouping fields (for task notifications)
+	GroupKey  string `json:"group_key,omitempty"`  // Ключ группировки
+	TaskCount int    `json:"task_count,omitempty"` // Количество задач в группе
 }
 
 // notificationTaskPayload represents the worker.NotificationTask format

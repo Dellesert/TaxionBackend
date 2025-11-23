@@ -283,6 +283,7 @@ func setupRoutes(
 		notifications.GET("/stats", notificationHandler.GetNotificationStats)  // GET /api/v1/notifications/stats
 		notifications.GET("/unread-count", notificationHandler.GetUnreadCount) // GET /api/v1/notifications/unread-count
 		notifications.GET("/:id", notificationHandler.GetNotificationByID)     // GET /api/v1/notifications/:id
+		notifications.GET("/:id/tasks", notificationHandler.GetGroupedNotificationTasks) // GET /api/v1/notifications/:id/tasks
 
 		// Mark as read endpoints
 		notifications.PUT("/:id/read", notificationHandler.MarkAsRead)     // PUT /api/v1/notifications/:id/read

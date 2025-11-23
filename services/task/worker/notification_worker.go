@@ -74,7 +74,17 @@ func (w *NotificationWorker) checkDeadlines() {
 		return
 	}
 
-	notificationsSent := 0
+	// Group tasks by user and deadline category
+	type deadlineCategory string
+	const (
+		categoryOverdue   deadlineCategory = "overdue"
+		category3Hours    deadlineCategory = "3hours"
+		category24Hours   deadlineCategory = "24hours"
+	)
+
+	// Map: userID -> category -> tasks
+	tasksByUserAndCategory := make(map[uint]map[deadlineCategory][]*models.Task)
+
 	for _, task := range tasks {
 		// Skip if task is done or cancelled
 		if task.Status == models.TaskStatusDone || task.Status == models.TaskStatusCancelled {
@@ -88,12 +98,41 @@ func (w *NotificationWorker) checkDeadlines() {
 		timeUntilDue := task.DueDate.Sub(now)
 
 		// Check if we should send notification based on time remaining
-		if w.shouldSendDeadlineNotification(task, timeUntilDue) {
-			if err := w.sendDeadlineNotification(task, timeUntilDue); err != nil {
+		if !w.shouldSendDeadlineNotification(task, timeUntilDue) {
+			continue
+		}
+
+		// Determine category
+		var category deadlineCategory
+		if timeUntilDue < 0 {
+			category = categoryOverdue
+		} else if timeUntilDue <= 3*time.Hour {
+			category = category3Hours
+		} else if timeUntilDue <= 24*time.Hour {
+			category = category24Hours
+		} else {
+			continue
+		}
+
+		// Add task to each assignee's list
+		for _, assignee := range task.Assignees {
+			if tasksByUserAndCategory[assignee.UserID] == nil {
+				tasksByUserAndCategory[assignee.UserID] = make(map[deadlineCategory][]*models.Task)
+			}
+			tasksByUserAndCategory[assignee.UserID][category] = append(tasksByUserAndCategory[assignee.UserID][category], task)
+		}
+	}
+
+	// Send grouped notifications
+	notificationsSent := 0
+	for userID, categoriesMap := range tasksByUserAndCategory {
+		for category, userTasks := range categoriesMap {
+			if err := w.sendGroupedDeadlineNotification(userID, string(category), userTasks, now); err != nil {
 				w.log.WithFields(map[string]interface{}{
-					"task_id": task.ID,
-					"error":   err.Error(),
-				}).Error("Failed to send deadline notification")
+					"user_id":  userID,
+					"category": category,
+					"error":    err.Error(),
+				}).Error("Failed to send grouped deadline notification")
 			} else {
 				notificationsSent++
 			}
@@ -137,79 +176,101 @@ func (w *NotificationWorker) shouldSendDeadlineNotification(task *models.Task, t
 	return false
 }
 
-// sendDeadlineNotification sends a deadline notification to assignees
-func (w *NotificationWorker) sendDeadlineNotification(task *models.Task, timeUntilDue time.Duration) error {
-	// Get all assignees
-	if len(task.Assignees) == 0 {
-		return nil // No one to notify
+// sendGroupedDeadlineNotification sends a grouped deadline notification for multiple tasks
+func (w *NotificationWorker) sendGroupedDeadlineNotification(userID uint, category string, tasks []*models.Task, now time.Time) error {
+	if len(tasks) == 0 {
+		return nil
 	}
 
 	var title, message, emoji string
 	var priority string = "high"
+	var groupKey string
 
-	if timeUntilDue < 0 {
-		// Overdue
-		emoji = "⏰"
-		title = "Задача просрочена"
-		overdueDuration := -timeUntilDue
-		if overdueDuration < 24*time.Hour {
-			message = fmt.Sprintf("Задача \"%s\" просрочена на %d ч.", task.Title, int(overdueDuration.Hours()))
-		} else {
-			message = fmt.Sprintf("Задача \"%s\" просрочена на %d дн.", task.Title, int(overdueDuration.Hours()/24))
-		}
-		priority = "critical"
-	} else if timeUntilDue <= 3*time.Hour {
-		// Due in 3 hours
-		emoji = "⚠️"
-		title = "Задача истекает через 3 часа"
-		message = fmt.Sprintf("Срок выполнения задачи \"%s\" истекает через %.1f ч.", task.Title, timeUntilDue.Hours())
-		priority = "high"
-	} else if timeUntilDue <= 24*time.Hour {
-		// Due in 24 hours
-		emoji = "📅"
-		title = "Задача истекает завтра"
-		message = fmt.Sprintf("Срок выполнения задачи \"%s\" истекает через %.1f ч.", task.Title, timeUntilDue.Hours())
-		priority = "medium"
+	// Collect task IDs for the data field
+	taskIDs := make([]uint, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.ID
 	}
 
-	// Send notification to each assignee
-	for _, assignee := range task.Assignees {
-		notificationReq := &clients.NotificationRequest{
-			UserID:      assignee.UserID,
-			Type:        "task",
-			Title:       fmt.Sprintf("%s %s", emoji, title),
-			Message:     message,
-			Priority:    &priority,
-			RelatedID:   &task.ID,
-			RelatedType: "task",
-			Data: map[string]interface{}{
-				"task_id":       task.ID,
-				"due_date":      task.DueDate,
-				"time_until":    timeUntilDue.String(),
-				"is_overdue":    timeUntilDue < 0,
-				"creator_id":    task.CreatedByUserID,
-			},
-			Channels: []string{"in_app", "email", "push"},
+	// Format date for group key
+	dateKey := now.Format("2006-01-02")
+
+	switch category {
+	case "overdue":
+		emoji = "⏰"
+		priority = "critical"
+		groupKey = fmt.Sprintf("task_deadline_overdue_%s", dateKey)
+		if len(tasks) == 1 {
+			title = "Задача просрочена"
+			overdueDuration := -tasks[0].DueDate.Sub(now)
+			if overdueDuration < 24*time.Hour {
+				message = fmt.Sprintf("Задача \"%s\" просрочена на %d ч.", tasks[0].Title, int(overdueDuration.Hours()))
+			} else {
+				message = fmt.Sprintf("Задача \"%s\" просрочена на %d дн.", tasks[0].Title, int(overdueDuration.Hours()/24))
+			}
+		} else {
+			title = "Просроченные задачи"
+			message = fmt.Sprintf("У вас %d просроченных задач", len(tasks))
 		}
 
-		if err := w.notificationClient.SendNotification(notificationReq); err != nil {
+	case "3hours":
+		emoji = "⚠️"
+		priority = "high"
+		groupKey = fmt.Sprintf("task_deadline_3h_%s", dateKey)
+		if len(tasks) == 1 {
+			title = "Задача истекает через 3 часа"
+			message = fmt.Sprintf("Срок выполнения задачи \"%s\" истекает через %.1f ч.", tasks[0].Title, tasks[0].DueDate.Sub(now).Hours())
+		} else {
+			title = "Задачи истекают скоро"
+			message = fmt.Sprintf("У вас %d задач, срок которых истекает в ближайшие 3 часа", len(tasks))
+		}
+
+	case "24hours":
+		emoji = "📅"
+		priority = "medium"
+		groupKey = fmt.Sprintf("task_deadline_24h_%s", dateKey)
+		if len(tasks) == 1 {
+			title = "Задача истекает завтра"
+			message = fmt.Sprintf("Срок выполнения задачи \"%s\" истекает через %.1f ч.", tasks[0].Title, tasks[0].DueDate.Sub(now).Hours())
+		} else {
+			title = "Задачи истекают завтра"
+			message = fmt.Sprintf("У вас %d задач, срок которых истекает в ближайшие 24 часа", len(tasks))
+		}
+	}
+
+	// Prepare notification request
+	notificationReq := &clients.NotificationRequest{
+		UserID:      userID,
+		Type:        "reminder",
+		Title:       fmt.Sprintf("%s %s", emoji, title),
+		Message:     message,
+		Priority:    &priority,
+		GroupKey:    groupKey,
+		TaskCount:   len(tasks),
+		RelatedType: "task_group",
+		Data: map[string]interface{}{
+			"task_ids":      taskIDs,
+			"category":      category,
+			"task_count":    len(tasks),
+			"notification_type": "deadline_reminder",
+		},
+		Channels: []string{"in_app", "email", "push"},
+	}
+
+	// Send notification
+	if err := w.notificationClient.SendNotification(notificationReq); err != nil {
+		return fmt.Errorf("failed to send grouped notification: %w", err)
+	}
+
+	// Update last notification timestamp for all tasks
+	for _, task := range tasks {
+		task.LastDeadlineNotificationSentAt = &now
+		if err := w.taskRepo.Update(task); err != nil {
 			w.log.WithFields(map[string]interface{}{
 				"task_id": task.ID,
-				"user_id": assignee.UserID,
 				"error":   err.Error(),
-			}).Error("Failed to send deadline notification")
-			continue
+			}).Warn("Failed to update last notification timestamp")
 		}
-	}
-
-	// Update last notification timestamp
-	now := time.Now()
-	task.LastDeadlineNotificationSentAt = &now
-	if err := w.taskRepo.Update(task); err != nil {
-		w.log.WithFields(map[string]interface{}{
-			"task_id": task.ID,
-			"error":   err.Error(),
-		}).Warn("Failed to update last notification timestamp")
 	}
 
 	return nil
@@ -253,39 +314,75 @@ func (w *NotificationWorker) checkUnviewedTasks(now time.Time) {
 		return
 	}
 
+	// Group tasks by user
+	tasksByUser := make(map[uint][]*models.Task)
 	for _, task := range tasks {
-		// Send notification to assignees
 		if len(task.Assignees) == 0 {
 			continue
 		}
-
-		priority := string(task.Priority)
 		for _, assignee := range task.Assignees {
-			notificationReq := &clients.NotificationRequest{
-				UserID:      assignee.UserID,
-				Type:        "reminder",
-				Title:       "📋 Напоминание о непросмотренной задаче",
-				Message:     fmt.Sprintf("У вас есть непросмотренная задача: %s", task.Title),
-				Priority:    &priority,
-				RelatedID:   &task.ID,
-				RelatedType: "task",
-				Data: map[string]interface{}{
-					"task_id":    task.ID,
-					"created_at": task.CreatedAt,
-					"creator_id": task.CreatedByUserID,
-				},
-				Channels: []string{"in_app", "push"},
-			}
-
-			if err := w.notificationClient.SendNotification(notificationReq); err != nil {
-				w.log.WithFields(map[string]interface{}{
-					"task_id": task.ID,
-					"user_id": assignee.UserID,
-					"error":   err.Error(),
-				}).Error("Failed to send unviewed task notification")
-			}
+			tasksByUser[assignee.UserID] = append(tasksByUser[assignee.UserID], task)
 		}
 	}
+
+	// Send grouped notifications
+	for userID, userTasks := range tasksByUser {
+		if err := w.sendGroupedUnviewedNotification(userID, userTasks, now); err != nil {
+			w.log.WithFields(map[string]interface{}{
+				"user_id": userID,
+				"error":   err.Error(),
+			}).Error("Failed to send grouped unviewed tasks notification")
+		}
+	}
+}
+
+// sendGroupedUnviewedNotification sends a grouped notification for unviewed tasks
+func (w *NotificationWorker) sendGroupedUnviewedNotification(userID uint, tasks []*models.Task, now time.Time) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	// Collect task IDs
+	taskIDs := make([]uint, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.ID
+	}
+
+	var title, message string
+	priority := "medium"
+	dateKey := now.Format("2006-01-02")
+	groupKey := fmt.Sprintf("task_unviewed_%s", dateKey)
+
+	if len(tasks) == 1 {
+		title = "📋 Напоминание о непросмотренной задаче"
+		message = fmt.Sprintf("У вас есть непросмотренная задача: %s", tasks[0].Title)
+	} else {
+		title = "📋 Напоминание о непросмотренных задачах"
+		message = fmt.Sprintf("У вас %d непросмотренных задач", len(tasks))
+	}
+
+	notificationReq := &clients.NotificationRequest{
+		UserID:      userID,
+		Type:        "reminder",
+		Title:       title,
+		Message:     message,
+		Priority:    &priority,
+		GroupKey:    groupKey,
+		TaskCount:   len(tasks),
+		RelatedType: "task_group",
+		Data: map[string]interface{}{
+			"task_ids":          taskIDs,
+			"task_count":        len(tasks),
+			"notification_type": "unviewed_reminder",
+		},
+		Channels: []string{"in_app", "push"},
+	}
+
+	if err := w.notificationClient.SendNotification(notificationReq); err != nil {
+		return fmt.Errorf("failed to send grouped unviewed notification: %w", err)
+	}
+
+	return nil
 }
 
 // checkTasksWithoutProgress checks for tasks in progress without updates
@@ -298,37 +395,73 @@ func (w *NotificationWorker) checkTasksWithoutProgress(now time.Time) {
 		return
 	}
 
+	// Group tasks by user
+	tasksByUser := make(map[uint][]*models.Task)
 	for _, task := range tasks {
-		// Send notification to assignees
 		if len(task.Assignees) == 0 {
 			continue
 		}
-
-		priority := string(task.Priority)
 		for _, assignee := range task.Assignees {
-			notificationReq := &clients.NotificationRequest{
-				UserID:      assignee.UserID,
-				Type:        "reminder",
-				Title:       "⏸️ Напоминание о задаче без прогресса",
-				Message:     fmt.Sprintf("Задача \"%s\" долгое время без обновлений", task.Title),
-				Priority:    &priority,
-				RelatedID:   &task.ID,
-				RelatedType: "task",
-				Data: map[string]interface{}{
-					"task_id":    task.ID,
-					"updated_at": task.UpdatedAt,
-					"creator_id": task.CreatedByUserID,
-				},
-				Channels: []string{"in_app"},
-			}
-
-			if err := w.notificationClient.SendNotification(notificationReq); err != nil {
-				w.log.WithFields(map[string]interface{}{
-					"task_id": task.ID,
-					"user_id": assignee.UserID,
-					"error":   err.Error(),
-				}).Error("Failed to send stale task notification")
-			}
+			tasksByUser[assignee.UserID] = append(tasksByUser[assignee.UserID], task)
 		}
 	}
+
+	// Send grouped notifications
+	for userID, userTasks := range tasksByUser {
+		if err := w.sendGroupedStaleTaskNotification(userID, userTasks, now); err != nil {
+			w.log.WithFields(map[string]interface{}{
+				"user_id": userID,
+				"error":   err.Error(),
+			}).Error("Failed to send grouped stale tasks notification")
+		}
+	}
+}
+
+// sendGroupedStaleTaskNotification sends a grouped notification for stale tasks
+func (w *NotificationWorker) sendGroupedStaleTaskNotification(userID uint, tasks []*models.Task, now time.Time) error {
+	if len(tasks) == 0 {
+		return nil
+	}
+
+	// Collect task IDs
+	taskIDs := make([]uint, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.ID
+	}
+
+	var title, message string
+	priority := "medium"
+	dateKey := now.Format("2006-01-02")
+	groupKey := fmt.Sprintf("task_stale_%s", dateKey)
+
+	if len(tasks) == 1 {
+		title = "⏸️ Напоминание о задаче без прогресса"
+		message = fmt.Sprintf("Задача \"%s\" долгое время без обновлений", tasks[0].Title)
+	} else {
+		title = "⏸️ Напоминание о задачах без прогресса"
+		message = fmt.Sprintf("У вас %d задач в работе без обновлений более 3 дней", len(tasks))
+	}
+
+	notificationReq := &clients.NotificationRequest{
+		UserID:      userID,
+		Type:        "reminder",
+		Title:       title,
+		Message:     message,
+		Priority:    &priority,
+		GroupKey:    groupKey,
+		TaskCount:   len(tasks),
+		RelatedType: "task_group",
+		Data: map[string]interface{}{
+			"task_ids":          taskIDs,
+			"task_count":        len(tasks),
+			"notification_type": "stale_task_reminder",
+		},
+		Channels: []string{"in_app"},
+	}
+
+	if err := w.notificationClient.SendNotification(notificationReq); err != nil {
+		return fmt.Errorf("failed to send grouped stale task notification: %w", err)
+	}
+
+	return nil
 }

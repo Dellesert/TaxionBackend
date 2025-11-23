@@ -176,7 +176,7 @@ func (u *notificationUsecase) SendNotification(req *models.CreateNotificationReq
 		ImageURL:     req.ImageURL,
 		ScheduledAt:  req.ScheduledAt,
 		ExpiresAt:    req.ExpiresAt,
-		MessageCount: 1, // Initialize with 1
+		MessageCount: 1, // Initialize with 1 (will be overridden if TaskCount is provided)
 	}
 
 	// Set priority if provided
@@ -184,8 +184,17 @@ func (u *notificationUsecase) SendNotification(req *models.CreateNotificationReq
 		notification.Priority = *req.Priority
 	}
 
+	// Set group key if provided (for grouped task notifications, deadline reminders, etc.)
+	if req.GroupKey != "" {
+		notification.GroupKey = req.GroupKey
+		// Use TaskCount if provided, otherwise default to 1
+		if req.TaskCount > 0 {
+			notification.MessageCount = req.TaskCount
+		}
+	}
+
 	// Set group key and sender ID for message notifications
-	if req.Type == models.NotificationTypeMessage && req.Data != nil {
+	if req.Type == models.NotificationTypeMessage && req.Data != nil && notification.GroupKey == "" {
 		if chatID, ok := req.Data["chat_id"].(uint); ok {
 			if senderID, ok := req.Data["sender_id"].(uint); ok {
 				notification.GroupKey = fmt.Sprintf("message:chat_%d:sender_%d", chatID, senderID)
