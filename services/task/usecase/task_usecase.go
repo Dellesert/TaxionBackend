@@ -63,6 +63,9 @@ type TaskUsecase interface {
 	GetTaskPermissions(ctx context.Context, taskID uint, userID uint) (*models.TaskPermissions, error)
 	CheckPermission(ctx context.Context, taskID uint, userID uint, action string) (bool, error)
 	EmergencyCompleteTask(ctx context.Context, taskID uint, userID uint) error
+
+	// Notification methods
+	SendAttachmentAddedNotification(taskID, userID uint, fileName string)
 }
 
 // taskUsecase implements TaskUsecase interface
@@ -244,7 +247,8 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 				RelatedType: "task",
 				// ActionURL not set - validator requires full URL (with scheme and host), not just path
 				Data: map[string]interface{}{
-					"task_id": task.ID,
+					"task_id":    task.ID,
+					"creator_id": userID, // Add creator_id for sender info enrichment
 				},
 				Channels: []string{"in_app", "email", "push"},
 			}
@@ -538,6 +542,9 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		oldPriority := task.Priority
 		task.Priority = *req.Priority
 		u.logActivity(taskID, userID, "task_updated_priority", string(oldPriority), string(task.Priority), nil)
+
+		// Send notification about priority change (async)
+		go u.sendPriorityChangedNotification(task, oldPriority, *req.Priority, userID)
 	}
 	if req.AssignedTo != nil {
 		task.AssignedTo = req.AssignedTo
@@ -591,7 +598,8 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 				RelatedID:   &task.ID,
 				RelatedType: "task",
 				Data: map[string]interface{}{
-					"task_id": task.ID,
+					"task_id":   task.ID,
+					"sender_id": userID, // ID of person who submitted for review
 				},
 				Channels:    []string{"in_app", "email", "push"},
 			}
@@ -636,7 +644,8 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 					RelatedID:   &task.ID,
 					RelatedType: "task",
 					Data: map[string]interface{}{
-						"task_id": task.ID,
+						"task_id":   task.ID,
+						"sender_id": userID, // ID of reviewer who returned the task
 					},
 					Channels:    []string{"in_app", "email", "push"},
 				}
@@ -681,7 +690,8 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 					RelatedID:   &task.ID,
 					RelatedType: "task",
 					Data: map[string]interface{}{
-						"task_id": task.ID,
+						"task_id":   task.ID,
+						"sender_id": userID, // ID of person who changed due date
 					},
 					Channels:    []string{"in_app", "email", "push"},
 				}
@@ -966,7 +976,8 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 				RelatedID:   &task.ID,
 				RelatedType: "task",
 				Data: map[string]interface{}{
-					"task_id": task.ID,
+					"task_id":   task.ID,
+					"sender_id": userID, // ID of person who submitted for review
 				},
 				Channels:    []string{"in_app", "email", "push"},
 			}
@@ -1010,7 +1021,8 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 					RelatedID:   &task.ID,
 					RelatedType: "task",
 					Data: map[string]interface{}{
-						"task_id": task.ID,
+						"task_id":   task.ID,
+						"sender_id": userID, // ID of reviewer who returned the task
 					},
 					Channels:    []string{"in_app", "email", "push"},
 				}
@@ -1022,6 +1034,21 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 					}
 				}(notificationReq)
 			}
+		}
+	}
+
+	// Send notification when task is cancelled
+	if req.Status == models.TaskStatusCancelled && oldStatus != models.TaskStatusCancelled {
+		go u.sendTaskCancelledNotification(task, userID)
+	}
+
+	// Send notification when task is completed
+	if req.Status == models.TaskStatusDone && oldStatus != models.TaskStatusDone {
+		go u.sendTaskCompletedNotification(task, userID)
+
+		// If this is a subtask, notify parent task creator
+		if task.ParentTaskID != nil {
+			go u.sendSubtaskCompletedNotification(task, *task.ParentTaskID, userID)
 		}
 	}
 
@@ -1523,7 +1550,8 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 				RelatedType: "task",
 				// ActionURL not set - validator requires full URL (with scheme and host), not just path
 				Data: map[string]interface{}{
-					"task_id": task.ID,
+					"task_id":    task.ID,
+					"creator_id": userID, // Add creator_id for sender info enrichment
 				},
 				Channels:    []string{"in_app", "email", "push"},
 			}
@@ -1650,7 +1678,8 @@ func (u *taskUsecase) DelegateTask(userID uint, taskID uint, toUserID uint) (*mo
 			RelatedID:   &task.ID,
 			RelatedType: "task",
 			Data: map[string]interface{}{
-				"task_id": task.ID,
+				"task_id":   task.ID,
+				"sender_id": userID, // ID of person who delegated the task
 			},
 			Channels:    []string{"in_app", "email", "push"},
 		}

@@ -47,6 +47,10 @@ type NotificationUsecase interface {
 	UpdateUserPreference(userID uint, req *models.UserPreferenceRequest) error
 	GetUserPreference(userID uint, notificationType models.NotificationType) (*models.UserNotificationPreference, error)
 
+	// Delete operations
+	DeleteNotification(userID uint, notificationID uint) error
+	DeleteAllUserNotifications(userID uint) (int64, error)
+
 	// Admin operations
 	DeleteOldNotifications(beforeDate time.Time) (int64, error)
 	GetSystemStats() (*repository.SystemNotificationStats, error)
@@ -61,6 +65,7 @@ type notificationUsecase struct {
 	emailSender      email.EmailSender
 	pushProvider     push.PushProvider
 	wsClient         *client.WebSocketClient
+	userClient       *client.UserClient
 }
 
 // Custom request/response models for usecase layer
@@ -116,6 +121,7 @@ func NewNotificationUsecase(
 		emailSender:      emailSender,
 		pushProvider:     pushProvider,
 		wsClient:         client.NewWebSocketClient(),
+		userClient:       client.NewUserClient(),
 	}
 }
 
@@ -142,25 +148,79 @@ func (u *notificationUsecase) SendNotification(req *models.CreateNotificationReq
 		return nil, nil
 	}
 
+	// Check if this is a message notification that can be grouped
+	if req.Type == models.NotificationTypeMessage && req.Data != nil {
+		// Try to group this notification with recent ones
+		if grouped, err := u.tryGroupNotification(req, channels); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"user_id": req.UserID,
+				"error":   err.Error(),
+			}).Warn("Failed to group notification, creating new one")
+		} else if grouped != nil {
+			// Successfully grouped - return the updated notification
+			return grouped, nil
+		}
+	}
+
 	// Create notification
 	notification := &models.Notification{
-		UserID:      req.UserID,
-		Type:        req.Type,
-		Title:       strings.TrimSpace(req.Title),
-		Message:     strings.TrimSpace(req.Message),
-		Priority:    models.NotificationPriorityMedium, // default
-		Status:      models.NotificationStatusPending,
-		RelatedID:   req.RelatedID,
-		RelatedType: req.RelatedType,
-		ActionURL:   req.ActionURL,
-		ImageURL:    req.ImageURL,
-		ScheduledAt: req.ScheduledAt,
-		ExpiresAt:   req.ExpiresAt,
+		UserID:       req.UserID,
+		Type:         req.Type,
+		Title:        strings.TrimSpace(req.Title),
+		Message:      strings.TrimSpace(req.Message),
+		Priority:     models.NotificationPriorityMedium, // default
+		Status:       models.NotificationStatusPending,
+		RelatedID:    req.RelatedID,
+		RelatedType:  req.RelatedType,
+		ActionURL:    req.ActionURL,
+		ImageURL:     req.ImageURL,
+		ScheduledAt:  req.ScheduledAt,
+		ExpiresAt:    req.ExpiresAt,
+		MessageCount: 1, // Initialize with 1
 	}
 
 	// Set priority if provided
 	if req.Priority != nil {
 		notification.Priority = *req.Priority
+	}
+
+	// Set group key and sender ID for message notifications
+	if req.Type == models.NotificationTypeMessage && req.Data != nil {
+		if chatID, ok := req.Data["chat_id"].(uint); ok {
+			if senderID, ok := req.Data["sender_id"].(uint); ok {
+				notification.GroupKey = fmt.Sprintf("message:chat_%d:sender_%d", chatID, senderID)
+				notification.SenderID = &senderID
+			}
+		}
+		// Handle case where chat_id/sender_id might be float64 from JSON
+		if chatIDFloat, ok := req.Data["chat_id"].(float64); ok {
+			if senderIDFloat, ok := req.Data["sender_id"].(float64); ok {
+				chatID := uint(chatIDFloat)
+				senderID := uint(senderIDFloat)
+				notification.GroupKey = fmt.Sprintf("message:chat_%d:sender_%d", chatID, senderID)
+				notification.SenderID = &senderID
+			}
+		}
+	}
+
+	// Set sender ID for task notifications (from sender_id or creator_id)
+	if req.Type == models.NotificationTypeTask && req.Data != nil {
+		// Try sender_id first (for status changes, delegation, etc.)
+		if senderID, ok := req.Data["sender_id"].(uint); ok {
+			notification.SenderID = &senderID
+		} else if senderIDFloat, ok := req.Data["sender_id"].(float64); ok {
+			senderID := uint(senderIDFloat)
+			notification.SenderID = &senderID
+		}
+		// Fall back to creator_id if sender_id not present (for new task creation)
+		if notification.SenderID == nil {
+			if creatorID, ok := req.Data["creator_id"].(uint); ok {
+				notification.SenderID = &creatorID
+			} else if creatorIDFloat, ok := req.Data["creator_id"].(float64); ok {
+				creatorID := uint(creatorIDFloat)
+				notification.SenderID = &creatorID
+			}
+		}
 	}
 
 	// Set data if provided
@@ -410,6 +470,9 @@ func (u *notificationUsecase) GetUserNotifications(userID uint, filter *models.N
 	for i, notification := range notifications {
 		responses[i] = notification.ToResponse()
 	}
+
+	// Enrich with sender information
+	u.enrichWithSenderInfo(responses)
 
 	// Calculate pagination info
 	limit := 20 // default
@@ -663,6 +726,61 @@ func (u *notificationUsecase) GetUserPreference(userID uint, notificationType mo
 	}
 
 	return preference, nil
+}
+
+// Delete operations
+
+// DeleteNotification deletes a single notification for a user
+func (u *notificationUsecase) DeleteNotification(userID uint, notificationID uint) error {
+	// First, verify the notification belongs to this user
+	notification, err := u.notificationRepo.GetNotificationByID(notificationID)
+	if err != nil {
+		return fmt.Errorf("notification not found: %w", err)
+	}
+
+	if notification.UserID != userID {
+		return fmt.Errorf("unauthorized: notification does not belong to user")
+	}
+
+	// Delete the notification
+	if err := u.notificationRepo.DeleteNotification(notificationID); err != nil {
+		return fmt.Errorf("failed to delete notification: %w", err)
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"notification_id": notificationID,
+		"user_id":         userID,
+	}).Info("Notification deleted by user")
+
+	return nil
+}
+
+// DeleteAllUserNotifications deletes all notifications for a user
+func (u *notificationUsecase) DeleteAllUserNotifications(userID uint) (int64, error) {
+	// Get all user notifications to count them
+	notifications, _, err := u.notificationRepo.GetUserNotifications(userID, nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get user notifications: %w", err)
+	}
+
+	count := int64(0)
+	for _, notification := range notifications {
+		if err := u.notificationRepo.DeleteNotification(notification.ID); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"notification_id": notification.ID,
+				"error":           err.Error(),
+			}).Warn("Failed to delete notification")
+			continue
+		}
+		count++
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"user_id":       userID,
+		"deleted_count": count,
+	}).Info("All user notifications deleted")
+
+	return count, nil
 }
 
 // Admin operations
@@ -1441,6 +1559,147 @@ func (u *notificationUsecase) getAndroidPriority(priority models.NotificationPri
 	}
 }
 
+// tryGroupNotification attempts to group a message notification with recent ones from the same sender
+func (u *notificationUsecase) tryGroupNotification(req *models.CreateNotificationRequest, channels []models.DeliveryChannel) (*models.NotificationResponse, error) {
+	// Extract chat_id and sender_id from data
+	var chatID, senderID uint
+	if chatIDVal, ok := req.Data["chat_id"].(uint); ok {
+		chatID = chatIDVal
+	} else if chatIDFloat, ok := req.Data["chat_id"].(float64); ok {
+		chatID = uint(chatIDFloat)
+	} else {
+		return nil, nil // Can't group without chat_id
+	}
+
+	if senderIDVal, ok := req.Data["sender_id"].(uint); ok {
+		senderID = senderIDVal
+	} else if senderIDFloat, ok := req.Data["sender_id"].(float64); ok {
+		senderID = uint(senderIDFloat)
+	} else {
+		return nil, nil // Can't group without sender_id
+	}
+
+	// Create group key
+	groupKey := fmt.Sprintf("message:chat_%d:sender_%d", chatID, senderID)
+
+	// Look for recent groupable notification within 5 minutes
+	groupingWindow := 5 // minutes
+	existingNotification, err := u.notificationRepo.FindRecentGroupableNotification(req.UserID, groupKey, groupingWindow)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find groupable notification: %w", err)
+	}
+
+	// If no existing notification found, return nil to create a new one
+	if existingNotification == nil {
+		return nil, nil
+	}
+
+	// Increment message count
+	if err := u.notificationRepo.IncrementMessageCount(existingNotification.ID); err != nil {
+		return nil, fmt.Errorf("failed to increment message count: %w", err)
+	}
+
+	// Get updated notification
+	updatedNotification, err := u.notificationRepo.GetNotificationByID(existingNotification.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated notification: %w", err)
+	}
+
+	// Update title to reflect grouped messages
+	// MessageCount is already incremented, so use it directly
+	newTitle := u.buildGroupedNotificationTitle(req, updatedNotification.MessageCount)
+	updatedNotification.Title = newTitle
+	if err := u.notificationRepo.UpdateNotification(updatedNotification); err != nil {
+		logger.WithField("notification_id", updatedNotification.ID).Warn("Failed to update notification title")
+	}
+
+	// Send real-time WebSocket notification about the update
+	// Use notification:update event type instead of notification:new
+	go func() {
+		if err := u.broadcastNotificationUpdateViaWebSocket(updatedNotification); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"notification_id": updatedNotification.ID,
+				"user_id":         updatedNotification.UserID,
+				"error":           err.Error(),
+			}).Warn("Failed to broadcast grouped notification update via WebSocket")
+		}
+	}()
+
+	// Send push notification for the grouped update
+	go func() {
+		for _, channel := range channels {
+			if channel == models.DeliveryChannelPush {
+				// Create a temporary delivery record for the push notification
+				delivery := &models.NotificationDelivery{
+					NotificationID: updatedNotification.ID,
+					Channel:        models.DeliveryChannelPush,
+					Status:         models.NotificationStatusPending,
+					AttemptCount:   0,
+					ChannelData:    "{}",
+				}
+				if err := u.notificationRepo.CreateDelivery(delivery); err != nil {
+					logger.WithField("notification_id", updatedNotification.ID).Warn("Failed to create delivery record for grouped notification")
+					return
+				}
+
+				if err := u.sendPushNotification(updatedNotification, delivery); err != nil {
+					logger.WithFields(map[string]interface{}{
+						"notification_id": updatedNotification.ID,
+						"error":           err.Error(),
+					}).Warn("Failed to send push notification for grouped update")
+				}
+				break
+			}
+		}
+	}()
+
+	logger.WithFields(map[string]interface{}{
+		"notification_id": updatedNotification.ID,
+		"user_id":         req.UserID,
+		"message_count":   updatedNotification.MessageCount,
+		"group_key":       groupKey,
+	}).Info("Notification grouped successfully")
+
+	return updatedNotification.ToResponse(), nil
+}
+
+// buildGroupedNotificationTitle builds a title for grouped notifications
+func (u *notificationUsecase) buildGroupedNotificationTitle(req *models.CreateNotificationRequest, messageCount int) string {
+	// Extract sender name from title (format: "📩 SenderName" or "👥 SenderName в \"ChatName\"")
+	title := req.Title
+
+	// Simple approach: just update the count in the title
+	if messageCount > 1 {
+		// Try to preserve the emoji and format
+		if strings.Contains(title, "📩") {
+			// Private chat format
+			parts := strings.SplitN(title, " ", 2)
+			if len(parts) >= 2 {
+				return fmt.Sprintf("%s %s отправил вам %d сообщений", parts[0], parts[1], messageCount)
+			}
+		} else if strings.Contains(title, "👥") || strings.Contains(title, "💬") {
+			// Group chat format - extract sender name
+			// Format can be "👥 Name в \"Chat\"" or "💬 Name ответил в \"Chat\""
+			if idx := strings.Index(title, " в "); idx > 0 {
+				prefix := title[:idx] // e.g., "👥 Name"
+				parts := strings.SplitN(prefix, " ", 2)
+				if len(parts) >= 2 {
+					senderName := parts[1]
+					// Extract chat name
+					if startIdx := strings.Index(title, "\""); startIdx > 0 {
+						if endIdx := strings.Index(title[startIdx+1:], "\""); endIdx > 0 {
+							chatName := title[startIdx+1 : startIdx+1+endIdx]
+							return fmt.Sprintf("👥 %s отправил %d сообщений в \"%s\"", senderName, messageCount, chatName)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return title
+}
+
 // isValidChannel checks if delivery channel is valid
 func (u *notificationUsecase) isValidChannel(channel models.DeliveryChannel) bool {
 	switch channel {
@@ -1461,6 +1720,18 @@ func (u *notificationUsecase) broadcastNotificationViaWebSocket(notification *mo
 	// Convert notification to response format
 	notificationData := notification.ToResponse()
 
+	// Enrich with sender info for real-time notifications
+	if notificationData.SenderID != nil {
+		userInfo, err := u.userClient.GetUserInfo(*notificationData.SenderID)
+		if err == nil {
+			notificationData.Sender = &models.SenderInfo{
+				ID:        userInfo.ID,
+				Name:      userInfo.Name,
+				AvatarURL: userInfo.AvatarURL,
+			}
+		}
+	}
+
 	// Broadcast to user
 	if err := u.wsClient.BroadcastToUser(notification.UserID, "notification:new", notificationData); err != nil {
 		return fmt.Errorf("failed to broadcast via WebSocket: %w", err)
@@ -1473,4 +1744,78 @@ func (u *notificationUsecase) broadcastNotificationViaWebSocket(notification *mo
 	}).Info("Notification broadcast via WebSocket")
 
 	return nil
+}
+
+// broadcastNotificationUpdateViaWebSocket sends notification update to user via WebSocket
+func (u *notificationUsecase) broadcastNotificationUpdateViaWebSocket(notification *models.Notification) error {
+	if u.wsClient == nil {
+		return fmt.Errorf("WebSocket client not initialized")
+	}
+
+	// Convert notification to response format
+	notificationData := notification.ToResponse()
+
+	// Enrich with sender info for real-time updates
+	if notificationData.SenderID != nil {
+		userInfo, err := u.userClient.GetUserInfo(*notificationData.SenderID)
+		if err == nil {
+			notificationData.Sender = &models.SenderInfo{
+				ID:        userInfo.ID,
+				Name:      userInfo.Name,
+				AvatarURL: userInfo.AvatarURL,
+			}
+		}
+	}
+
+	// Broadcast update event to user
+	if err := u.wsClient.BroadcastToUser(notification.UserID, "notification:update", notificationData); err != nil {
+		return fmt.Errorf("failed to broadcast update via WebSocket: %w", err)
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"notification_id": notification.ID,
+		"user_id":         notification.UserID,
+		"type":            notification.Type,
+		"message_count":   notification.MessageCount,
+	}).Info("Notification update broadcast via WebSocket")
+
+	return nil
+}
+
+// enrichWithSenderInfo enriches notifications with sender information
+func (u *notificationUsecase) enrichWithSenderInfo(notifications []*models.NotificationResponse) {
+	// Collect unique sender IDs
+	senderIDs := make([]uint, 0)
+	senderIDMap := make(map[uint]bool)
+
+	for _, notif := range notifications {
+		if notif.SenderID != nil && !senderIDMap[*notif.SenderID] {
+			senderIDs = append(senderIDs, *notif.SenderID)
+			senderIDMap[*notif.SenderID] = true
+		}
+	}
+
+	if len(senderIDs) == 0 {
+		return
+	}
+
+	// Fetch user information for all senders
+	users, err := u.userClient.GetMultipleUsers(senderIDs)
+	if err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to fetch sender information")
+		return
+	}
+
+	// Enrich notifications with sender info
+	for _, notif := range notifications {
+		if notif.SenderID != nil {
+			if userInfo, ok := users[*notif.SenderID]; ok {
+				notif.Sender = &models.SenderInfo{
+					ID:        userInfo.ID,
+					Name:      userInfo.Name,
+					AvatarURL: userInfo.AvatarURL,
+				}
+			}
+		}
+	}
 }

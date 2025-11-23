@@ -1102,6 +1102,7 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 			Data: map[string]interface{}{
 				"chat_id":    chatID,
 				"message_id": message.ID,
+				"sender_id":  senderID, // Add sender_id for notification grouping
 			},
 			Channels: []string{"in_app", "push"},
 		}

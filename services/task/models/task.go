@@ -58,6 +58,9 @@ type Task struct {
 	DueDate     *time.Time `json:"due_date,omitempty"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
 
+	// Notification tracking
+	LastDeadlineNotificationSentAt *time.Time `json:"last_deadline_notification_sent_at,omitempty"`
+
 	// Associations
 	ParentTask  *Task              `gorm:"foreignKey:ParentTaskID" json:"parent_task,omitempty"`
 	Subtasks    []Task             `gorm:"foreignKey:ParentTaskID;constraint:OnDelete:CASCADE" json:"subtasks,omitempty"`

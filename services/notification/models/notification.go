@@ -76,6 +76,11 @@ type Notification struct {
 	ImageURL    string `gorm:"size:500" json:"image_url,omitempty"`   // URL изображения
 	Data        datatypes.JSON `gorm:"type:jsonb" json:"data,omitempty"` // Дополнительные данные для навигации и обработки
 
+	// Grouping support for message notifications
+	GroupKey     string `gorm:"size:100;index" json:"group_key,omitempty"`     // Ключ группировки (например, "message:chat_123:user_456")
+	MessageCount int    `gorm:"default:1" json:"message_count,omitempty"`      // Количество сгруппированных сообщений
+	SenderID     *uint  `gorm:"index" json:"sender_id,omitempty"`              // ID отправителя (для группировки сообщений)
+
 	// Delivery tracking
 	DeliveryChannels []NotificationDelivery `gorm:"foreignKey:NotificationID;constraint:OnDelete:CASCADE" json:"delivery_channels,omitempty"`
 
@@ -310,6 +315,13 @@ type UserPreferenceRequest struct {
 
 // Response Models
 
+// SenderInfo represents basic information about the notification sender
+type SenderInfo struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
 // NotificationResponse represents a notification in API responses
 type NotificationResponse struct {
 	ID               uint                           `json:"id"`
@@ -326,6 +338,10 @@ type NotificationResponse struct {
 	ActionURL        string                         `json:"action_url,omitempty"`
 	ImageURL         string                         `json:"image_url,omitempty"`
 	Data             map[string]interface{}         `json:"data,omitempty"`
+	GroupKey         string                         `json:"group_key,omitempty"`
+	MessageCount     int                            `json:"message_count,omitempty"`
+	SenderID         *uint                          `json:"sender_id,omitempty"`
+	Sender           *SenderInfo                    `json:"sender,omitempty"`
 	ScheduledAt      *time.Time                     `json:"scheduled_at,omitempty"`
 	ExpiresAt        *time.Time                     `json:"expires_at,omitempty"`
 	CreatedAt        time.Time                      `json:"created_at"`
@@ -357,23 +373,26 @@ type NotificationStatsResponse struct {
 // ToResponse converts Notification model to NotificationResponse
 func (n *Notification) ToResponse() *NotificationResponse {
 	response := &NotificationResponse{
-		ID:          n.ID,
-		UserID:      n.UserID,
-		Type:        n.Type,
-		Title:       n.Title,
-		Message:     n.Message,
-		Priority:    n.Priority,
-		Status:      n.Status,
-		IsRead:      n.IsRead,
-		ReadAt:      n.ReadAt,
-		RelatedID:   n.RelatedID,
-		RelatedType: n.RelatedType,
-		ActionURL:   n.ActionURL,
-		ImageURL:    n.ImageURL,
-		ScheduledAt: n.ScheduledAt,
-		ExpiresAt:   n.ExpiresAt,
-		CreatedAt:   n.CreatedAt,
-		UpdatedAt:   n.UpdatedAt,
+		ID:           n.ID,
+		UserID:       n.UserID,
+		Type:         n.Type,
+		Title:        n.Title,
+		Message:      n.Message,
+		Priority:     n.Priority,
+		Status:       n.Status,
+		IsRead:       n.IsRead,
+		ReadAt:       n.ReadAt,
+		RelatedID:    n.RelatedID,
+		RelatedType:  n.RelatedType,
+		ActionURL:    n.ActionURL,
+		ImageURL:     n.ImageURL,
+		GroupKey:     n.GroupKey,
+		MessageCount: n.MessageCount,
+		SenderID:     n.SenderID,
+		ScheduledAt:  n.ScheduledAt,
+		ExpiresAt:    n.ExpiresAt,
+		CreatedAt:    n.CreatedAt,
+		UpdatedAt:    n.UpdatedAt,
 	}
 
 	// Convert Data from datatypes.JSON to map[string]interface{}

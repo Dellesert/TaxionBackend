@@ -10,15 +10,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// TaskUsecaseNotifications interface for sending notifications
+type TaskUsecaseNotifications interface {
+	SendAttachmentAddedNotification(taskID, userID uint, fileName string)
+}
+
 // AttachmentHandler handles HTTP requests for task attachments
 type AttachmentHandler struct {
 	attachmentUsecase usecase.AttachmentUsecase
+	taskUsecase       TaskUsecaseNotifications
 }
 
 // NewAttachmentHandler creates a new attachment handler
-func NewAttachmentHandler(attachmentUsecase usecase.AttachmentUsecase) *AttachmentHandler {
+func NewAttachmentHandler(attachmentUsecase usecase.AttachmentUsecase, taskUsecase TaskUsecaseNotifications) *AttachmentHandler {
 	return &AttachmentHandler{
 		attachmentUsecase: attachmentUsecase,
+		taskUsecase:       taskUsecase,
 	}
 }
 
@@ -52,6 +59,10 @@ func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		// Send notification about attachment (async)
+		go h.taskUsecase.SendAttachmentAddedNotification(uint(taskID), userID.(uint), attachment.FileName)
+
 		c.JSON(http.StatusCreated, attachment)
 		return
 	}
@@ -69,6 +80,9 @@ func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Send notification about attachment (async)
+	go h.taskUsecase.SendAttachmentAddedNotification(uint(taskID), userID.(uint), file.Filename)
 
 	c.JSON(http.StatusCreated, attachment)
 }

@@ -6,6 +6,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,14 +41,20 @@ type AttachmentUsecase interface {
 	SetActivityUsecase(activityUsecase ActivityUsecaseInterface)
 }
 
+// TaskUsecaseNotifier interface for sending notifications (to avoid circular dependency)
+type TaskUsecaseNotifier interface {
+	SendAttachmentNotification(taskID, userID uint, fileName string)
+}
+
 // attachmentUsecase implements AttachmentUsecase interface
 type attachmentUsecase struct {
-	attachmentRepo  repository.AttachmentRepository
-	taskRepo        repository.TaskRepository
-	activityUsecase ActivityUsecaseInterface
-	uploadDir       string
-	maxFileSize     int64 // in bytes
-	allowedTypes    []string
+	attachmentRepo   repository.AttachmentRepository
+	taskRepo         repository.TaskRepository
+	activityUsecase  ActivityUsecaseInterface
+	taskUsecaseNotif TaskUsecaseNotifier
+	uploadDir        string
+	maxFileSize      int64 // in bytes
+	allowedTypes     []string
 }
 
 // NewAttachmentUsecase creates a new attachment usecase
@@ -221,8 +228,14 @@ func (u *attachmentUsecase) AttachFileToTask(taskID, userID, fileID uint) (*mode
 	fmt.Printf("✅ File metadata fetched: name=%s, original=%s, size=%d, mime=%s\n",
 		fileMetadata.FileName, fileMetadata.OriginalName, fileMetadata.FileSize, fileMetadata.MimeType)
 
+	// Decode URL-encoded filename if necessary
+	decodedOriginalName := fileMetadata.OriginalName
+	if decodedName, err := url.QueryUnescape(fileMetadata.OriginalName); err == nil {
+		decodedOriginalName = decodedName
+	}
+
 	// Extract file extension from original name
-	ext := filepath.Ext(fileMetadata.OriginalName)
+	ext := filepath.Ext(decodedOriginalName)
 	if ext == "" {
 		ext = filepath.Ext(fileMetadata.FileName)
 	}
@@ -230,7 +243,7 @@ func (u *attachmentUsecase) AttachFileToTask(taskID, userID, fileID uint) (*mode
 	attachment := &models.TaskAttachment{
 		TaskID:           taskID,
 		UploadedByUserID: userID,
-		FileName:         fileMetadata.OriginalName, // Use original filename
+		FileName:         decodedOriginalName, // Use decoded original filename
 		FilePath:         fmt.Sprintf("/files/%d", fileID), // Reference to file-service
 		FileType:         ext,
 		FileSize:         fileMetadata.FileSize,

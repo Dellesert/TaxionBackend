@@ -289,6 +289,10 @@ func setupRoutes(
 		notifications.PUT("/read", notificationHandler.MarkMultipleAsRead) // PUT /api/v1/notifications/read
 		notifications.PUT("/read-all", notificationHandler.MarkAllAsRead)  // PUT /api/v1/notifications/read-all
 
+		// Delete endpoints
+		notifications.DELETE("/:id", notificationHandler.DeleteNotification)   // DELETE /api/v1/notifications/:id
+		notifications.DELETE("", notificationHandler.DeleteAllNotifications)   // DELETE /api/v1/notifications
+
 		// User preferences endpoints
 		notifications.GET("/preferences", notificationHandler.GetUserPreferences)         // GET /api/v1/notifications/preferences
 		notifications.PUT("/preferences/:type", notificationHandler.UpdateUserPreference) // PUT /api/v1/notifications/preferences/:type

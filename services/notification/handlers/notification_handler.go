@@ -751,3 +751,118 @@ func (h *NotificationHandler) UpdateUserPreference(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// DeleteNotification handles deleting a single notification
+// DELETE /api/v1/notifications/:id
+func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get notification ID from URL parameter
+	notificationIDStr := c.Param("id")
+	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid notification ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Delete the notification
+	if err := h.notificationUsecase.DeleteNotification(userID, uint(notificationID)); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":      requestID,
+			"user_id":         userID,
+			"notification_id": notificationID,
+			"error":           err.Error(),
+		}).Error("Failed to delete notification")
+
+		statusCode := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+		} else if strings.Contains(err.Error(), "unauthorized") {
+			statusCode = http.StatusForbidden
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":      requestID,
+		"user_id":         userID,
+		"notification_id": notificationID,
+	}).Info("Notification deleted successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Notification deleted successfully",
+		"request_id": requestID,
+	})
+}
+
+// DeleteAllNotifications handles deleting all notifications for a user
+// DELETE /api/v1/notifications
+func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Delete all user notifications
+	deletedCount, err := h.notificationUsecase.DeleteAllUserNotifications(userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to delete all notifications")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to delete all notifications",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"deleted_count": deletedCount,
+	}).Info("All notifications deleted successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":       "All notifications deleted successfully",
+		"deleted_count": deletedCount,
+		"request_id":    requestID,
+	})
+}

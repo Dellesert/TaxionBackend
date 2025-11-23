@@ -60,6 +60,10 @@ type NotificationRepository interface {
 	GetUserPreference(userID uint, notificationType models.NotificationType) (*models.UserNotificationPreference, error)
 	UpsertUserPreference(preference *models.UserNotificationPreference) error
 	DeleteUserPreference(userID uint, notificationType models.NotificationType) error
+
+	// Grouping support
+	FindRecentGroupableNotification(userID uint, groupKey string, withinMinutes int) (*models.Notification, error)
+	IncrementMessageCount(notificationID uint) error
 }
 
 // notificationRepository implements NotificationRepository interface
@@ -649,6 +653,51 @@ func (r *notificationRepository) DeleteUserPreference(userID uint, notificationT
 	if result.Error != nil {
 		return fmt.Errorf("failed to delete user preference: %w", result.Error)
 	}
+	return nil
+}
+
+// Grouping support
+
+// FindRecentGroupableNotification finds a recent unread notification with the same group key
+func (r *notificationRepository) FindRecentGroupableNotification(userID uint, groupKey string, withinMinutes int) (*models.Notification, error) {
+	if groupKey == "" {
+		return nil, errors.New("group key is required")
+	}
+
+	// Calculate time threshold
+	threshold := time.Now().Add(-time.Duration(withinMinutes) * time.Minute)
+
+	var notification models.Notification
+	result := r.db.Where("user_id = ? AND group_key = ? AND is_read = ? AND created_at >= ?",
+		userID, groupKey, false, threshold).
+		Order("created_at DESC").
+		First(&notification)
+
+	if result.Error != nil {
+		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+			return nil, nil // No groupable notification found - this is not an error
+		}
+		return nil, fmt.Errorf("failed to find recent groupable notification: %w", result.Error)
+	}
+
+	return &notification, nil
+}
+
+// IncrementMessageCount increments the message count for a notification
+func (r *notificationRepository) IncrementMessageCount(notificationID uint) error {
+	result := r.db.Model(&models.Notification{}).
+		Where("id = ?", notificationID).
+		UpdateColumn("message_count", gorm.Expr("message_count + ?", 1)).
+		UpdateColumn("updated_at", time.Now())
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to increment message count: %w", result.Error)
+	}
+
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("notification not found: %d", notificationID)
+	}
+
 	return nil
 }
 

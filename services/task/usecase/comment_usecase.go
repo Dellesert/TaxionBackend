@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"tachyon-messenger/services/task/clients"
 	"tachyon-messenger/services/task/models"
 	sharedmodels "tachyon-messenger/shared/models"
 
@@ -69,6 +70,9 @@ func (u *taskUsecase) AddComment(userID, taskID uint, req *models.CreateTaskComm
 	if err := u.enrichCommentsWithUsers(responses); err != nil {
 		fmt.Printf("Warning: failed to enrich comment with user info: %v\n", err)
 	}
+
+	// Send notifications about new comment
+	go u.sendCommentNotifications(task, comment, userID, req.Content)
 
 	return response, nil
 }
@@ -279,4 +283,115 @@ func (u *taskUsecase) validateUpdateCommentRequest(req *models.UpdateTaskComment
 	}
 
 	return nil
+}
+
+// sendCommentNotifications sends notifications about new comments
+func (u *taskUsecase) sendCommentNotifications(task *models.Task, comment *models.TaskComment, commenterID uint, content string) {
+	// Get commenter info
+	commenterInfo, err := u.userClient.GetUserByID(commenterID)
+	commenterName := "Кто-то"
+	if err == nil && commenterInfo != nil {
+		commenterName = commenterInfo.Name
+	}
+
+	// Extract mentions from content (@username pattern)
+	mentions := u.extractMentions(content)
+	mentionedUserIDs := make(map[uint]bool)
+
+	// Find user IDs for mentioned users
+	if len(mentions) > 0 {
+		// Get all users to match mentioned names
+		var allUserIDs []uint
+		// Add task creator
+		allUserIDs = append(allUserIDs, task.CreatedByUserID)
+		// Add all assignees
+		for _, assignee := range task.Assignees {
+			allUserIDs = append(allUserIDs, assignee.UserID)
+		}
+
+		users, err := u.userClient.GetUsersByIDs(allUserIDs)
+		if err == nil {
+			for _, mention := range mentions {
+				for userID, user := range users {
+					if strings.EqualFold(user.Name, mention) || strings.EqualFold(user.Email, mention) {
+						mentionedUserIDs[userID] = true
+						break
+					}
+				}
+			}
+		}
+	}
+
+	// Build list of users to notify
+	notifyUserIDs := make(map[uint]bool)
+
+	// Add task creator (unless they are the commenter)
+	if task.CreatedByUserID != commenterID {
+		notifyUserIDs[task.CreatedByUserID] = true
+	}
+
+	// Add all assignees (unless they are the commenter)
+	for _, assignee := range task.Assignees {
+		if assignee.UserID != commenterID {
+			notifyUserIDs[assignee.UserID] = true
+		}
+	}
+
+	// Send notifications
+	priority := "medium"
+
+	for userID := range notifyUserIDs {
+		var title, message string
+
+		// Check if user was mentioned
+		if mentionedUserIDs[userID] {
+			// Mention notification (higher priority)
+			title = "💬 Вас упомянули в комментарии"
+			message = fmt.Sprintf("%s упомянул вас в комментарии к задаче \"%s\"", commenterName, task.Title)
+			priority = "high"
+		} else {
+			// Regular comment notification
+			title = "💬 Новый комментарий"
+			message = fmt.Sprintf("%s оставил комментарий к задаче \"%s\"", commenterName, task.Title)
+		}
+
+		notificationReq := &clients.NotificationRequest{
+			UserID:      userID,
+			Type:        "task",
+			Title:       title,
+			Message:     message,
+			Priority:    &priority,
+			RelatedID:   &task.ID,
+			RelatedType: "task",
+			Data: map[string]interface{}{
+				"task_id":    task.ID,
+				"comment_id": comment.ID,
+				"sender_id":  commenterID,
+			},
+			Channels: []string{"in_app", "push"},
+		}
+
+		if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+			fmt.Printf("Failed to send comment notification to user %d: %v\n", userID, err)
+		}
+	}
+}
+
+// extractMentions extracts @username mentions from text
+func (u *taskUsecase) extractMentions(text string) []string {
+	mentions := make([]string, 0)
+	words := strings.Fields(text)
+
+	for _, word := range words {
+		if strings.HasPrefix(word, "@") {
+			mention := strings.TrimPrefix(word, "@")
+			// Remove trailing punctuation
+			mention = strings.TrimRight(mention, ".,!?;:")
+			if mention != "" {
+				mentions = append(mentions, mention)
+			}
+		}
+	}
+
+	return mentions
 }

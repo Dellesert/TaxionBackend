@@ -49,6 +49,11 @@ type TaskRepository interface {
 	GetTaskCompletionTrends(timeRange *TimeRange, interval string) ([]*TrendDataPoint, error)
 	GetTasksByPriority(timeRange *TimeRange) (*PriorityDistribution, error)
 	GetAverageCompletionTime(departmentID *uint, timeRange *TimeRange) (float64, error)
+
+	// Notification worker methods
+	GetTasksWithUpcomingDeadlines() ([]*models.Task, error)
+	GetUnviewedTasksOlderThan(cutoffTime time.Time) ([]*models.Task, error)
+	GetInProgressTasksWithoutUpdates(cutoffTime time.Time) ([]*models.Task, error)
 }
 
 // TimeRange represents a time period for analytics
@@ -1157,4 +1162,54 @@ func (r *taskRepository) GetAverageCompletionTime(departmentID *uint, timeRange 
 	}
 
 	return result.AvgHours, nil
+}
+
+// Notification Worker Methods
+
+// GetTasksWithUpcomingDeadlines retrieves all tasks with due dates (not completed or cancelled)
+func (r *taskRepository) GetTasksWithUpcomingDeadlines() ([]*models.Task, error) {
+	var tasks []*models.Task
+	err := r.db.
+		Preload("Assignees").
+		Where("due_date IS NOT NULL").
+		Where("status NOT IN (?)", []models.TaskStatus{models.TaskStatusDone, models.TaskStatusCancelled}).
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get tasks with deadlines: %w", err)
+	}
+
+	return tasks, nil
+}
+
+// GetUnviewedTasksOlderThan retrieves tasks in "new" status created before cutoff time
+func (r *taskRepository) GetUnviewedTasksOlderThan(cutoffTime time.Time) ([]*models.Task, error) {
+	var tasks []*models.Task
+	err := r.db.
+		Preload("Assignees").
+		Where("status = ?", models.TaskStatusNew).
+		Where("created_at < ?", cutoffTime).
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unviewed tasks: %w", err)
+	}
+
+	return tasks, nil
+}
+
+// GetInProgressTasksWithoutUpdates retrieves in-progress tasks not updated since cutoff time
+func (r *taskRepository) GetInProgressTasksWithoutUpdates(cutoffTime time.Time) ([]*models.Task, error) {
+	var tasks []*models.Task
+	err := r.db.
+		Preload("Assignees").
+		Where("status = ?", models.TaskStatusInProgress).
+		Where("updated_at < ?", cutoffTime).
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stale in-progress tasks: %w", err)
+	}
+
+	return tasks, nil
 }

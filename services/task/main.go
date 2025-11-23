@@ -15,6 +15,7 @@ import (
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/repository"
 	"tachyon-messenger/services/task/usecase"
+	"tachyon-messenger/services/task/worker"
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
@@ -138,9 +139,14 @@ func main() {
 	taskHandler := handlers.NewTaskHandler(taskUsecase, analyticsClient)
 	internalHandler := handlers.NewInternalHandler(taskUsecase)
 	activityHandler := handlers.NewActivityHandler(activityUsecase)
-	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase)
+	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase, taskUsecase)
 	checklistHandler := handlers.NewChecklistHandler(checklistUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "task-service", startTime)
+
+	// Start notification worker for deadline checks and reminders
+	notificationClient := clients.NewNotificationClient()
+	notificationWorker := worker.NewNotificationWorker(taskRepo, notificationClient, userClient)
+	notificationWorker.Start()
 
 	// Setup routes
 	r := setupRoutes(taskHandler, internalHandler, activityHandler, attachmentHandler, checklistHandler, metricsHandler, jwtConfig)
