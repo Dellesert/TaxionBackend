@@ -81,7 +81,11 @@ func (r *messageRepository) Create(message *models.Message) error {
 // GetByID retrieves a message by ID with reply-to message
 func (r *messageRepository) GetByID(id uint) (*models.Message, error) {
 	var message models.Message
-	err := r.db.Preload("ReplyTo").First(&message, id).Error
+	err := r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		First(&message, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("message not found")
@@ -104,6 +108,7 @@ func (r *messageRepository) GetByChatID(chatID uint, limit, offset int) ([]*mode
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
 		Limit(limit).
 		Offset(offset).
@@ -141,6 +146,7 @@ func (r *messageRepository) GetByChatIDWithPagination(chatID uint, limit, offset
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
 		Limit(limit).
 		Offset(offset).
@@ -205,8 +211,15 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 }
 
 // Update updates an existing message
+// Uses Select to only update specific fields and preserve associations (like read_receipts)
 func (r *messageRepository) Update(message *models.Message) error {
-	result := r.db.Save(message)
+	// Update only specific fields, not associations
+	// This prevents clearing read_receipts, reactions, etc.
+	// Note: updated_at will be automatically updated by GORM
+	result := r.db.Model(message).
+		Select("content", "is_edited", "edited_at", "is_pinned", "is_deleted", "status").
+		Updates(message)
+
 	if result.Error != nil {
 		return fmt.Errorf("failed to update message: %w", result.Error)
 	}
@@ -257,6 +270,7 @@ func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 	err := r.db.
 		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -287,10 +301,16 @@ func (r *messageRepository) GetMessagesAfter(chatID, userID, after uint, limit i
 		Where("user_id = ?", userID)
 
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND id > ? AND is_deleted = ?", chatID, after, false).
 		Where("id NOT IN (?)", deletedSubquery).
 		Limit(limit).
@@ -315,13 +335,16 @@ func (r *messageRepository) GetMessagesBefore(chatID, userID, before uint, limit
 		Where("user_id = ?", userID)
 
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND id < ? AND is_deleted = ?", chatID, before, false).
 		Where("id NOT IN (?)", deletedSubquery).
 		Limit(limit).
@@ -338,10 +361,16 @@ func (r *messageRepository) GetMessagesBefore(chatID, userID, before uint, limit
 func (r *messageRepository) GetMessagesByTimeRange(chatID uint, startTime, endTime time.Time, limit, offset int) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND created_at BETWEEN ? AND ? AND is_deleted = ?", chatID, startTime, endTime, false).
 		Limit(limit).
 		Offset(offset).
@@ -494,7 +523,10 @@ func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 func (r *messageRepository) SearchMessages(chatID uint, query string, limit, offset int) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Attachments").
 		Where("chat_id = ? AND content ILIKE ? AND is_deleted = ?", chatID, "%"+query+"%", false).
 		Limit(limit).
 		Offset(offset).
@@ -511,10 +543,16 @@ func (r *messageRepository) SearchMessages(chatID uint, query string, limit, off
 func (r *messageRepository) GetMessagesByType(chatID uint, messageType models.MessageType, limit, offset int) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND type = ? AND is_deleted = ?", chatID, messageType, false).
 		Limit(limit).
 		Offset(offset).
@@ -556,10 +594,16 @@ func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offse
 	// Also exclude messages that were deleted by this user (from message_deletions table)
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
 		Joins("JOIN chat_members ON chat_members.chat_id = messages.chat_id").
 		Joins("LEFT JOIN message_deletions ON message_deletions.message_id = messages.id AND message_deletions.user_id = ?", userID).
 		Where("messages.chat_id = ? AND messages.is_deleted = ?", chatID, false).
@@ -580,10 +624,16 @@ func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offse
 func (r *messageRepository) GetMessagesSince(chatID uint, since time.Time, limit int) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
 		Where("chat_id = ? AND created_at > ? AND is_deleted = ?", chatID, since, false).
 		Limit(limit).
 		Order("created_at ASC").
@@ -640,10 +690,16 @@ func (r *messageRepository) MarkAllAsRead(chatID, userID uint) ([]uint, error) {
 func (r *messageRepository) GetThreadMessages(replyToID uint, limit, offset int) ([]*models.Message, error) {
 	var messages []*models.Message
 	err := r.db.
+		Preload("Sender").
 		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
 		Where("reply_to_id = ? AND is_deleted = ?", replyToID, false).
 		Limit(limit).
 		Offset(offset).

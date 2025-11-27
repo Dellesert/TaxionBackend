@@ -305,15 +305,15 @@ type NotificationFilterRequest struct {
 // UserPreferenceRequest represents request for updating user notification preferences
 type UserPreferenceRequest struct {
 	NotificationType NotificationType      `json:"notification_type" binding:"required,oneof=message task calendar system mention poll reminder announce" validate:"required,oneof=message task calendar system mention poll reminder announce"`
-	InAppEnabled     *bool                 `json:"in_app_enabled,omitempty"`
-	EmailEnabled     *bool                 `json:"email_enabled,omitempty"`
-	PushEnabled      *bool                 `json:"push_enabled,omitempty"`
-	SMSEnabled       *bool                 `json:"sms_enabled,omitempty"`
+	InAppEnabled     *bool                 `json:"in_app_enabled"`
+	EmailEnabled     *bool                 `json:"email_enabled"`
+	PushEnabled      *bool                 `json:"push_enabled"`
+	SMSEnabled       *bool                 `json:"sms_enabled"`
 	MinPriority      *NotificationPriority `json:"min_priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
 	QuietHoursStart  *int                  `json:"quiet_hours_start,omitempty" binding:"omitempty,min=0,max=23" validate:"omitempty,min=0,max=23"`
 	QuietHoursEnd    *int                  `json:"quiet_hours_end,omitempty" binding:"omitempty,min=0,max=23" validate:"omitempty,min=0,max=23"`
-	WeekendEnabled   *bool                 `json:"weekend_enabled,omitempty"`
-	DigestEnabled    *bool                 `json:"digest_enabled,omitempty"`
+	WeekendEnabled   *bool                 `json:"weekend_enabled"`
+	DigestEnabled    *bool                 `json:"digest_enabled"`
 	DigestFrequency  *int                  `json:"digest_frequency,omitempty" binding:"omitempty,min=15,max=1440" validate:"omitempty,min=15,max=1440"`
 }
 

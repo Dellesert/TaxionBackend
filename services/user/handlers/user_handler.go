@@ -133,10 +133,12 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		}
 	}
 
-	// Get current user's department ID for filtering
+	// Get current user's ID and department ID for filtering
+	var currentUserID uint
 	var currentUserDeptID *uint
 	if userID, exists := c.Get("user_id"); exists {
 		if id, ok := userID.(uint); ok {
+			currentUserID = id
 			// Get user to find their department
 			user, err := h.userUsecase.GetUser(id)
 			if err == nil && user.DepartmentID != nil {
@@ -184,29 +186,115 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 		roleFilter = &role
 	}
 
+	// Parse advanced filter parameters
+	excludeRolesStr := c.Query("exclude_roles")     // e.g., "admin,super_admin"
+	includeRolesStr := c.Query("include_roles")     // e.g., "employee,department_head"
+	onlyHeads := c.Query("only_heads") == "true"    // Show only department heads
+	includeOtherDeptHeads := c.Query("include_other_dept_heads") == "true"
+
+	// Parse sorting parameters
+	sortBy := c.DefaultQuery("sort_by", "created_at")           // name, email, created_at, department
+	sortOrder := c.DefaultQuery("sort_order", "desc")           // asc, desc
+	prioritizeMyDept := c.Query("prioritize_my_dept") == "true" // My department first
+	excludeMe := c.Query("exclude_me") == "true"                // Exclude current user from results
+	deptHeadFirst := c.Query("dept_head_first") == "true"       // Department head first within each department
+
+	// Parse search parameter
+	searchQuery := c.Query("search") // Search by name, email, phone, position
+
 	// Check if this is for task assignment
 	forTaskAssignment := c.Query("for_task_assignment") == "true"
 	if forTaskAssignment {
 		departmentID = nil // Clear explicit department filter for task assignment
 	}
 
-	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter, currentUserRole)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"request_id":    requestID,
-			"limit":         limit,
-			"offset":        offset,
-			"department_id": departmentID,
-			"error":         err.Error(),
-		}).Error("Failed to get users")
+	// Use advanced filtering if any advanced parameters are provided
+	useAdvancedFiltering := excludeRolesStr != "" || includeRolesStr != "" || onlyHeads || includeOtherDeptHeads
 
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get users",
-			"request_id": requestID,
-		})
-		return
+	var users []*models.UserResponse
+	var total int64
+
+	if useAdvancedFiltering {
+		// Parse roles lists
+		var excludeRoles []string
+		if excludeRolesStr != "" {
+			excludeRoles = splitByComma(excludeRolesStr)
+		}
+
+		var includeRoles []string
+		if includeRolesStr != "" {
+			includeRoles = splitByComma(includeRolesStr)
+		} else if onlyHeads {
+			// Only department heads
+			includeRoles = []string{string(sharedmodels.RoleDepartmentHead)}
+		}
+
+		// Handle include_other_dept_heads logic
+		if includeOtherDeptHeads && currentUserRole == "department_head" && currentUserDeptID != nil {
+			// This logic will be handled after fetching: include own department + other dept heads
+			departmentID = nil // Clear department filter to get all users
+		}
+
+		var filterErr error
+		users, total, filterErr = h.userUsecase.GetUsersWithFiltersAdvanced(limit, offset, departmentID, isActive, includeRoles, excludeRoles, currentUserRole, currentUserDeptID, sortBy, sortOrder, searchQuery)
+		if filterErr != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"limit":         limit,
+				"offset":        offset,
+				"department_id": departmentID,
+				"error":         filterErr.Error(),
+			}).Error("Failed to get users with advanced filters")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":      "Failed to get users",
+				"request_id": requestID,
+			})
+			return
+		}
+	} else {
+		var filterErr error
+		users, total, filterErr = h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter, currentUserRole)
+		if filterErr != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"limit":         limit,
+				"offset":        offset,
+				"department_id": departmentID,
+				"error":         filterErr.Error(),
+			}).Error("Failed to get users")
+
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":      "Failed to get users",
+				"request_id": requestID,
+			})
+			return
+		}
 	}
 
+	// Step 1: Apply prioritize_my_dept sorting FIRST (before any filtering that could disrupt order)
+	if prioritizeMyDept && currentUserDeptID != nil {
+		myDeptUsers := make([]*models.UserResponse, 0)
+		otherUsers := make([]*models.UserResponse, 0)
+
+		for _, user := range users {
+			if user.DepartmentID != nil && *user.DepartmentID == *currentUserDeptID {
+				myDeptUsers = append(myDeptUsers, user)
+			} else {
+				otherUsers = append(otherUsers, user)
+			}
+		}
+
+		// Concatenate: my department first, then others
+		users = append(myDeptUsers, otherUsers...)
+	}
+
+	// Step 2: Apply dept_head_first sorting (maintains department grouping from step 1)
+	if deptHeadFirst {
+		users = sortByDepartmentHeadFirst(users)
+	}
+
+	// Step 3: Apply filtering (preserves the order established above)
 	// Apply task assignment filtering for department heads
 	if forTaskAssignment && currentUserRole == "department_head" && currentUserDeptID != nil {
 		filteredUsers := make([]*models.UserResponse, 0)
@@ -220,6 +308,37 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 			if user.Role == "department_head" {
 				filteredUsers = append(filteredUsers, user)
 				continue
+			}
+		}
+		users = filteredUsers
+		total = int64(len(filteredUsers))
+	}
+
+	// Apply include_other_dept_heads filtering
+	if includeOtherDeptHeads && currentUserRole == "department_head" && currentUserDeptID != nil {
+		filteredUsers := make([]*models.UserResponse, 0)
+		for _, user := range users {
+			// Include users from own department
+			if user.DepartmentID != nil && *user.DepartmentID == *currentUserDeptID {
+				filteredUsers = append(filteredUsers, user)
+				continue
+			}
+			// Include only department heads from other departments
+			if user.Role == "department_head" && (user.DepartmentID == nil || *user.DepartmentID != *currentUserDeptID) {
+				filteredUsers = append(filteredUsers, user)
+				continue
+			}
+		}
+		users = filteredUsers
+		total = int64(len(filteredUsers))
+	}
+
+	// Step 4: Exclude current user (should be last to preserve all sorting)
+	if excludeMe && currentUserID > 0 {
+		filteredUsers := make([]*models.UserResponse, 0)
+		for _, user := range users {
+			if user.ID != currentUserID {
+				filteredUsers = append(filteredUsers, user)
 			}
 		}
 		users = filteredUsers
@@ -510,4 +629,65 @@ func trimString(s string) string {
 		end--
 	}
 	return s[start:end]
+}
+
+// splitByComma splits a comma-separated string and trims whitespace
+func splitByComma(s string) []string {
+	if s == "" {
+		return []string{}
+	}
+	parts := splitAndTrim(s, ",")
+	return parts
+}
+
+// sortByDepartmentHeadFirst sorts users so department heads appear first within each department
+// This function preserves the original order of departments (important for prioritize_my_dept)
+func sortByDepartmentHeadFirst(users []*models.UserResponse) []*models.UserResponse {
+	// Track department order as they appear in the input
+	deptOrder := make([]uint, 0)
+	deptSeen := make(map[uint]bool)
+	deptMap := make(map[uint][]*models.UserResponse)
+	noDeptUsers := make([]*models.UserResponse, 0)
+
+	// Group users by department while preserving department order
+	for _, user := range users {
+		if user.DepartmentID == nil {
+			noDeptUsers = append(noDeptUsers, user)
+		} else {
+			deptID := *user.DepartmentID
+			if !deptSeen[deptID] {
+				deptOrder = append(deptOrder, deptID)
+				deptSeen[deptID] = true
+			}
+			deptMap[deptID] = append(deptMap[deptID], user)
+		}
+	}
+
+	// Build result maintaining department order
+	result := make([]*models.UserResponse, 0, len(users))
+
+	// Process departments in the order they appeared (preserves prioritize_my_dept)
+	for _, deptID := range deptOrder {
+		deptUsers := deptMap[deptID]
+		heads := make([]*models.UserResponse, 0)
+		others := make([]*models.UserResponse, 0)
+
+		// Separate heads and others
+		for _, user := range deptUsers {
+			if user.Role == "department_head" {
+				heads = append(heads, user)
+			} else {
+				others = append(others, user)
+			}
+		}
+
+		// Add heads first, then others
+		result = append(result, heads...)
+		result = append(result, others...)
+	}
+
+	// Add users without department at the end
+	result = append(result, noDeptUsers...)
+
+	return result
 }

@@ -3,6 +3,7 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"tachyon-messenger/services/user/models"
 	"tachyon-messenger/shared/database"
@@ -22,6 +23,7 @@ type UserRepository interface {
 	Delete(id uint) error
 	Count() (int64, error)
 	CountWithFilters(departmentID *uint, isActive *bool) (int64, error)
+	CountWithFiltersAdvanced(departmentID *uint, isActive *bool, roles []string, excludeRoles []string, searchQuery string) (int64, error)
 	CountByRole(role string) (int64, error)
 	CountByRoleAndActive(role string, isActive bool) (int64, error)
 	CountByTwoFactorEnabled() (int64, error)
@@ -29,6 +31,7 @@ type UserRepository interface {
 	GetWithDepartment(id uint) (*models.User, error)
 	GetAllWithDepartments(limit, offset int) ([]*models.User, error)
 	GetAllWithDepartmentsFiltered(limit, offset int, departmentID *uint, isActive *bool) ([]*models.User, error)
+	GetAllWithDepartmentsFilteredAdvanced(limit, offset int, departmentID *uint, isActive *bool, roles []string, excludeRoles []string, sortBy string, sortOrder string, searchQuery string) ([]*models.User, error)
 	GetUsersByDepartment(departmentID uint) ([]*models.User, error)
 	SuperAdminExists() (bool, error)
 	UpdateTwoFactorStatus(userID uint, enabled bool) error
@@ -251,6 +254,90 @@ func (r *userRepository) GetAllWithDepartmentsFiltered(limit, offset int, depart
 	return users, nil
 }
 
+// GetAllWithDepartmentsFilteredAdvanced retrieves users with advanced filtering options
+func (r *userRepository) GetAllWithDepartmentsFilteredAdvanced(limit, offset int, departmentID *uint, isActive *bool, roles []string, excludeRoles []string, sortBy string, sortOrder string, searchQuery string) ([]*models.User, error) {
+	var users []*models.User
+	query := r.db.Preload("Department").Preload("Subdepartment").Preload("Subdepartment.Department")
+
+	if departmentID != nil {
+		query = query.Where("department_id = ?", *departmentID)
+	}
+
+	if isActive != nil {
+		query = query.Where("is_active = ?", *isActive)
+	}
+
+	if len(roles) > 0 {
+		query = query.Where("role IN ?", roles)
+	}
+
+	if len(excludeRoles) > 0 {
+		query = query.Where("role NOT IN ?", excludeRoles)
+	}
+
+	// Apply search filter (case-insensitive)
+	// For Unicode (Cyrillic) support, we need to search both lowercase and original case
+	// because LOWER() doesn't work with locale 'C' in PostgreSQL
+	if searchQuery != "" {
+		searchTerm := strings.TrimSpace(searchQuery)
+		lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
+		upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
+		titlePattern := "%" + strings.Title(strings.ToLower(searchTerm)) + "%"
+
+		query = query.Where(
+			"name LIKE ? OR name LIKE ? OR name LIKE ? OR "+
+				"first_name LIKE ? OR first_name LIKE ? OR first_name LIKE ? OR "+
+				"last_name LIKE ? OR last_name LIKE ? OR last_name LIKE ? OR "+
+				"email LIKE ? OR email LIKE ? OR email LIKE ? OR "+
+				"phone LIKE ? OR phone LIKE ? OR phone LIKE ? OR "+
+				"position LIKE ? OR position LIKE ? OR position LIKE ?",
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+		)
+	}
+
+	// Build ORDER BY clause
+	orderClause := buildOrderClause(sortBy, sortOrder)
+	query = query.Order(orderClause)
+
+	err := query.Limit(limit).Offset(offset).Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with departments: %w", err)
+	}
+	return users, nil
+}
+
+// buildOrderClause creates an ORDER BY clause based on sortBy and sortOrder
+func buildOrderClause(sortBy string, sortOrder string) string {
+	// Validate sortOrder
+	if sortOrder != "asc" && sortOrder != "desc" {
+		sortOrder = "desc"
+	}
+
+	// Map sortBy to actual column names
+	var column string
+	switch sortBy {
+	case "name":
+		column = "name"
+	case "email":
+		column = "email"
+	case "department":
+		column = "department_id"
+	case "role":
+		column = "role"
+	case "created_at":
+		column = "created_at"
+	default:
+		column = "created_at"
+	}
+
+	return fmt.Sprintf("%s %s", column, sortOrder)
+}
+
 // CountWithFilters returns the total number of users with optional filters
 func (r *userRepository) CountWithFilters(departmentID *uint, isActive *bool) (int64, error) {
 	var count int64
@@ -262,6 +349,59 @@ func (r *userRepository) CountWithFilters(departmentID *uint, isActive *bool) (i
 
 	if isActive != nil {
 		query = query.Where("is_active = ?", *isActive)
+	}
+
+	err := query.Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	return count, nil
+}
+
+// CountWithFiltersAdvanced returns the total number of users with advanced filtering options
+func (r *userRepository) CountWithFiltersAdvanced(departmentID *uint, isActive *bool, roles []string, excludeRoles []string, searchQuery string) (int64, error) {
+	var count int64
+	query := r.db.Model(&models.User{})
+
+	if departmentID != nil {
+		query = query.Where("department_id = ?", *departmentID)
+	}
+
+	if isActive != nil {
+		query = query.Where("is_active = ?", *isActive)
+	}
+
+	if len(roles) > 0 {
+		query = query.Where("role IN ?", roles)
+	}
+
+	if len(excludeRoles) > 0 {
+		query = query.Where("role NOT IN ?", excludeRoles)
+	}
+
+	// Apply search filter (case-insensitive)
+	// For Unicode (Cyrillic) support, we need to search both lowercase and original case
+	// because LOWER() doesn't work with locale 'C' in PostgreSQL
+	if searchQuery != "" {
+		searchTerm := strings.TrimSpace(searchQuery)
+		lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
+		upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
+		titlePattern := "%" + strings.Title(strings.ToLower(searchTerm)) + "%"
+
+		query = query.Where(
+			"name LIKE ? OR name LIKE ? OR name LIKE ? OR "+
+				"first_name LIKE ? OR first_name LIKE ? OR first_name LIKE ? OR "+
+				"last_name LIKE ? OR last_name LIKE ? OR last_name LIKE ? OR "+
+				"email LIKE ? OR email LIKE ? OR email LIKE ? OR "+
+				"phone LIKE ? OR phone LIKE ? OR phone LIKE ? OR "+
+				"position LIKE ? OR position LIKE ? OR position LIKE ?",
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+			lowerPattern, upperPattern, titlePattern,
+		)
 	}
 
 	err := query.Count(&count).Error

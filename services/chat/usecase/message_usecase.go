@@ -193,10 +193,10 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	// Get message with relations for response
 	createdMessage, err := uc.messageRepo.GetWithReactions(message.ID)
 	if err != nil {
-		return message.ToResponse(uc.baseURL), nil // Return what we have
+		return message.ToResponseForUser(userID, uc.baseURL), nil // Return what we have
 	}
 
-	response := createdMessage.ToResponse(uc.baseURL)
+	response := createdMessage.ToResponseForUser(userID, uc.baseURL)
 
 	// Debug: Check wsHub status before broadcast
 	fmt.Printf("🔍 About to check wsHub - wsHub is nil: %v\n", uc.wsHub == nil)
@@ -204,6 +204,8 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	// Broadcast message to WebSocket clients
 	if uc.wsHub != nil {
 		fmt.Printf("📢 Broadcasting message ID %d to chat %d from user %d\n", response.ID, req.ChatID, userID)
+		// For new messages, use the sender's response (they can see their own deleted messages)
+		// But new messages are never deleted, so this is fine
 		uc.wsHub.BroadcastToChat(req.ChatID, response, models.WSMessageTypeNewMessage, userID)
 		fmt.Printf("✅ BroadcastToChat call completed for message %d\n", response.ID)
 	} else {
@@ -289,17 +291,7 @@ func (uc *messageUsecase) GetMessages(userID uint, req *models.GetMessagesReques
 	// Convert to response format
 	messageResponses := make([]models.MessageResponse, len(messages))
 	for i, message := range messages {
-		messageResponses[i] = *message.ToResponse(uc.baseURL)
-	}
-
-	// Debug: Check if sender is in response
-	if len(messageResponses) > 0 {
-		firstMsg := messageResponses[0]
-		fmt.Printf("🔍 First message response: ID=%d, SenderID=%d, Sender=%v (nil=%v)\n",
-			firstMsg.ID, firstMsg.SenderID, firstMsg.Sender, firstMsg.Sender == nil)
-		if firstMsg.Sender != nil {
-			fmt.Printf("   Sender details: ID=%d, Name=%s\n", firstMsg.Sender.ID, firstMsg.Sender.Name)
-		}
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
 	}
 
 	hasMore := len(messages) == req.Limit
@@ -334,7 +326,7 @@ func (uc *messageUsecase) GetMessage(userID, messageID uint) (*models.MessageRes
 		return nil, fmt.Errorf("user is not a member of this chat")
 	}
 
-	return message.ToResponse(uc.baseURL), nil
+	return message.ToResponseForUser(userID, uc.baseURL), nil
 }
 
 // UpdateMessage updates a message
@@ -373,10 +365,20 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 	// Get updated message with relations
 	updatedMessage, err := uc.messageRepo.GetWithReactions(messageID)
 	if err != nil {
-		return message.ToResponse(uc.baseURL), nil // Return what we have
+		return message.ToResponseForUser(userID, uc.baseURL), nil // Return what we have
 	}
 
-	return updatedMessage.ToResponse(uc.baseURL), nil
+	response := updatedMessage.ToResponseForUser(userID, uc.baseURL)
+
+	// Broadcast message edit to WebSocket clients
+	if uc.wsHub != nil {
+		// For WebSocket, send version without user-specific filtering (viewerID=0)
+		// so all clients see the same data. Deleted message content will be empty.
+		broadcastResponse := updatedMessage.ToResponse(uc.baseURL)
+		uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageEdit, userID)
+	}
+
+	return response, nil
 }
 
 // DeleteMessage deletes a message
@@ -439,11 +441,20 @@ func (uc *messageUsecase) DeleteMessageForUser(userID, messageID uint, deleteFor
 			return fmt.Errorf("failed to delete message: %w", err)
 		}
 
-		// Broadcast deletion to WebSocket clients
+		// Broadcast deletion to WebSocket clients with full message (content will be hidden)
 		if uc.wsHub != nil {
-			uc.wsHub.BroadcastToChat(message.ChatID, map[string]interface{}{
-				"message_id": messageID,
-			}, models.WSMessageTypeMessageDelete, userID)
+			// Get updated message with is_deleted=true
+			deletedMessage, err := uc.messageRepo.GetWithReactions(messageID)
+			if err == nil {
+				// Use ToResponse() to hide content for everyone
+				broadcastResponse := deletedMessage.ToResponse(uc.baseURL)
+				uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageDelete, userID)
+			} else {
+				// Fallback to old behavior if we can't get the message
+				uc.wsHub.BroadcastToChat(message.ChatID, map[string]interface{}{
+					"message_id": messageID,
+				}, models.WSMessageTypeMessageDelete, userID)
+			}
 		}
 	} else if deleteFor == "me" {
 		// Delete for this user only (personal deletion)
@@ -572,9 +583,18 @@ func (uc *messageUsecase) BulkDeleteMessages(userID uint, req *models.BulkDelete
 	if deleteFor == "everyone" && uc.wsHub != nil {
 		for chatID, messageIDs := range messagesByChatID {
 			for _, messageID := range messageIDs {
-				uc.wsHub.BroadcastToChat(chatID, map[string]interface{}{
-					"message_id": messageID,
-				}, models.WSMessageTypeMessageDelete, userID)
+				// Get updated message with is_deleted=true and send full message
+				deletedMessage, err := uc.messageRepo.GetWithReactions(messageID)
+				if err == nil {
+					// Use ToResponse() to hide content for everyone
+					broadcastResponse := deletedMessage.ToResponse(uc.baseURL)
+					uc.wsHub.BroadcastToChat(chatID, broadcastResponse, models.WSMessageTypeMessageDelete, userID)
+				} else {
+					// Fallback to old behavior if we can't get the message
+					uc.wsHub.BroadcastToChat(chatID, map[string]interface{}{
+						"message_id": messageID,
+					}, models.WSMessageTypeMessageDelete, userID)
+				}
 			}
 			fmt.Printf("📢 Broadcasted deletion of %d messages in chat %d\n", len(messageIDs), chatID)
 		}
@@ -639,6 +659,7 @@ func (uc *messageUsecase) RestoreMessage(userID, messageID uint) error {
 
 	// Broadcast restore to WebSocket clients as message edit
 	if uc.wsHub != nil {
+		// For WebSocket broadcast, send full content since it's being restored
 		response := message.ToResponse(uc.baseURL)
 		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
 	}
@@ -692,7 +713,7 @@ func (uc *messageUsecase) PinMessage(userID, messageID uint) (*models.MessageRes
 		return nil, fmt.Errorf("message is already pinned")
 	}
 
-	// Pin the message
+	// Pin the message - only update IsPinned field to preserve read_receipts
 	message.IsPinned = true
 	if err := uc.messageRepo.Update(message); err != nil {
 		return nil, fmt.Errorf("failed to pin message: %w", err)
@@ -701,17 +722,18 @@ func (uc *messageUsecase) PinMessage(userID, messageID uint) (*models.MessageRes
 	// Get updated message with relations
 	pinnedMessage, err := uc.messageRepo.GetWithReactions(messageID)
 	if err != nil {
-		return message.ToResponse(uc.baseURL), nil // Return what we have
+		return message.ToResponseForUser(userID, uc.baseURL), nil // Return what we have
 	}
 
-	response := pinnedMessage.ToResponse(uc.baseURL)
+	response := pinnedMessage.ToResponseForUser(userID, uc.baseURL)
 
 	// Broadcast pin to WebSocket clients
 	if uc.wsHub != nil {
-		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
+		// For WebSocket, use ToResponse() which hides deleted message content for everyone
+		broadcastResponse := pinnedMessage.ToResponse(uc.baseURL)
+		uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageEdit, userID)
 	}
 
-	fmt.Printf("📌 Message %d pinned in chat %d by user %d\n", messageID, message.ChatID, userID)
 	return response, nil
 }
 
@@ -756,7 +778,7 @@ func (uc *messageUsecase) UnpinMessage(userID, messageID uint) (*models.MessageR
 		return nil, fmt.Errorf("message is not pinned")
 	}
 
-	// Unpin the message
+	// Unpin the message - only update IsPinned field to preserve read_receipts
 	message.IsPinned = false
 	if err := uc.messageRepo.Update(message); err != nil {
 		return nil, fmt.Errorf("failed to unpin message: %w", err)
@@ -765,17 +787,18 @@ func (uc *messageUsecase) UnpinMessage(userID, messageID uint) (*models.MessageR
 	// Get updated message with relations
 	unpinnedMessage, err := uc.messageRepo.GetWithReactions(messageID)
 	if err != nil {
-		return message.ToResponse(uc.baseURL), nil // Return what we have
+		return message.ToResponseForUser(userID, uc.baseURL), nil // Return what we have
 	}
 
-	response := unpinnedMessage.ToResponse(uc.baseURL)
+	response := unpinnedMessage.ToResponseForUser(userID, uc.baseURL)
 
 	// Broadcast unpin to WebSocket clients
 	if uc.wsHub != nil {
-		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
+		// For WebSocket, use ToResponse() which hides deleted message content for everyone
+		broadcastResponse := unpinnedMessage.ToResponse(uc.baseURL)
+		uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageEdit, userID)
 	}
 
-	fmt.Printf("📌 Message %d unpinned in chat %d by user %d\n", messageID, message.ChatID, userID)
 	return response, nil
 }
 
@@ -931,7 +954,7 @@ func (uc *messageUsecase) GetMessagesByChat(userID, chatID uint, limit, offset i
 	// Convert to response format
 	messageResponses := make([]models.MessageResponse, len(messages))
 	for i, message := range messages {
-		messageResponses[i] = *message.ToResponse(uc.baseURL)
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
 	}
 
 	hasMore := len(messages) == limit

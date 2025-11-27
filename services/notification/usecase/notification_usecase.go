@@ -656,19 +656,51 @@ func (u *notificationUsecase) UpdateUserPreference(userID uint, req *models.User
 		return fmt.Errorf("validation failed: %w", err)
 	}
 
-	preference := &models.UserNotificationPreference{
-		UserID:           userID,
-		NotificationType: req.NotificationType,
-		InAppEnabled:     true,                           // default
-		EmailEnabled:     false,                          // default (отключена)
-		PushEnabled:      true,                           // default
-		SMSEnabled:       false,                          // default
-		MinPriority:      models.NotificationPriorityLow, // default
-		WeekendEnabled:   true,                           // default
-		DigestEnabled:    false,                          // default
+	// Log incoming request for debugging - dereference pointers
+	logFields := map[string]interface{}{
+		"user_id": userID,
+		"type":    req.NotificationType,
+	}
+	if req.InAppEnabled != nil {
+		logFields["in_app_enabled"] = *req.InAppEnabled
+	}
+	if req.EmailEnabled != nil {
+		logFields["email_enabled"] = *req.EmailEnabled
+	}
+	if req.PushEnabled != nil {
+		logFields["push_enabled"] = *req.PushEnabled
+	}
+	if req.SMSEnabled != nil {
+		logFields["sms_enabled"] = *req.SMSEnabled
+	}
+	logger.WithFields(logFields).Info("Updating user preference - request received")
+
+	// Get existing preference or use defaults for new one
+	existing, err := u.notificationRepo.GetUserPreference(userID, req.NotificationType)
+	if err != nil {
+		return fmt.Errorf("failed to get existing preference: %w", err)
 	}
 
-	// Update fields if provided
+	// If no existing preference, create with defaults
+	var preference *models.UserNotificationPreference
+	if existing == nil {
+		preference = &models.UserNotificationPreference{
+			UserID:           userID,
+			NotificationType: req.NotificationType,
+			InAppEnabled:     true,                           // default
+			EmailEnabled:     false,                          // default (отключена)
+			PushEnabled:      true,                           // default
+			SMSEnabled:       false,                          // default
+			MinPriority:      models.NotificationPriorityLow, // default
+			WeekendEnabled:   true,                           // default
+			DigestEnabled:    false,                          // default
+		}
+	} else {
+		// Use existing preference as base
+		preference = existing
+	}
+
+	// Update only the fields that were provided in the request
 	if req.InAppEnabled != nil {
 		preference.InAppEnabled = *req.InAppEnabled
 	}
@@ -699,6 +731,16 @@ func (u *notificationUsecase) UpdateUserPreference(userID uint, req *models.User
 	if req.DigestFrequency != nil {
 		preference.DigestFrequency = req.DigestFrequency
 	}
+
+	// Log final values before saving
+	logger.WithFields(map[string]interface{}{
+		"user_id":         userID,
+		"type":            req.NotificationType,
+		"final_in_app":    preference.InAppEnabled,
+		"final_email":     preference.EmailEnabled,
+		"final_push":      preference.PushEnabled,
+		"final_sms":       preference.SMSEnabled,
+	}).Info("Updating user preference - final values before save")
 
 	if err := u.notificationRepo.UpsertUserPreference(preference); err != nil {
 		return fmt.Errorf("failed to update user preference: %w", err)

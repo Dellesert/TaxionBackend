@@ -2,6 +2,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -658,11 +659,17 @@ func (h *NotificationHandler) GetUserPreferences(c *gin.Context) {
 		return
 	}
 
-	logger.WithFields(map[string]interface{}{
+	// Log preference values for debugging
+	logFields := map[string]interface{}{
 		"request_id":        requestID,
 		"user_id":           userID,
 		"preferences_count": len(preferences),
-	}).Info("User preferences retrieved successfully")
+	}
+	for _, pref := range preferences {
+		key := fmt.Sprintf("push_%s", pref.NotificationType)
+		logFields[key] = pref.PushEnabled
+	}
+	logger.WithFields(logFields).Info("User preferences retrieved successfully - returning to client")
 
 	c.JSON(http.StatusOK, gin.H{
 		"preferences": preferences,
@@ -713,6 +720,44 @@ func (h *NotificationHandler) UpdateUserPreference(c *gin.Context) {
 
 	// Set notification type from URL
 	req.NotificationType = notificationType
+
+	// Log raw request body for debugging - dereference pointers to see actual values
+	logFields := map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"type":       notificationType,
+	}
+	if req.InAppEnabled != nil {
+		logFields["in_app_enabled"] = *req.InAppEnabled
+	} else {
+		logFields["in_app_enabled"] = "<nil>"
+	}
+	if req.EmailEnabled != nil {
+		logFields["email_enabled"] = *req.EmailEnabled
+	} else {
+		logFields["email_enabled"] = "<nil>"
+	}
+	if req.PushEnabled != nil {
+		logFields["push_enabled"] = *req.PushEnabled
+	} else {
+		logFields["push_enabled"] = "<nil>"
+	}
+	if req.SMSEnabled != nil {
+		logFields["sms_enabled"] = *req.SMSEnabled
+	} else {
+		logFields["sms_enabled"] = "<nil>"
+	}
+	if req.WeekendEnabled != nil {
+		logFields["weekend_enabled"] = *req.WeekendEnabled
+	} else {
+		logFields["weekend_enabled"] = "<nil>"
+	}
+	if req.DigestEnabled != nil {
+		logFields["digest_enabled"] = *req.DigestEnabled
+	} else {
+		logFields["digest_enabled"] = "<nil>"
+	}
+	logger.WithFields(logFields).Info("Handler received preference update request")
 
 	// Update user preference
 	err = h.notificationUsecase.UpdateUserPreference(userID, &req)

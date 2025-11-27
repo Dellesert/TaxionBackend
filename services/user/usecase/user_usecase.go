@@ -19,6 +19,7 @@ type UserUsecase interface {
 	GetUser(id uint) (*models.UserResponse, error)
 	GetUsers(limit, offset int) ([]*models.UserResponse, int64, error)
 	GetUsersWithFilters(limit, offset int, departmentID *uint, isActive *bool, role *string, currentUserRole string) ([]*models.UserResponse, int64, error)
+	GetUsersWithFiltersAdvanced(limit, offset int, departmentID *uint, isActive *bool, roles []string, excludeRoles []string, currentUserRole string, currentUserDeptID *uint, sortBy string, sortOrder string, searchQuery string) ([]*models.UserResponse, int64, error)
 	GetUsersByIDs(ids []uint, currentUserRole string) ([]*models.UserResponse, error)
 	GetUsersByDepartment(departmentID uint) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
@@ -186,6 +187,41 @@ func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint,
 	// Adjust total based on filtering
 	if currentUserRole != string(sharedmodels.RoleSuperAdmin) || (role != nil && *role != "") {
 		total = int64(len(users))
+	}
+
+	// Convert to response format
+	responses := make([]*models.UserResponse, len(users))
+	for i, user := range users {
+		responses[i] = user.ToResponse()
+	}
+
+	return responses, total, nil
+}
+
+// GetUsersWithFiltersAdvanced retrieves users with advanced filtering options
+func (u *userUsecase) GetUsersWithFiltersAdvanced(limit, offset int, departmentID *uint, isActive *bool, roles []string, excludeRoles []string, currentUserRole string, currentUserDeptID *uint, sortBy string, sortOrder string, searchQuery string) ([]*models.UserResponse, int64, error) {
+	// Set default pagination values
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Non-super admins cannot see super admins
+	if currentUserRole != string(sharedmodels.RoleSuperAdmin) {
+		excludeRoles = append(excludeRoles, string(sharedmodels.RoleSuperAdmin))
+	}
+
+	users, err := u.userRepo.GetAllWithDepartmentsFilteredAdvanced(limit, offset, departmentID, isActive, roles, excludeRoles, sortBy, sortOrder, searchQuery)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get users: %w", err)
+	}
+
+	// Get total count with filters
+	total, err := u.userRepo.CountWithFiltersAdvanced(departmentID, isActive, roles, excludeRoles, searchQuery)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count users: %w", err)
 	}
 
 	// Convert to response format

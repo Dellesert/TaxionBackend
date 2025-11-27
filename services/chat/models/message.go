@@ -1,7 +1,6 @@
 package models
 
 import (
-	"fmt"
 	"time"
 
 	"tachyon-messenger/shared/models"
@@ -207,7 +206,7 @@ type MessageResponse struct {
 	ID           uint                           `json:"id"`
 	ChatID       uint                           `json:"chat_id"`
 	SenderID     uint                           `json:"sender_id"`
-	Sender       *models.User                   `json:"sender,omitempty"`
+	Sender       *models.User                   `json:"sender"` // Always include sender, removed omitempty
 	Content      string                         `json:"content"`
 	Type         MessageType                    `json:"type"`
 	Status       MessageStatus                  `json:"status"`
@@ -253,12 +252,28 @@ type MessageReadReceiptResponse struct {
 
 // ToResponse converts Message to MessageResponse
 // If baseURL is provided, it will be used to construct file URLs for attachments
+// This method does NOT hide content for deleted messages - use ToResponseForUser for that
 func (m *Message) ToResponse(baseURL ...string) *MessageResponse {
-	// Debug: check if Sender is loaded
-	if m.Sender != nil {
-		fmt.Printf("✅ Message %d: Sender loaded: ID=%d, Name=%s\n", m.ID, m.Sender.ID, m.Sender.Name)
-	} else {
-		fmt.Printf("❌ Message %d: Sender is NIL! SenderID=%d\n", m.ID, m.SenderID)
+	return m.toResponse(0, baseURL...)
+}
+
+// ToResponseForUser converts Message to MessageResponse for a specific user
+// Content of deleted messages will be hidden unless the viewer is the sender
+func (m *Message) ToResponseForUser(viewerUserID uint, baseURL ...string) *MessageResponse {
+	return m.toResponse(viewerUserID, baseURL...)
+}
+
+// toResponse is the internal method that handles the conversion
+func (m *Message) toResponse(viewerUserID uint, baseURL ...string) *MessageResponse {
+	// Determine if content should be hidden
+	// Hide content if message is deleted AND viewer is not the sender
+	content := m.Content
+	if m.IsDeleted {
+		// If viewerUserID is 0, hide content (used for broadcasts)
+		// If viewerUserID is not 0 and not the sender, hide content
+		if viewerUserID == 0 || viewerUserID != m.SenderID {
+			content = "" // Hide content for deleted messages (except for sender)
+		}
 	}
 
 	response := &MessageResponse{
@@ -266,7 +281,7 @@ func (m *Message) ToResponse(baseURL ...string) *MessageResponse {
 		ChatID:       m.ChatID,
 		SenderID:     m.SenderID,
 		Sender:       m.Sender,
-		Content:      m.Content,
+		Content:      content,
 		Type:         m.Type,
 		Status:       m.Status,
 		ReplyToID:    m.ReplyToID,
@@ -292,7 +307,7 @@ func (m *Message) ToResponse(baseURL ...string) *MessageResponse {
 
 	// Include reply-to message if loaded
 	if m.ReplyTo != nil {
-		response.ReplyTo = m.ReplyTo.ToResponse(baseURL...)
+		response.ReplyTo = m.ReplyTo.toResponse(viewerUserID, baseURL...)
 	}
 
 	// Include reactions if loaded

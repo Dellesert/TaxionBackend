@@ -8,6 +8,7 @@ import (
 
 	"tachyon-messenger/services/notification/models"
 	"tachyon-messenger/shared/database"
+	"tachyon-messenger/shared/logger"
 
 	"gorm.io/gorm"
 )
@@ -636,13 +637,74 @@ func (r *notificationRepository) GetUserPreference(userID uint, notificationType
 
 // UpsertUserPreference creates or updates a user notification preference
 func (r *notificationRepository) UpsertUserPreference(preference *models.UserNotificationPreference) error {
+	// Try to find existing preference
+	var existing models.UserNotificationPreference
 	err := r.db.Where("user_id = ? AND notification_type = ?",
 		preference.UserID, preference.NotificationType).
-		Assign(preference).
-		FirstOrCreate(&preference).Error
-	if err != nil {
-		return fmt.Errorf("failed to upsert user preference: %w", err)
+		First(&existing).Error
+
+	if err == gorm.ErrRecordNotFound {
+		// Create new preference if not found
+		if err := r.db.Create(preference).Error; err != nil {
+			return fmt.Errorf("failed to create user preference: %w", err)
+		}
+		return nil
 	}
+
+	if err != nil {
+		return fmt.Errorf("failed to query user preference: %w", err)
+	}
+
+	// Handle corrupted record with ID = 0
+	if existing.ID == 0 {
+		// Delete the corrupted record and recreate it
+		if err := r.db.Where("user_id = ? AND notification_type = ?",
+			preference.UserID, preference.NotificationType).
+			Delete(&models.UserNotificationPreference{}).Error; err != nil {
+			return fmt.Errorf("failed to delete corrupted preference: %w", err)
+		}
+
+		// Create new preference
+		if err := r.db.Create(preference).Error; err != nil {
+			return fmt.Errorf("failed to recreate user preference: %w", err)
+		}
+		return nil
+	}
+
+	// Update existing preference using map to include zero values (false, 0, etc.)
+	// Map approach ensures all values are updated, unlike struct which skips zero values
+	updates := map[string]interface{}{
+		"in_app_enabled":    preference.InAppEnabled,
+		"email_enabled":     preference.EmailEnabled,
+		"push_enabled":      preference.PushEnabled,
+		"sms_enabled":       preference.SMSEnabled,
+		"min_priority":      preference.MinPriority,
+		"quiet_hours_start": preference.QuietHoursStart,
+		"quiet_hours_end":   preference.QuietHoursEnd,
+		"weekend_enabled":   preference.WeekendEnabled,
+		"digest_enabled":    preference.DigestEnabled,
+		"digest_frequency":  preference.DigestFrequency,
+	}
+
+	result := r.db.Model(&models.UserNotificationPreference{}).
+		Where("id = ?", existing.ID).
+		Updates(updates)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update user preference: %w", result.Error)
+	}
+
+	// Verify the update by reading back from DB
+	var verify models.UserNotificationPreference
+	if err := r.db.Where("id = ?", existing.ID).First(&verify).Error; err == nil {
+		logger.WithFields(map[string]interface{}{
+			"id":              verify.ID,
+			"push_enabled":    verify.PushEnabled,
+			"email_enabled":   verify.EmailEnabled,
+			"rows_affected":   result.RowsAffected,
+		}).Info("After UPDATE - verified values in DB")
+	}
+
 	return nil
 }
 
