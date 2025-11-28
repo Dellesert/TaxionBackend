@@ -576,7 +576,7 @@ func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 	}
 
 	// Get chat ID from URL parameter
-	chatIDStr := c.Param("chatId")
+	chatIDStr := c.Param("id")
 	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -954,7 +954,7 @@ func (h *MessageHandler) MarkChatAsRead(c *gin.Context) {
 	}
 
 	// Get chat ID from URL parameter
-	chatIDStr := c.Param("chatId")
+	chatIDStr := c.Param("id")
 	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -1239,6 +1239,305 @@ func (h *MessageHandler) PinMessage(c *gin.Context) {
 		"message":    message,
 		"request_id": requestID,
 	})
+}
+
+// GetLatestMessages handles getting latest N messages for a chat (new refactored API)
+func (h *MessageHandler) GetLatestMessages(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse query parameters
+	var req models.GetLatestMessagesRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Warn("Invalid query parameters")
+	}
+
+	// Get latest messages
+	response, err := h.messageUsecase.GetLatestMessages(userID, uint(chatID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Error("Failed to get latest messages")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get messages"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"chat_id":       chatID,
+		"message_count": len(response.Messages),
+		"total":         response.Total,
+		"has_older":     response.HasOlder,
+	}).Info("Latest messages retrieved successfully")
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetMessagesBeforeID handles loading older messages before a specific message ID (new refactored API)
+func (h *MessageHandler) GetMessagesBeforeID(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse query parameters
+	var req models.GetMessagesBeforeRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Warn("Invalid query parameters")
+	}
+
+	// Get messages before ID
+	response, err := h.messageUsecase.GetMessagesBeforeID(userID, uint(chatID), uint(messageID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to get messages before ID")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get messages"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"chat_id":       chatID,
+		"message_id":    messageID,
+		"message_count": len(response.Messages),
+		"has_older":     response.HasOlder,
+	}).Info("Messages before ID retrieved successfully")
+
+	c.JSON(http.StatusOK, response)
+}
+
+// GetMessageContext handles getting messages around a specific message (new refactored API)
+func (h *MessageHandler) GetMessageContext(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse query parameters
+	var req models.GetMessageContextRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Warn("Invalid query parameters")
+	}
+
+	// Get message context
+	response, err := h.messageUsecase.GetMessageContext(userID, uint(chatID), uint(messageID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to get message context")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get message context"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		} else if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Target message not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"chat_id":       chatID,
+		"message_id":    messageID,
+		"message_count": len(response.Messages),
+		"has_older":     response.HasOlder,
+		"has_newer":     response.HasNewer,
+	}).Info("Message context retrieved successfully")
+
+	c.JSON(http.StatusOK, response)
 }
 
 // UnpinMessage handles unpinning a message in chat

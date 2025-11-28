@@ -241,7 +241,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		// Message routes
 		messages := v1.Group("/messages")
 		{
-			messages.GET("", messageHandler.GetMessages)          // GET /api/v1/messages
+			messages.GET("", messageHandler.GetMessages)          // GET /api/v1/messages (DEPRECATED - use /chats/:id/messages/latest)
 			messages.POST("", messageHandler.SendMessage)         // POST /api/v1/messages
 			messages.POST("/bulk-delete", messageHandler.BulkDeleteMessages) // POST /api/v1/messages/bulk-delete
 			messages.GET("/:id", messageHandler.GetMessage)       // GET /api/v1/messages/:id
@@ -251,13 +251,19 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			messages.POST("/:id/pin", messageHandler.PinMessage)         // POST /api/v1/messages/:id/pin
 			messages.POST("/:id/unpin", messageHandler.UnpinMessage)     // POST /api/v1/messages/:id/unpin
 
-			// Message by chat
-			messages.GET("/chat/:chatId", messageHandler.GetMessagesByChat)         // GET /api/v1/messages/chat/:chatId
+			// Message by chat (DEPRECATED - use new endpoints below)
+			messages.GET("/chat/:chatId", messageHandler.GetMessagesByChat)         // GET /api/v1/messages/chat/:chatId (DEPRECATED)
 			messages.POST("/chat/:chatId/read", messageHandler.MarkChatAsRead)      // POST /api/v1/messages/chat/:chatId/read
 			messages.POST("/:id/read", messageHandler.MarkAsRead)                   // POST /api/v1/messages/:id/read
 		}
 
+		// NEW refactored message endpoints (under chats) - using :id for consistency
+		chats.GET("/:id/messages/latest", messageHandler.GetLatestMessages)                     // GET /api/v1/chats/:id/messages/latest
+		chats.GET("/:id/messages/before/:messageId", messageHandler.GetMessagesBeforeID)        // GET /api/v1/chats/:id/messages/before/:messageId
+		chats.GET("/:id/messages/context/:messageId", messageHandler.GetMessageContext)         // GET /api/v1/chats/:id/messages/context/:messageId
+
 		// Chat-specific routes
+		chats.POST("/:id/read", messageHandler.MarkChatAsRead)            // POST /api/v1/chats/:id/read (mark all messages as read)
 		chats.POST("/:id/clear-history", messageHandler.ClearChatHistory) // POST /api/v1/chats/:id/clear-history
 	}
 }

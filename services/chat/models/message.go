@@ -191,7 +191,7 @@ type AddReactionRequest struct {
 	Emoji string `json:"emoji" binding:"required,max=10" validate:"required,max=10"`
 }
 
-// GetMessagesRequest represents request parameters for getting messages
+// GetMessagesRequest represents request parameters for getting messages (DEPRECATED - use new endpoints)
 type GetMessagesRequest struct {
 	ChatID     uint `form:"chat_id" validate:"omitempty,min=1"`
 	Limit      int  `form:"limit" validate:"omitempty,min=1,max=100"`
@@ -199,6 +199,52 @@ type GetMessagesRequest struct {
 	Before     uint `form:"before" validate:"omitempty,min=1"`     // Get messages before this message ID
 	After      uint `form:"after" validate:"omitempty,min=1"`      // Get messages after this message ID
 	MarkAsRead bool `form:"mark_as_read" validate:"omitempty"`     // Mark messages as read (default: false)
+}
+
+// GetLatestMessagesRequest represents request for getting latest N messages
+type GetLatestMessagesRequest struct {
+	Limit               int  `form:"limit" validate:"omitempty,min=1,max=100"`          // Number of latest messages to fetch (default: 30)
+	IncludeUnreadMarker bool `form:"include_unread_marker" validate:"omitempty"`        // Include unread info (default: true)
+}
+
+// GetMessagesBeforeRequest represents request for loading older messages (cursor-based)
+type GetMessagesBeforeRequest struct {
+	Limit int `form:"limit" validate:"omitempty,min=1,max=100"` // Number of messages to load (default: 30)
+}
+
+// GetMessageContextRequest represents request for loading context around a message
+type GetMessageContextRequest struct {
+	Before int `form:"before" validate:"omitempty,min=0,max=50"` // Messages before target (default: 15)
+	After  int `form:"after" validate:"omitempty,min=0,max=50"`  // Messages after target (default: 15)
+}
+
+// UnreadInfo represents information about unread messages
+type UnreadInfo struct {
+	FirstUnreadID *uint `json:"first_unread_id"` // ID of first unread message (null if all read)
+	UnreadCount   int64 `json:"unread_count"`    // Number of unread messages
+}
+
+// GetLatestMessagesResponse represents response for latest messages endpoint
+type GetLatestMessagesResponse struct {
+	Messages   []MessageResponse `json:"messages"`    // Messages in chronological order (old to new)
+	Total      int64             `json:"total"`       // Total number of messages in chat
+	HasOlder   bool              `json:"has_older"`   // Are there older messages to load?
+	UnreadInfo *UnreadInfo       `json:"unread_info"` // Information about unread messages (null if not requested)
+}
+
+// GetMessagesBeforeResponse represents response for loading older messages
+type GetMessagesBeforeResponse struct {
+	Messages []MessageResponse `json:"messages"`  // Messages in chronological order (old to new)
+	HasOlder bool              `json:"has_older"` // Are there older messages to load?
+	OldestID *uint             `json:"oldest_id"` // ID of oldest message in this response (cursor for next request)
+}
+
+// GetMessageContextResponse represents response for message context endpoint
+type GetMessageContextResponse struct {
+	Messages        []MessageResponse `json:"messages"`          // Messages in chronological order (including target)
+	TargetMessageID uint              `json:"target_message_id"` // ID of the target message
+	HasOlder        bool              `json:"has_older"`         // Are there older messages?
+	HasNewer        bool              `json:"has_newer"`         // Are there newer messages?
 }
 
 // MessageResponse represents message response
@@ -399,4 +445,10 @@ type WSMessage struct {
 	UserID uint          `json:"user_id"`
 	Data   interface{}   `json:"data"`
 	SentAt time.Time     `json:"sent_at"`
+}
+
+// WSNewMessageData represents data for new message WebSocket events
+type WSNewMessageData struct {
+	Message  MessageResponse `json:"message"`
+	IsLatest bool            `json:"is_latest"` // True if this is the latest message in the chat (for auto-scroll)
 }

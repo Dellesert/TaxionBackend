@@ -39,6 +39,11 @@ type MessageUsecase interface {
 	MarkChatAsRead(userID, chatID uint) error
 	GetMessagesByChat(userID, chatID uint, limit, offset int) (*models.MessageListResponse, error)
 	SetWebSocketHub(hub WebSocketHub)
+
+	// New refactored API methods
+	GetLatestMessages(userID, chatID uint, req *models.GetLatestMessagesRequest) (*models.GetLatestMessagesResponse, error)
+	GetMessagesBeforeID(userID, chatID, beforeID uint, req *models.GetMessagesBeforeRequest) (*models.GetMessagesBeforeResponse, error)
+	GetMessageContext(userID, chatID, targetMessageID uint, req *models.GetMessageContextRequest) (*models.GetMessageContextResponse, error)
 }
 
 // messageUsecase implements MessageUsecase interface
@@ -196,17 +201,31 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		return message.ToResponseForUser(userID, uc.baseURL), nil // Return what we have
 	}
 
+	// Use ToResponse() for API response (shows content for sender)
 	response := createdMessage.ToResponseForUser(userID, uc.baseURL)
+
+	// Debug: Check message content
+	fmt.Printf("🔍 Message created - ID: %d, Content: %q, IsDeleted: %v, SenderID: %d, ViewerID: %d\n",
+		createdMessage.ID, createdMessage.Content, createdMessage.IsDeleted, createdMessage.SenderID, userID)
+	fmt.Printf("🔍 Response content: %q\n", response.Content)
 
 	// Debug: Check wsHub status before broadcast
 	fmt.Printf("🔍 About to check wsHub - wsHub is nil: %v\n", uc.wsHub == nil)
 
-	// Broadcast message to WebSocket clients
+	// Broadcast message to WebSocket clients with is_latest flag
 	if uc.wsHub != nil {
-		fmt.Printf("📢 Broadcasting message ID %d to chat %d from user %d\n", response.ID, req.ChatID, userID)
-		// For new messages, use the sender's response (they can see their own deleted messages)
-		// But new messages are never deleted, so this is fine
-		uc.wsHub.BroadcastToChat(req.ChatID, response, models.WSMessageTypeNewMessage, userID)
+		// IMPORTANT: Use ToResponse() without user filtering for WebSocket broadcast
+		// Each client will decide what to show based on their own permissions
+		broadcastResponse := createdMessage.ToResponse(uc.baseURL)
+		fmt.Printf("📢 Broadcasting message ID %d to chat %d from user %d (content: %q)\n",
+			broadcastResponse.ID, req.ChatID, userID, broadcastResponse.Content)
+
+		// New messages are always the latest in the chat
+		wsData := models.WSNewMessageData{
+			Message:  *broadcastResponse,
+			IsLatest: true, // New messages are always the latest
+		}
+		uc.wsHub.BroadcastToChat(req.ChatID, wsData, models.WSMessageTypeNewMessage, userID)
 		fmt.Printf("✅ BroadcastToChat call completed for message %d\n", response.ID)
 	} else {
 		fmt.Println("❌ wsHub is nil - cannot broadcast!")
@@ -1137,4 +1156,209 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 	}
 
 	return nil
+}
+
+// New refactored API methods
+
+// GetLatestMessages retrieves the latest N messages in a chat
+func (uc *messageUsecase) GetLatestMessages(userID, chatID uint, req *models.GetLatestMessagesRequest) (*models.GetLatestMessagesResponse, error) {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set default limit
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Get latest messages
+	messages, total, err := uc.messageRepo.GetLatestMessages(chatID, userID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest messages: %w", err)
+	}
+
+	// Convert to response format
+	messageResponses := make([]models.MessageResponse, len(messages))
+	for i, message := range messages {
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
+	}
+
+	// Check if there are older messages
+	hasOlder := false
+	if len(messages) > 0 {
+		hasOlder, err = uc.messageRepo.HasOlderMessages(chatID, userID, messages[0].ID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to check for older messages: %v\n", err)
+			// Don't fail the request, just assume there might be older messages
+			hasOlder = total > int64(len(messages))
+		}
+	}
+
+	response := &models.GetLatestMessagesResponse{
+		Messages: messageResponses,
+		Total:    total,
+		HasOlder: hasOlder,
+	}
+
+	// Include unread info if requested (default: true)
+	if req.IncludeUnreadMarker || (!req.IncludeUnreadMarker && req.Limit == 0) {
+		// Get first unread message
+		firstUnreadMsg, unreadCount, err := uc.messageRepo.GetFirstUnreadMessage(chatID, userID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to get first unread message: %v\n", err)
+		} else if firstUnreadMsg != nil {
+			response.UnreadInfo = &models.UnreadInfo{
+				FirstUnreadID: &firstUnreadMsg.ID,
+				UnreadCount:   unreadCount,
+			}
+		} else {
+			// All messages are read
+			response.UnreadInfo = &models.UnreadInfo{
+				FirstUnreadID: nil,
+				UnreadCount:   0,
+			}
+		}
+	}
+
+	fmt.Printf("✅ Retrieved %d latest messages for chat %d (total: %d, has_older: %v)\n",
+		len(messageResponses), chatID, total, hasOlder)
+
+	return response, nil
+}
+
+// GetMessagesBeforeID retrieves messages before a specific message ID
+func (uc *messageUsecase) GetMessagesBeforeID(userID, chatID, beforeID uint, req *models.GetMessagesBeforeRequest) (*models.GetMessagesBeforeResponse, error) {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set default limit
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Get messages before the specified ID
+	messages, err := uc.messageRepo.GetMessagesBeforeID(chatID, userID, beforeID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages before ID: %w", err)
+	}
+
+	// Convert to response format
+	messageResponses := make([]models.MessageResponse, len(messages))
+	for i, message := range messages {
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
+	}
+
+	// Determine oldest message ID and check for older messages
+	var oldestID *uint
+	hasOlder := false
+	if len(messages) > 0 {
+		oldestID = &messages[0].ID
+		hasOlder, err = uc.messageRepo.HasOlderMessages(chatID, userID, *oldestID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to check for older messages: %v\n", err)
+			// Don't fail the request, assume there might be more
+			hasOlder = len(messages) == limit
+		}
+	}
+
+	response := &models.GetMessagesBeforeResponse{
+		Messages: messageResponses,
+		HasOlder: hasOlder,
+		OldestID: oldestID,
+	}
+
+	fmt.Printf("✅ Retrieved %d messages before ID %d for chat %d (has_older: %v)\n",
+		len(messageResponses), beforeID, chatID, hasOlder)
+
+	return response, nil
+}
+
+// GetMessageContext retrieves messages around a specific message (for "jump to message")
+func (uc *messageUsecase) GetMessageContext(userID, chatID, targetMessageID uint, req *models.GetMessageContextRequest) (*models.GetMessageContextResponse, error) {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set defaults
+	before := req.Before
+	if before <= 0 {
+		before = 15
+	}
+	if before > 50 {
+		before = 50
+	}
+
+	after := req.After
+	if after <= 0 {
+		after = 15
+	}
+	if after > 50 {
+		after = 50
+	}
+
+	// Get message context
+	messages, err := uc.messageRepo.GetMessageContext(chatID, userID, targetMessageID, before, after)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message context: %w", err)
+	}
+
+	// Convert to response format
+	messageResponses := make([]models.MessageResponse, len(messages))
+	for i, message := range messages {
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
+	}
+
+	// Check for older and newer messages
+	hasOlder := false
+	hasNewer := false
+	if len(messages) > 0 {
+		oldestID := messages[0].ID
+		newestID := messages[len(messages)-1].ID
+
+		hasOlder, err = uc.messageRepo.HasOlderMessages(chatID, userID, oldestID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to check for older messages: %v\n", err)
+		}
+
+		hasNewer, err = uc.messageRepo.HasNewerMessages(chatID, userID, newestID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to check for newer messages: %v\n", err)
+		}
+	}
+
+	response := &models.GetMessageContextResponse{
+		Messages:        messageResponses,
+		TargetMessageID: targetMessageID,
+		HasOlder:        hasOlder,
+		HasNewer:        hasNewer,
+	}
+
+	fmt.Printf("✅ Retrieved %d messages around target ID %d for chat %d (has_older: %v, has_newer: %v)\n",
+		len(messageResponses), targetMessageID, chatID, hasOlder, hasNewer)
+
+	return response, nil
 }

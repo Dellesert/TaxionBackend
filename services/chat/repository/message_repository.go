@@ -56,6 +56,14 @@ type MessageRepository interface {
 	// Attachment operations
 	CreateAttachment(attachment *models.MessageAttachment) error
 	GetChatAttachments(chatID uint, limit, offset int) ([]*models.MessageAttachment, int64, error)
+
+	// New cursor-based pagination methods for refactored API
+	GetLatestMessages(chatID, userID uint, limit int) ([]*models.Message, int64, error)
+	GetMessagesBeforeID(chatID, userID, beforeID uint, limit int) ([]*models.Message, error)
+	GetMessageContext(chatID, userID, targetMessageID uint, before, after int) ([]*models.Message, error)
+	GetFirstUnreadMessage(chatID, userID uint) (*models.Message, int64, error)
+	HasOlderMessages(chatID, userID, oldestID uint) (bool, error)
+	HasNewerMessages(chatID, userID, newestID uint) (bool, error)
 }
 
 // messageRepository implements MessageRepository interface
@@ -937,4 +945,294 @@ func (r *messageRepository) GetChatAttachments(chatID uint, limit, offset int) (
 	}
 
 	return attachments, total, nil
+}
+
+// New cursor-based pagination methods for refactored API
+
+// GetLatestMessages retrieves the latest N messages in chronological order (old to new)
+func (r *messageRepository) GetLatestMessages(chatID, userID uint, limit int) ([]*models.Message, int64, error) {
+	var messages []*models.Message
+	var total int64
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Get total count (excluding personally deleted, but including soft-deleted for admins)
+	err := r.db.Model(&models.Message{}).
+		Where("chat_id = ?", chatID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Count(&total).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count messages: %w", err)
+	}
+
+	// Get latest messages (ORDER BY id DESC, then reverse in code for chronological order)
+	err = r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ?", chatID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id DESC").
+		Limit(limit).
+		Find(&messages).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get latest messages: %w", err)
+	}
+
+	// Reverse array to get chronological order (oldest to newest)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, total, nil
+}
+
+// GetMessagesBeforeID retrieves messages before a specific message ID in chronological order
+func (r *messageRepository) GetMessagesBeforeID(chatID, userID, beforeID uint, limit int) ([]*models.Message, error) {
+	var messages []*models.Message
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND id < ?", chatID, beforeID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id DESC").
+		Limit(limit).
+		Find(&messages).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages before ID: %w", err)
+	}
+
+	// Reverse array to get chronological order (oldest to newest)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// GetMessageContext retrieves messages around a target message (for "jump to message" feature)
+func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID uint, before, after int) ([]*models.Message, error) {
+	var beforeMessages []*models.Message
+	var targetMessage models.Message
+	var afterMessages []*models.Message
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Get target message
+	err := r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("id = ? AND chat_id = ?", targetMessageID, chatID).
+		Where("id NOT IN (?)", deletedSubquery).
+		First(&targetMessage).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("target message not found")
+		}
+		return nil, fmt.Errorf("failed to get target message: %w", err)
+	}
+
+	// Get messages before target
+	if before > 0 {
+		err = r.db.
+			Preload("Sender").
+			Preload("ReplyTo").
+			Preload("ReplyTo.Sender").
+			Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+				return db.Order("created_at ASC")
+			}).
+			Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+				return db.Order("read_at DESC")
+			}).
+			Preload("Attachments").
+			Where("chat_id = ? AND id < ?", chatID, targetMessageID).
+			Where("id NOT IN (?)", deletedSubquery).
+			Order("id DESC").
+			Limit(before).
+			Find(&beforeMessages).Error
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to get messages before target: %w", err)
+		}
+
+		// Reverse to get chronological order
+		for i, j := 0, len(beforeMessages)-1; i < j; i, j = i+1, j-1 {
+			beforeMessages[i], beforeMessages[j] = beforeMessages[j], beforeMessages[i]
+		}
+	}
+
+	// Get messages after target
+	if after > 0 {
+		err = r.db.
+			Preload("Sender").
+			Preload("ReplyTo").
+			Preload("ReplyTo.Sender").
+			Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+				return db.Order("created_at ASC")
+			}).
+			Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+				return db.Order("read_at DESC")
+			}).
+			Preload("Attachments").
+			Where("chat_id = ? AND id > ?", chatID, targetMessageID).
+			Where("id NOT IN (?)", deletedSubquery).
+			Order("id ASC").
+			Limit(after).
+			Find(&afterMessages).Error
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to get messages after target: %w", err)
+		}
+	}
+
+	// Combine all messages in chronological order
+	allMessages := make([]*models.Message, 0, len(beforeMessages)+1+len(afterMessages))
+	allMessages = append(allMessages, beforeMessages...)
+	allMessages = append(allMessages, &targetMessage)
+	allMessages = append(allMessages, afterMessages...)
+
+	return allMessages, nil
+}
+
+// GetFirstUnreadMessage retrieves the first unread message and unread count for a user in a chat
+func (r *messageRepository) GetFirstUnreadMessage(chatID, userID uint) (*models.Message, int64, error) {
+	var message models.Message
+	var unreadCount int64
+
+	// Subquery for read messages
+	readSubquery := r.db.Table("message_read_receipts").
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Subquery for personally deleted messages
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Get first unread message
+	err := r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND sender_id != ?", chatID, userID).
+		Where("id NOT IN (?)", readSubquery).
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id ASC").
+		First(&message).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, 0, nil // No unread messages
+		}
+		return nil, 0, fmt.Errorf("failed to get first unread message: %w", err)
+	}
+
+	// Count unread messages from this message onwards
+	err = r.db.Model(&models.Message{}).
+		Where("chat_id = ? AND id >= ? AND sender_id != ?", chatID, message.ID, userID).
+		Where("id NOT IN (?)", readSubquery).
+		Where("id NOT IN (?)", deletedSubquery).
+		Count(&unreadCount).Error
+
+	if err != nil {
+		return &message, 0, fmt.Errorf("failed to count unread messages: %w", err)
+	}
+
+	return &message, unreadCount, nil
+}
+
+// HasOlderMessages checks if there are messages older than the given ID
+func (r *messageRepository) HasOlderMessages(chatID, userID, oldestID uint) (bool, error) {
+	var count int64
+
+	// Subquery for personally deleted messages
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.Model(&models.Message{}).
+		Where("chat_id = ? AND id < ?", chatID, oldestID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Limit(1).
+		Count(&count).Error
+
+	if err != nil {
+		return false, fmt.Errorf("failed to check for older messages: %w", err)
+	}
+
+	return count > 0, nil
+}
+
+// HasNewerMessages checks if there are messages newer than the given ID
+func (r *messageRepository) HasNewerMessages(chatID, userID, newestID uint) (bool, error) {
+	var count int64
+
+	// Subquery for personally deleted messages
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.Model(&models.Message{}).
+		Where("chat_id = ? AND id > ?", chatID, newestID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Limit(1).
+		Count(&count).Error
+
+	if err != nil {
+		return false, fmt.Errorf("failed to check for newer messages: %w", err)
+	}
+
+	return count > 0, nil
 }

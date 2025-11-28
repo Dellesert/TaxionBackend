@@ -244,6 +244,8 @@ func (c *Client) handleChatMessage(wsMsg *models.WSMessage) {
 	// Получаем доступ к messageUsecase через хаб
 	if c.hub.messageUsecase != nil {
 		// Сохраняем сообщение в БД
+		// ВАЖНО: SendMessage() уже делает broadcast через WebSocket hub с полным MessageResponse
+		// Поэтому здесь НЕ нужно делать дополнительный broadcast
 		savedMessage, err := c.hub.messageUsecase.SendMessage(c.userID, sendRequest)
 		if err != nil {
 			log.Printf("Failed to save message to database for user %d: %v", c.userID, err)
@@ -251,21 +253,9 @@ func (c *Client) handleChatMessage(wsMsg *models.WSMessage) {
 			return
 		}
 
-		// Обновляем данные сообщения с сохраненной информацией
-		enhancedData := map[string]interface{}{
-			"id":         savedMessage.ID,
-			"content":    savedMessage.Content,
-			"type":       savedMessage.Type,
-			"sender_id":  savedMessage.SenderID,
-			"chat_id":    savedMessage.ChatID,
-			"created_at": savedMessage.CreatedAt,
-			"status":     savedMessage.Status,
-		}
-
-		// Broadcast обогащенного сообщения всем пользователям в чате
-		c.hub.BroadcastToChat(wsMsg.ChatID, enhancedData, models.WSMessageTypeNewMessage, c.userID)
-
-		log.Printf("Message saved to database with ID %d and broadcasted to chat %d", savedMessage.ID, wsMsg.ChatID)
+		// НЕ делаем broadcast здесь - SendMessage() уже это сделал!
+		// Это исправляет проблему с пустым content в WebSocket сообщениях
+		log.Printf("✅ Message saved to database with ID %d (broadcast handled by SendMessage)", savedMessage.ID)
 	} else {
 		// Fallback: если messageUsecase недоступен, просто broadcast без сохранения
 		log.Printf("MessageUsecase not available, broadcasting without saving to database")
