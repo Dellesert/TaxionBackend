@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,34 +32,59 @@ func NewFileUsecase(repo *repository.FileRepository, uploadDir, baseURL string) 
 	// Allowed MIME types
 	allowedTypes := map[string]bool{
 		// Images
-		"image/jpeg":      true,
-		"image/png":       true,
-		"image/gif":       true,
-		"image/webp":      true,
-		"image/svg+xml":   true,
+		"image/jpeg":               true,
+		"image/png":                true,
+		"image/gif":                true,
+		"image/webp":               true,
+		"image/svg+xml":            true,
+		"image/heic":               true,
+		"image/heif":               true,
+		"image/bmp":                true,
+		"image/tiff":               true,
+		"image/avif":               true,
+		"image/x-icon":             true,
+		"image/vnd.microsoft.icon": true,
 		// Documents
-		"application/pdf":                                                      true,
-		"application/msword":                                                   true,
-		"application/vnd.openxmlformats-officedocument.wordprocessingml.document": true,
-		"application/vnd.ms-excel":                                                true,
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":       true,
-		"application/vnd.ms-powerpoint":                                           true,
-		"application/vnd.openxmlformats-officedocument.presentationml.presentation": true,
-		"text/plain":       true,
-		"text/csv":         true,
+		"application/pdf":                                                               true,
+		"application/msword":                                                            true,
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document":       true,
+		"application/vnd.ms-excel":                                                      true,
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":             true,
+		"application/vnd.ms-powerpoint":                                                 true,
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation":     true,
+		"text/plain":                                                                    true,
+		"text/csv":                                                                      true,
+		"application/rtf":                                                               true,
+		"text/markdown":                                                                 true,
+		"application/json":                                                              true,
+		"text/xml":                                                                      true,
+		"application/xml":                                                               true,
 		// Video
-		"video/mp4":        true,
-		"video/mpeg":       true,
-		"video/webm":       true,
+		"video/mp4":          true,
+		"video/mpeg":         true,
+		"video/webm":         true,
+		"video/quicktime":    true, // MOV (iPhone)
+		"video/x-msvideo":    true, // AVI
+		"video/3gpp":         true, // 3GP
+		"video/x-matroska":   true, // MKV
 		// Audio
-		"audio/mpeg":       true,
-		"audio/wav":        true,
-		"audio/ogg":        true,
-		"audio/webm":       true,
+		"audio/mpeg":         true,
+		"audio/wav":          true,
+		"audio/x-wav":        true,
+		"audio/ogg":          true,
+		"audio/webm":         true,
+		"audio/mp4":          true, // M4A
+		"audio/x-m4a":        true, // M4A alternative
+		"audio/aac":          true,
+		"audio/flac":         true,
 		// Archives
-		"application/zip":  true,
+		"application/zip":              true,
 		"application/x-rar-compressed": true,
+		"application/vnd.rar":          true,
 		"application/x-7z-compressed":  true,
+		"application/gzip":             true,
+		"application/x-gzip":           true,
+		"application/x-tar":            true,
 	}
 
 	return &FileUsecase{
@@ -67,6 +94,31 @@ func NewFileUsecase(repo *repository.FileRepository, uploadDir, baseURL string) 
 		allowedTypes: allowedTypes,
 		baseURL:      baseURL,
 	}
+}
+
+// isHEIC checks if the file is a HEIC/HEIF image
+func (u *FileUsecase) isHEIC(mimeType string) bool {
+	return mimeType == "image/heic" || mimeType == "image/heif"
+}
+
+// convertHEICtoJPEG converts a HEIC file to JPEG using heif-convert
+func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
+	// Generate output path with .jpg extension
+	jpegPath := strings.TrimSuffix(heicPath, filepath.Ext(heicPath)) + ".jpg"
+
+	// Run heif-convert command
+	cmd := exec.Command("heif-convert", "-q", "90", heicPath, jpegPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("heif-convert failed: %v, stderr: %s", err, stderr.String())
+	}
+
+	// Remove original HEIC file
+	os.Remove(heicPath)
+
+	return jpegPath, nil
 }
 
 // UploadFile uploads a file and creates a record in the database
@@ -83,8 +135,11 @@ func (u *FileUsecase) UploadFile(
 		return nil, fmt.Errorf("file size exceeds maximum allowed size of %d bytes", u.maxFileSize)
 	}
 
+	// Get MIME type
+	mimeType := file.Header.Get("Content-Type")
+
 	// Validate MIME type
-	if !u.allowedTypes[file.Header.Get("Content-Type")] {
+	if !u.allowedTypes[mimeType] {
 		return nil, errors.New("file type not allowed")
 	}
 
@@ -124,13 +179,40 @@ func (u *FileUsecase) UploadFile(
 		return nil, fmt.Errorf("failed to save file: %w", err)
 	}
 
+	// Close destination file before conversion
+	dst.Close()
+
+	// Convert HEIC to JPEG if necessary
+	originalName := file.Filename
+	finalMimeType := mimeType
+	if u.isHEIC(mimeType) {
+		convertedPath, err := u.convertHEICtoJPEG(filePath)
+		if err != nil {
+			os.Remove(filePath) // Clean up on error
+			return nil, fmt.Errorf("failed to convert HEIC to JPEG: %w", err)
+		}
+		filePath = convertedPath
+		fileName = filepath.Base(convertedPath)
+		finalMimeType = "image/jpeg"
+		// Update original name extension
+		originalName = strings.TrimSuffix(originalName, filepath.Ext(originalName)) + ".jpg"
+
+		// Get new file size after conversion
+		fileInfo, err := os.Stat(filePath)
+		if err != nil {
+			os.Remove(filePath) // Clean up on error
+			return nil, fmt.Errorf("failed to get converted file info: %w", err)
+		}
+		written = fileInfo.Size()
+	}
+
 	// Create file record
 	fileRecord := &models.File{
 		FileName:     fileName,
-		OriginalName: file.Filename,
+		OriginalName: originalName,
 		FilePath:     filePath,
 		FileSize:     written,
-		MimeType:     file.Header.Get("Content-Type"),
+		MimeType:     finalMimeType,
 		FileType:     fileType,
 		UploadedBy:   uploadedBy,
 		EntityType:   entityType,
