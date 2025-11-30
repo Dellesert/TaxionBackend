@@ -583,6 +583,7 @@ func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, erro
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
+		Preload("Attachments"). // Load attachments for last_message
 		Where("chat_id = ? AND is_deleted = ?", chatID, false).
 		Order("created_at DESC").
 		First(&message).Error
