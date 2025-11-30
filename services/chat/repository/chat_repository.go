@@ -3,9 +3,11 @@ package repository
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/shared/database"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
@@ -20,6 +22,7 @@ type ChatRepository interface {
 	Count() (int64, error)
 	GetWithMembers(id uint) (*models.Chat, error)
 	GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) ([]*models.Chat, int64, error)
+	GetUserChatsWithSync(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool, updatedSince *time.Time) ([]*models.Chat, int64, error)
 	GetPinnedChats(userID uint, chatType string) ([]*models.Chat, error)
 	GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error)
 	GetChatByTaskID(taskID uint) (*models.Chat, error)
@@ -41,6 +44,10 @@ type ChatRepository interface {
 	HasWriteAccess(chatID, userID uint) (bool, error)
 	HasAdminAccess(chatID, userID uint) (bool, error)
 	HasOwnerAccess(chatID, userID uint) (bool, error)
+
+	// Sync methods
+	GetDeletedChatIDsSince(since time.Time) ([]uint, error)
+	RecordDeletion(chatID uint, deletedBy *uint) error
 }
 
 // chatRepository implements ChatRepository interface
@@ -211,6 +218,106 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int, chatType s
 	}
 
 	return chats, total, nil
+}
+
+// GetUserChatsWithSync retrieves user chats with optional incremental sync filtering
+func (r *chatRepository) GetUserChatsWithSync(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool, updatedSince *time.Time) ([]*models.Chat, int64, error) {
+	var chats []*models.Chat
+	var total int64
+
+	// Build base query for count
+	countQuery := r.db.Model(&models.Chat{}).
+		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
+		Where("chats.is_active = ?", true)
+
+	// Apply filters
+	if chatType != "" {
+		countQuery = countQuery.Where("chats.type = ?", chatType)
+	}
+	if isFavorite != nil {
+		countQuery = countQuery.Where("chat_members.is_favorite = ?", *isFavorite)
+	}
+	if isPinned != nil {
+		countQuery = countQuery.Where("chat_members.is_pinned = ?", *isPinned)
+	}
+	// Apply updated_since filter for incremental sync
+	if updatedSince != nil {
+		countQuery = countQuery.Where("chats.updated_at > ?", *updatedSince)
+	}
+
+	// Get total count
+	err := countQuery.Count(&total).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count user chats: %w", err)
+	}
+
+	// Build query for getting chats
+	query := r.db.
+		Preload("Members.User").
+		Preload("Members", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ?", true).Order("role ASC, joined_at ASC")
+		}).
+		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
+		Where("chats.is_active = ?", true)
+
+	// Apply filters
+	if chatType != "" {
+		query = query.Where("chats.type = ?", chatType)
+	}
+	if isFavorite != nil {
+		query = query.Where("chat_members.is_favorite = ?", *isFavorite)
+	}
+	if isPinned != nil {
+		query = query.Where("chat_members.is_pinned = ?", *isPinned)
+	}
+	// Apply updated_since filter for incremental sync
+	if updatedSince != nil {
+		query = query.Where("chats.updated_at > ?", *updatedSince)
+	}
+
+	// Get chats with members, sorted by pinned status first, then by last activity
+	err = query.
+		Limit(limit).
+		Offset(offset).
+		Order("chat_members.is_pinned DESC, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
+		Find(&chats).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get user chats: %w", err)
+	}
+
+	return chats, total, nil
+}
+
+// GetDeletedChatIDsSince returns IDs of deleted chats since the given timestamp
+func (r *chatRepository) GetDeletedChatIDsSince(since time.Time) ([]uint, error) {
+	var records []sharedmodels.DeletedRecord
+	err := r.db.
+		Where("entity_type = ? AND deleted_at > ?", database.EntityTypeChat, since).
+		Select("entity_id").
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uint, len(records))
+	for i, record := range records {
+		ids[i] = record.EntityID
+	}
+	return ids, nil
+}
+
+// RecordDeletion records a deleted chat for sync tracking
+func (r *chatRepository) RecordDeletion(chatID uint, deletedBy *uint) error {
+	record := sharedmodels.DeletedRecord{
+		EntityType: database.EntityTypeChat,
+		EntityID:   chatID,
+		DeletedAt:  time.Now(),
+		DeletedBy:  deletedBy,
+	}
+	return r.db.Create(&record).Error
 }
 
 // GetPinnedChats retrieves all pinned chats for a user with optional type filter

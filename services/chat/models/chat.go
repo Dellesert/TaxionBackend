@@ -221,6 +221,16 @@ type ChatListResponse struct {
 	Offset int            `json:"offset"`
 }
 
+// ChatSyncListResponse represents a sync-aware list response for chats
+type ChatSyncListResponse struct {
+	Chats      []ChatResponse `json:"data"`                  // List of chats (renamed to "data" for consistency)
+	Total      int64          `json:"total"`                 // Total count matching filters
+	DeletedIDs []uint         `json:"deleted_ids,omitempty"` // IDs of deleted chats since updated_since
+	ServerTime time.Time      `json:"server_time"`           // Server timestamp for next sync request
+	Limit      int            `json:"limit"`
+	Offset     int            `json:"offset"`
+}
+
 type CreateGroupChatRequest struct {
 	Name        string `json:"name" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`

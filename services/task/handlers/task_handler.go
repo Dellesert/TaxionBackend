@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strconv"
+	"time"
 
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/usecase"
@@ -514,8 +515,10 @@ func (h *TaskHandler) UnassignTask(c *gin.Context) {
 
 // GetTasks handles getting tasks with filtering and pagination
 // GET /api/v1/tasks
+// Supports incremental sync with updated_since parameter
 func (h *TaskHandler) GetTasks(c *gin.Context) {
 	requestID := requestid.Get(c)
+	serverTime := time.Now().UTC()
 
 	// Get user ID from JWT token
 	userID, err := middleware.GetUserIDFromContext(c)
@@ -588,12 +591,39 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		return
 	}
 
+	// If updated_since is provided, return sync-aware response format
+	if filter.UpdatedSince != nil {
+		// Get deleted task IDs since the timestamp
+		deletedIDs, err := h.taskUsecase.GetDeletedTaskIDsSince(*filter.UpdatedSince)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"user_id":       userID,
+				"updated_since": filter.UpdatedSince,
+				"error":         err.Error(),
+			}).Warn("Failed to get deleted task IDs, continuing without them")
+			deletedIDs = []uint{}
+		}
+
+		c.JSON(http.StatusOK, models.TaskSyncListResponse{
+			Tasks:      tasks,
+			Total:      total,
+			DeletedIDs: deletedIDs,
+			ServerTime: serverTime,
+			Limit:      filter.Limit,
+			Offset:     filter.Offset,
+		})
+		return
+	}
+
+	// Default response format (backward compatible)
 	c.JSON(http.StatusOK, gin.H{
-		"tasks":      tasks,
-		"total":      total,
-		"limit":      filter.Limit,
-		"offset":     filter.Offset,
-		"request_id": requestID,
+		"tasks":       tasks,
+		"total":       total,
+		"limit":       filter.Limit,
+		"offset":      filter.Offset,
+		"server_time": serverTime,
+		"request_id":  requestID,
 	})
 }
 

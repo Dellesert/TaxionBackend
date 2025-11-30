@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/usecase"
@@ -29,8 +30,10 @@ func NewChatHandler(chatUsecase usecase.ChatUsecase) *ChatHandler {
 // Chat Handler Methods
 
 // GetChats handles getting all chats for a user
+// Supports incremental sync with updated_since parameter
 func (h *ChatHandler) GetChats(c *gin.Context) {
 	requestID := requestid.Get(c)
+	serverTime := time.Now().UTC()
 
 	// Get user ID from JWT token
 	userID, err := middleware.GetUserIDFromContext(c)
@@ -65,7 +68,7 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 	}
 
 	// Parse filter parameters
-	chatType := c.Query("type")        // "private", "group", "channel"
+	chatType := c.Query("type")             // "private", "group", "channel"
 	isFavoriteStr := c.Query("is_favorite") // "true", "false"
 	isPinnedStr := c.Query("is_pinned")     // "true", "false"
 
@@ -79,7 +82,17 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 		isPinned = &val
 	}
 
-	chats, err := h.chatUsecase.GetUserChats(userID, limit, offset, chatType, isFavorite, isPinned)
+	// Parse updated_since for incremental sync
+	var updatedSince *time.Time
+	updatedSinceStr := c.Query("updated_since")
+	if updatedSinceStr != "" {
+		parsedTime, err := time.Parse(time.RFC3339, updatedSinceStr)
+		if err == nil {
+			updatedSince = &parsedTime
+		}
+	}
+
+	chats, err := h.chatUsecase.GetUserChatsWithSync(userID, limit, offset, chatType, isFavorite, isPinned, updatedSince)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -100,12 +113,39 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 		"count":      len(chats.Chats),
 	}).Info("User chats retrieved successfully")
 
+	// If updated_since is provided, return sync-aware response format
+	if updatedSince != nil {
+		// Get deleted chat IDs since the timestamp
+		deletedIDs, err := h.chatUsecase.GetDeletedChatIDsSince(*updatedSince)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"user_id":       userID,
+				"updated_since": updatedSince,
+				"error":         err.Error(),
+			}).Warn("Failed to get deleted chat IDs, continuing without them")
+			deletedIDs = []uint{}
+		}
+
+		c.JSON(http.StatusOK, models.ChatSyncListResponse{
+			Chats:      chats.Chats,
+			Total:      chats.Total,
+			DeletedIDs: deletedIDs,
+			ServerTime: serverTime,
+			Limit:      chats.Limit,
+			Offset:     chats.Offset,
+		})
+		return
+	}
+
+	// Default response format (backward compatible)
 	c.JSON(http.StatusOK, gin.H{
-		"chats":      chats.Chats,
-		"total":      chats.Total,
-		"limit":      chats.Limit,
-		"offset":     chats.Offset,
-		"request_id": requestID,
+		"chats":       chats.Chats,
+		"total":       chats.Total,
+		"limit":       chats.Limit,
+		"offset":      chats.Offset,
+		"server_time": serverTime,
+		"request_id":  requestID,
 	})
 }
 

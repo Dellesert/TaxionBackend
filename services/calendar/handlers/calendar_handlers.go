@@ -419,13 +419,43 @@ func (h *CalendarHandler) GetUserEvents(c *gin.Context) {
 		return
 	}
 
+	serverTime := time.Now().UTC()
+
+	// If updated_since is provided, return sync-aware response format
+	if filter.UpdatedSince != nil {
+		// Get deleted event IDs since the timestamp
+		deletedIDs, err := h.calendarUsecase.GetDeletedEventIDsSince(*filter.UpdatedSince)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"user_id":       userID,
+				"updated_since": filter.UpdatedSince,
+				"error":         err.Error(),
+			}).Warn("Failed to get deleted event IDs, continuing without them")
+			deletedIDs = []uint{}
+		}
+
+		c.JSON(http.StatusOK, models.EventSyncListResponse{
+			Events:     eventList.Events,
+			Total:      eventList.Total,
+			DeletedIDs: deletedIDs,
+			ServerTime: serverTime,
+			Limit:      eventList.Limit,
+			Offset:     eventList.Offset,
+			Filters:    eventList.Filters,
+		})
+		return
+	}
+
+	// Default response format (backward compatible)
 	c.JSON(http.StatusOK, gin.H{
-		"events":     eventList.Events,
-		"total":      eventList.Total,
-		"limit":      eventList.Limit,
-		"offset":     eventList.Offset,
-		"filters":    eventList.Filters,
-		"request_id": requestID,
+		"events":      eventList.Events,
+		"total":       eventList.Total,
+		"limit":       eventList.Limit,
+		"offset":      eventList.Offset,
+		"filters":     eventList.Filters,
+		"server_time": serverTime,
+		"request_id":  requestID,
 	})
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/shared/database"
+	sharedmodels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
@@ -29,6 +30,10 @@ type EventRepository interface {
 	GetEventStats(userID uint) (*models.EventStatsResponse, error)
 	SearchEvents(userID uint, searchQuery string, filter *models.EventFilterRequest) ([]*models.Event, int64, error)
 	GetRecurringEvents(userID uint) ([]*models.Event, error)
+
+	// Sync methods
+	GetDeletedEventIDsSince(since time.Time) ([]uint, error)
+	RecordDeletion(eventID uint, deletedBy *uint) error
 }
 
 // ParticipantRepository defines the interface for participant data operations
@@ -594,6 +599,11 @@ func (r *eventRepository) applyFilters(query *gorm.DB, filter *models.EventFilte
 		query = query.Where("events.title ILIKE ? OR events.description ILIKE ?", searchPattern, searchPattern)
 	}
 
+	// Incremental sync filter
+	if filter.UpdatedSince != nil {
+		query = query.Where("events.updated_at > ?", *filter.UpdatedSince)
+	}
+
 	return query
 }
 
@@ -821,4 +831,33 @@ func (r *reminderRepository) UpdateReminder(reminder *models.EventReminder) erro
 		return fmt.Errorf("reminder not found")
 	}
 	return nil
+}
+
+// GetDeletedEventIDsSince returns IDs of deleted events since the given timestamp
+func (r *eventRepository) GetDeletedEventIDsSince(since time.Time) ([]uint, error) {
+	var records []sharedmodels.DeletedRecord
+	err := r.db.
+		Where("entity_type = ? AND deleted_at > ?", database.EntityTypeEvent, since).
+		Select("entity_id").
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uint, len(records))
+	for i, record := range records {
+		ids[i] = record.EntityID
+	}
+	return ids, nil
+}
+
+// RecordDeletion records a deleted event for sync tracking
+func (r *eventRepository) RecordDeletion(eventID uint, deletedBy *uint) error {
+	record := sharedmodels.DeletedRecord{
+		EntityType: database.EntityTypeEvent,
+		EntityID:   eventID,
+		DeletedAt:  time.Now(),
+		DeletedBy:  deletedBy,
+	}
+	return r.db.Create(&record).Error
 }

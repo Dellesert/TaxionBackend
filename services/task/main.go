@@ -71,6 +71,7 @@ func main() {
 		&models.TaskAttachment{},
 		&models.TaskChecklist{},
 		&models.TaskChecklistItem{},
+		&sharedmodels.DeletedRecord{}, // For sync tracking
 	); err != nil {
 		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
@@ -117,6 +118,7 @@ func main() {
 	activityRepo := repository.NewActivityRepository(db)
 	attachmentRepo := repository.NewAttachmentRepository(db)
 	checklistRepo := repository.NewChecklistRepository(db)
+	syncRepo := repository.NewSyncRepository(db)
 
 	// Initialize user client
 	userClient := clients.NewUserClient()
@@ -129,8 +131,8 @@ func main() {
 	// Set activity usecase for attachment usecase (to avoid circular dependency)
 	attachmentUsecase.SetActivityUsecase(activityUsecase)
 
-	// Initialize task usecase with attachment usecase
-	taskUsecase := usecase.NewTaskUsecase(taskRepo, commentRepo, activityRepo, attachmentRepo, checklistRepo, attachmentUsecase)
+	// Initialize task usecase with attachment and sync support
+	taskUsecase := usecase.NewTaskUsecaseWithSync(taskRepo, commentRepo, activityRepo, attachmentRepo, checklistRepo, attachmentUsecase, syncRepo)
 
 	// Set task usecase for checklist usecase (to avoid circular dependency)
 	checklistUsecase.SetTaskUsecase(taskUsecase)

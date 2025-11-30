@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/services/poll/usecase"
@@ -483,13 +484,43 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		return
 	}
 
+	serverTime := time.Now().UTC()
+
+	// If updated_since is provided, return sync-aware response format
+	if filter.UpdatedSince != nil {
+		// Get deleted poll IDs since the timestamp
+		deletedIDs, err := h.pollUsecase.GetDeletedPollIDsSince(*filter.UpdatedSince)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"request_id":    requestID,
+				"user_id":       userID,
+				"updated_since": filter.UpdatedSince,
+				"error":         err.Error(),
+			}).Warn("Failed to get deleted poll IDs, continuing without them")
+			deletedIDs = []uint{}
+		}
+
+		c.JSON(http.StatusOK, models.PollSyncListResponse{
+			Polls:      pollList.Polls,
+			Total:      pollList.Total,
+			DeletedIDs: deletedIDs,
+			ServerTime: serverTime,
+			Limit:      pollList.Limit,
+			Offset:     pollList.Offset,
+			Filters:    pollList.Filters,
+		})
+		return
+	}
+
+	// Default response format (backward compatible)
 	c.JSON(http.StatusOK, gin.H{
-		"polls":      pollList.Polls,
-		"total":      pollList.Total,
-		"limit":      pollList.Limit,
-		"offset":     pollList.Offset,
-		"filters":    pollList.Filters,
-		"request_id": requestID,
+		"polls":       pollList.Polls,
+		"total":       pollList.Total,
+		"limit":       pollList.Limit,
+		"offset":      pollList.Offset,
+		"filters":     pollList.Filters,
+		"server_time": serverTime,
+		"request_id":  requestID,
 	})
 }
 

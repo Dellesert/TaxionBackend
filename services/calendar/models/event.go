@@ -393,6 +393,9 @@ type EventFilterRequest struct {
 	Offset      int        `form:"offset" binding:"omitempty,min=0"`
 	SortBy      string     `form:"sort_by" binding:"omitempty,oneof=start_time end_time created_at updated_at title"`
 	SortOrder   string     `form:"sort_order" binding:"omitempty,oneof=asc desc"`
+
+	// Incremental sync parameters
+	UpdatedSince *time.Time `form:"updated_since" time_format:"2006-01-02T15:04:05Z07:00"` // For incremental sync
 }
 
 // EventListResponse represents a paginated list of events
@@ -402,6 +405,17 @@ type EventListResponse struct {
 	Limit   int                 `json:"limit"`
 	Offset  int                 `json:"offset"`
 	Filters *EventFilterRequest `json:"filters,omitempty"`
+}
+
+// EventSyncListResponse represents a sync-aware list response for events
+type EventSyncListResponse struct {
+	Events     []*EventResponse    `json:"data"`                  // List of events (renamed to "data" for consistency)
+	Total      int64               `json:"total"`                 // Total count matching filters
+	DeletedIDs []uint              `json:"deleted_ids,omitempty"` // IDs of deleted events since updated_since
+	ServerTime time.Time           `json:"server_time"`           // Server timestamp for next sync request
+	Limit      int                 `json:"limit"`
+	Offset     int                 `json:"offset"`
+	Filters    *EventFilterRequest `json:"filters,omitempty"`
 }
 
 // CalendarViewRequest represents request for calendar view

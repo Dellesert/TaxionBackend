@@ -22,6 +22,7 @@ type ChatWebSocketHub interface {
 type ChatUsecase interface {
 	CreateChat(userID uint, req *models.CreateChatRequest) (*models.ChatResponse, error)
 	GetUserChats(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool) (*models.ChatListResponse, error)
+	GetUserChatsWithSync(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool, updatedSince *time.Time) (*models.ChatListResponse, error)
 	GetPinnedChats(userID uint, chatType string) ([]models.ChatResponse, error)
 	GetChat(userID, chatID uint) (*models.ChatResponse, error)
 	UpdateChat(userID, chatID uint, req *models.UpdateChatRequest) (*models.ChatResponse, error)
@@ -41,6 +42,9 @@ type ChatUsecase interface {
 	GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	SetWebSocketHub(hub ChatWebSocketHub)
+
+	// Sync methods
+	GetDeletedChatIDsSince(since time.Time) ([]uint, error)
 }
 
 // chatUsecase implements ChatUsecase interface
@@ -506,6 +510,69 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int, chatType str
 		Limit:  limit,
 		Offset: offset,
 	}, nil
+}
+
+// GetUserChatsWithSync retrieves user chats with optional incremental sync filtering
+func (uc *chatUsecase) GetUserChatsWithSync(userID uint, limit, offset int, chatType string, isFavorite, isPinned *bool, updatedSince *time.Time) (*models.ChatListResponse, error) {
+	// Set default pagination
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	chats, total, err := uc.chatRepo.GetUserChatsWithSync(userID, limit, offset, chatType, isFavorite, isPinned, updatedSince)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user chats: %w", err)
+	}
+
+	// Convert to response format and load last message + unread count + favorite status for each chat
+	chatResponses := make([]models.ChatResponse, len(chats))
+	for i, chat := range chats {
+		// Get last message for this chat
+		lastMessage, err := uc.messageRepo.GetLatestMessage(chat.ID)
+		if err == nil && lastMessage != nil {
+			// Add last message to chat's Messages slice so ToResponse can pick it up
+			chat.Messages = []models.Message{*lastMessage}
+		}
+
+		// Convert to response
+		response := chat.ToResponse(uc.baseURL)
+
+		// Get unread count for this chat
+		unreadCount, err := uc.messageRepo.GetUnreadCount(chat.ID, userID)
+		if err == nil {
+			response.UnreadCount = unreadCount
+		} else {
+			response.UnreadCount = 0
+		}
+
+		// Get favorite and pinned status for current user
+		response.IsFavorite = false
+		response.IsPinned = false
+		for _, member := range chat.Members {
+			if member.UserID == userID {
+				response.IsFavorite = member.IsFavorite
+				response.IsPinned = member.IsPinned
+				break
+			}
+		}
+
+		chatResponses[i] = *response
+	}
+
+	return &models.ChatListResponse{
+		Chats:  chatResponses,
+		Total:  total,
+		Limit:  limit,
+		Offset: offset,
+	}, nil
+}
+
+// GetDeletedChatIDsSince returns IDs of chats deleted since the given timestamp
+func (uc *chatUsecase) GetDeletedChatIDsSince(since time.Time) ([]uint, error) {
+	return uc.chatRepo.GetDeletedChatIDsSince(since)
 }
 
 // GetPinnedChats retrieves all pinned chats for a user with optional type filter

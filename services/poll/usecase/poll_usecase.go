@@ -47,6 +47,9 @@ type PollUsecase interface {
 
 	// Statistics
 	GetPollStats(userID uint) (*models.PollStatsResponse, error)
+
+	// Sync methods
+	GetDeletedPollIDsSince(since time.Time) ([]uint, error)
 }
 
 // pollUsecase implements PollUsecase interface
@@ -380,6 +383,16 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role
 	// Delete poll (cascade will handle related records)
 	if err := u.pollRepo.Delete(pollID); err != nil {
 		return fmt.Errorf("failed to delete poll: %w", err)
+	}
+
+	// Record deletion for sync tracking
+	if err := u.pollRepo.RecordDeletion(pollID, &userID); err != nil {
+		// Log error but don't fail the operation - deletion was successful
+		logger.WithFields(map[string]interface{}{
+			"poll_id": pollID,
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Warn("Failed to record poll deletion for sync")
 	}
 
 	return nil
@@ -1304,4 +1317,9 @@ func (u *pollUsecase) GetPollVoters(userID, pollID uint, userRole sharedModels.R
 		PollID:      pollID,
 		PollTitle:   poll.Title,
 	}, nil
+}
+
+// GetDeletedPollIDsSince returns IDs of polls deleted since the given timestamp
+func (u *pollUsecase) GetDeletedPollIDsSince(since time.Time) ([]uint, error) {
+	return u.pollRepo.GetDeletedPollIDsSince(since)
 }

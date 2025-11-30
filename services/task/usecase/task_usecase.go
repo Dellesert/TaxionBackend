@@ -31,6 +31,9 @@ type TaskUsecase interface {
 	GetTaskStats(userID uint) (*models.TaskStatsResponse, error)
 	GetTaskStatsInternal(period string) (*models.TaskStatsInternalResponse, error) // Internal method for analytics with optional period filter
 
+	// Sync methods
+	GetDeletedTaskIDsSince(since time.Time) ([]uint, error)
+
 	// Hierarchy methods
 	CreateSubtask(userID uint, parentTaskID uint, req *models.CreateTaskRequest) (*models.TaskResponse, error)
 	GetSubtasks(userID uint, parentTaskID uint) ([]*models.TaskResponse, error)
@@ -76,6 +79,7 @@ type taskUsecase struct {
 	attachmentRepo     repository.AttachmentRepository
 	checklistRepo      repository.ChecklistRepository
 	attachmentUsecase  AttachmentUsecase
+	syncRepo           repository.SyncRepository
 	userClient         *clients.UserClient
 	notificationClient *clients.NotificationClient
 }
@@ -96,6 +100,29 @@ func NewTaskUsecase(
 		attachmentRepo:     attachmentRepo,
 		checklistRepo:      checklistRepo,
 		attachmentUsecase:  attachmentUsecase,
+		userClient:         clients.NewUserClient(),
+		notificationClient: clients.NewNotificationClient(),
+	}
+}
+
+// NewTaskUsecaseWithSync creates a new task usecase with sync support
+func NewTaskUsecaseWithSync(
+	taskRepo repository.TaskRepository,
+	commentRepo repository.CommentRepository,
+	activityRepo repository.ActivityRepository,
+	attachmentRepo repository.AttachmentRepository,
+	checklistRepo repository.ChecklistRepository,
+	attachmentUsecase AttachmentUsecase,
+	syncRepo repository.SyncRepository,
+) TaskUsecase {
+	return &taskUsecase{
+		taskRepo:           taskRepo,
+		commentRepo:        commentRepo,
+		activityRepo:       activityRepo,
+		attachmentRepo:     attachmentRepo,
+		checklistRepo:      checklistRepo,
+		attachmentUsecase:  attachmentUsecase,
+		syncRepo:           syncRepo,
 		userClient:         clients.NewUserClient(),
 		notificationClient: clients.NewNotificationClient(),
 	}
@@ -784,6 +811,14 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 	// Delete task
 	if err := u.taskRepo.Delete(taskID); err != nil {
 		return fmt.Errorf("failed to delete task: %w", err)
+	}
+
+	// Record deletion for sync tracking
+	if u.syncRepo != nil {
+		if err := u.syncRepo.RecordDeletion(taskID, &userID); err != nil {
+			// Log error but don't fail the request - deletion tracking is not critical
+			fmt.Printf("[DeleteTask] Failed to record deletion for sync: %v\n", err)
+		}
 	}
 
 	// If task had a parent, recalculate parent progress after deletion
@@ -2163,4 +2198,14 @@ func (u *taskUsecase) parseTimeRange(period string) (*repository.TimeRange, erro
 		Start: start,
 		End:   end,
 	}, nil
+}
+
+// GetDeletedTaskIDsSince returns IDs of tasks deleted since the given timestamp
+// Used for incremental sync to inform clients about deletions
+func (u *taskUsecase) GetDeletedTaskIDsSince(since time.Time) ([]uint, error) {
+	if u.syncRepo == nil {
+		// If sync repo is not configured, return empty slice
+		return []uint{}, nil
+	}
+	return u.syncRepo.GetDeletedIDsSince(since)
 }

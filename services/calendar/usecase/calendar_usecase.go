@@ -8,6 +8,7 @@ import (
 
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
+	"tachyon-messenger/shared/logger"
 
 	"gorm.io/gorm"
 )
@@ -34,6 +35,9 @@ type CalendarUsecase interface {
 	GetEventStats(userID uint) (*models.EventStatsResponse, error)
 	SearchEvents(userID uint, searchQuery string, filter *models.EventFilterRequest) (*models.EventListResponse, error)
 	CheckTimeConflict(userID uint, startTime, endTime time.Time, excludeEventID *uint) (bool, error)
+
+	// Sync methods
+	GetDeletedEventIDsSince(since time.Time) ([]uint, error)
 }
 
 // calendarUsecase implements CalendarUsecase interface
@@ -300,6 +304,16 @@ func (u *calendarUsecase) DeleteEvent(userID, eventID uint) error {
 	// Delete event (cascades to participants and reminders)
 	if err := u.eventRepo.DeleteEvent(eventID); err != nil {
 		return fmt.Errorf("failed to delete event: %w", err)
+	}
+
+	// Record deletion for sync tracking
+	if err := u.eventRepo.RecordDeletion(eventID, &userID); err != nil {
+		// Log error but don't fail the operation - deletion was successful
+		logger.WithFields(map[string]interface{}{
+			"event_id": eventID,
+			"user_id":  userID,
+			"error":    err.Error(),
+		}).Warn("Failed to record event deletion for sync")
 	}
 
 	return nil
@@ -804,4 +818,9 @@ func (u *calendarUsecase) isValidReminderType(reminderType models.ReminderType) 
 	default:
 		return false
 	}
+}
+
+// GetDeletedEventIDsSince returns IDs of events deleted since the given timestamp
+func (u *calendarUsecase) GetDeletedEventIDsSince(since time.Time) ([]uint, error) {
+	return u.eventRepo.GetDeletedEventIDsSince(since)
 }

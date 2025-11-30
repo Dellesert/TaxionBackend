@@ -36,6 +36,10 @@ type PollRepository interface {
 	Count() (int64, error)
 	CountByCreator(userID uint) (int64, error)
 	CountByStatus(status models.PollStatus) (int64, error)
+
+	// Sync methods
+	GetDeletedPollIDsSince(since time.Time) ([]uint, error)
+	RecordDeletion(pollID uint, deletedBy *uint) error
 }
 
 // pollRepository implements PollRepository interface
@@ -150,6 +154,11 @@ func (r *pollRepository) GetPolls(userID uint, filter *models.PollFilterRequest,
 
 	// Apply other filters
 	query = r.applyFilters(query, filter)
+
+	// Apply updated_since filter for incremental sync
+	if filter != nil && filter.UpdatedSince != nil {
+		query = query.Where("polls.updated_at > ?", *filter.UpdatedSince)
+	}
 
 	// Get total count
 	var total int64
@@ -870,4 +879,33 @@ func (r *pollRepository) loadPollStatistics(polls []*models.Poll, userID uint) {
 		"user_id": userID,
 		"polls":   pollDebugInfo,
 	}).Info("Poll statistics loaded")
+}
+
+// GetDeletedPollIDsSince returns IDs of deleted polls since the given timestamp
+func (r *pollRepository) GetDeletedPollIDsSince(since time.Time) ([]uint, error) {
+	var records []sharedModels.DeletedRecord
+	err := r.db.
+		Where("entity_type = ? AND deleted_at > ?", database.EntityTypePoll, since).
+		Select("entity_id").
+		Find(&records).Error
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]uint, len(records))
+	for i, record := range records {
+		ids[i] = record.EntityID
+	}
+	return ids, nil
+}
+
+// RecordDeletion records a deleted poll for sync tracking
+func (r *pollRepository) RecordDeletion(pollID uint, deletedBy *uint) error {
+	record := sharedModels.DeletedRecord{
+		EntityType: database.EntityTypePoll,
+		EntityID:   pollID,
+		DeletedAt:  time.Now(),
+		DeletedBy:  deletedBy,
+	}
+	return r.db.Create(&record).Error
 }

@@ -127,3 +127,30 @@ type SessionResponse struct {
 	SessionID string `json:"session_id"`
 	ExpiresAt int64  `json:"expires_at"` // Unix timestamp
 }
+
+// === Incremental Sync Models ===
+
+// DeletedRecord tracks deleted records for sync purposes
+// Used to inform clients about deletions since their last sync
+type DeletedRecord struct {
+	ID         uint      `gorm:"primarykey" json:"id"`
+	EntityType string    `gorm:"not null;size:50;index:idx_deleted_records_sync" json:"entity_type"` // "task", "chat", "poll", "event"
+	EntityID   uint      `gorm:"not null;index:idx_deleted_records_sync" json:"entity_id"`
+	DeletedAt  time.Time `gorm:"not null;index:idx_deleted_records_sync" json:"deleted_at"`
+	DeletedBy  *uint     `gorm:"index" json:"deleted_by,omitempty"`
+}
+
+// TableName returns the table name for DeletedRecord model
+func (DeletedRecord) TableName() string {
+	return "deleted_records"
+}
+
+// SyncListResponse represents a generic sync-aware list response
+// Use this for incremental synchronization endpoints
+type SyncListResponse[T any] struct {
+	Data       []T       `json:"data"`                  // List of entities (updated since timestamp)
+	Total      int64     `json:"total"`                 // Total count matching filters (for pagination info)
+	DeletedIDs []uint    `json:"deleted_ids,omitempty"` // IDs of deleted records since the timestamp
+	ServerTime time.Time `json:"server_time"`           // Server timestamp for next sync request
+	HasMore    bool      `json:"has_more,omitempty"`    // Indicates if there are more records to fetch
+}

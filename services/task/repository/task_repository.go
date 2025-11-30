@@ -493,6 +493,11 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 		query = query.Where("due_date > ?", *filter.DueAfter)
 	}
 
+	// Incremental sync: filter by updated_at for changes since last sync
+	if filter.UpdatedSince != nil {
+		query = query.Where("updated_at > ?", *filter.UpdatedSince)
+	}
+
 	// Text search in title and description (case-insensitive)
 	if filter.Search != "" {
 		// Trim whitespace from search query

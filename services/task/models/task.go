@@ -404,6 +404,19 @@ type TaskFilterRequest struct {
 	Offset           int           `form:"offset" binding:"omitempty,min=0"`
 	SortBy           string        `form:"sort_by" binding:"omitempty,oneof=created_at updated_at due_date priority title progress_percentage"`
 	SortOrder        string        `form:"sort_order" binding:"omitempty,oneof=asc desc"`
+
+	// Incremental sync parameters
+	UpdatedSince *time.Time `form:"updated_since" time_format:"2006-01-02T15:04:05Z07:00"` // For incremental sync: only records updated after this timestamp
+}
+
+// TaskSyncListResponse represents a sync-aware list response for tasks
+type TaskSyncListResponse struct {
+	Tasks      []*TaskResponse `json:"data"`                  // List of tasks (renamed to "data" for consistency)
+	Total      int64           `json:"total"`                 // Total count matching filters
+	DeletedIDs []uint          `json:"deleted_ids,omitempty"` // IDs of deleted tasks since updated_since
+	ServerTime time.Time       `json:"server_time"`           // Server timestamp for next sync request
+	Limit      int             `json:"limit"`
+	Offset     int             `json:"offset"`
 }
 
 // Activity-related models

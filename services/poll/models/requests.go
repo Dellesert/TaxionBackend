@@ -114,6 +114,20 @@ type PollFilterRequest struct {
 	// Sorting
 	SortBy    string `json:"sort_by,omitempty" form:"sort_by" validate:"omitempty,oneof=created_at updated_at title start_time end_time total_votes"`
 	SortOrder string `json:"sort_order,omitempty" form:"sort_order" validate:"omitempty,oneof=asc desc"`
+
+	// Incremental sync parameters
+	UpdatedSince *time.Time `json:"updated_since,omitempty" form:"updated_since"` // For incremental sync: only records updated after this timestamp
+}
+
+// PollSyncListResponse represents a sync-aware list response for polls
+type PollSyncListResponse struct {
+	Polls      []*PollResponse `json:"data"`                  // List of polls (renamed to "data" for consistency)
+	Total      int64           `json:"total"`                 // Total count matching filters
+	DeletedIDs []uint          `json:"deleted_ids,omitempty"` // IDs of deleted polls since updated_since
+	ServerTime time.Time       `json:"server_time"`           // Server timestamp for next sync request
+	Limit      int             `json:"limit"`
+	Offset     int             `json:"offset"`
+	Filters    interface{}     `json:"filters,omitempty"`
 }
 
 // File: services/poll/models/responses.go
