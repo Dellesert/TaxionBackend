@@ -54,6 +54,7 @@ type User struct {
 	SubdepartmentID    *uint             `gorm:"index" json:"subdepartment_id,omitempty"`
 	Subdepartment      *Subdepartment    `gorm:"foreignKey:SubdepartmentID" json:"subdepartment,omitempty"`
 	Avatar             string            `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
+	AvatarThumbnail    string            `gorm:"size:500" json:"avatar_thumbnail,omitempty" validate:"omitempty,url,max=500"`
 	Phone              string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
 	Position           string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
 	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
@@ -180,6 +181,7 @@ type UpdateUserRequest struct {
 	MiddleName      *string    `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 	BirthDate       *time.Time `json:"birth_date,omitempty"`
 	Avatar          *string    `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	AvatarThumbnail *string    `json:"avatar_thumbnail,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
 	Phone           *string    `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
 	Position        *string    `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 	DepartmentID    *uint      `json:"department_id,omitempty"`
@@ -224,6 +226,7 @@ type UserResponse struct {
 	SubdepartmentID       *uint                  `json:"subdepartment_id,omitempty"`
 	Subdepartment         *SubdepartmentResponse `json:"subdepartment,omitempty"`
 	Avatar                string                 `json:"avatar,omitempty"`
+	AvatarThumbnail       string                 `json:"avatar_thumbnail,omitempty"`
 	Phone                 string                 `json:"phone,omitempty"`
 	Position              string                 `json:"position,omitempty"`
 	LastActiveAt          *time.Time             `json:"last_active_at,omitempty"`
@@ -259,6 +262,7 @@ func (u *User) ToResponse() *UserResponse {
 		DepartmentID:          u.DepartmentID,
 		SubdepartmentID:       u.SubdepartmentID,
 		Avatar:                u.Avatar,
+		AvatarThumbnail:       u.AvatarThumbnail,
 		Phone:                 u.Phone,
 		Position:              u.Position,
 		LastActiveAt:          u.LastActiveAt,
@@ -343,6 +347,7 @@ type UpdateProfileRequest struct {
 	MiddleName      *string `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 	BirthDate       *string `json:"birth_date,omitempty" binding:"omitempty" validate:"omitempty"`
 	Avatar          *string `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	AvatarThumbnail *string `json:"avatar_thumbnail,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
 	Phone           *string `json:"phone,omitempty" binding:"omitempty,max=20" validate:"omitempty,max=20"`
 	Position        *string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
 	DepartmentID    *uint   `json:"department_id,omitempty" validate:"omitempty,min=0"`

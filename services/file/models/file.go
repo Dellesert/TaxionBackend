@@ -1,6 +1,7 @@
 package models
 
 import (
+	"path/filepath"
 	"time"
 
 	"tachyon-messenger/shared/models"
@@ -22,17 +23,20 @@ const (
 // File represents a file stored in the system
 type File struct {
 	models.BaseModel
-	FileName     string    `gorm:"not null;size:255" json:"file_name" validate:"required,min=1,max=255"`
-	OriginalName string    `gorm:"not null;size:255" json:"original_name" validate:"required,min=1,max=255"`
-	FilePath     string    `gorm:"not null;size:512" json:"file_path" validate:"required"`
-	FileSize     int64     `gorm:"not null" json:"file_size" validate:"required,min=1"`
-	MimeType     string    `gorm:"not null;size:100" json:"mime_type" validate:"required"`
-	FileType     FileType  `gorm:"not null;size:20;index" json:"file_type" validate:"required,oneof=avatar attachment document image video audio other"`
-	UploadedBy   uint      `gorm:"not null;index" json:"uploaded_by" validate:"required,min=1"`
-	EntityType   *string   `gorm:"size:50;index" json:"entity_type,omitempty"` // e.g., "user", "message", "task"
-	EntityID     *uint     `gorm:"index" json:"entity_id,omitempty"`           // ID of the related entity
-	IsPublic     bool      `gorm:"not null;default:false" json:"is_public"`
-	URL          string    `gorm:"-" json:"url,omitempty"` // Computed field for public URL
+	FileName         string    `gorm:"not null;size:255" json:"file_name" validate:"required,min=1,max=255"`
+	OriginalName     string    `gorm:"not null;size:255" json:"original_name" validate:"required,min=1,max=255"`
+	FilePath         string    `gorm:"not null;size:512" json:"file_path" validate:"required"`
+	FileSize         int64     `gorm:"not null" json:"file_size" validate:"required,min=1"`
+	ThumbnailPath    string    `gorm:"size:512" json:"thumbnail_path,omitempty"`
+	ThumbnailSize    int64     `json:"thumbnail_size,omitempty"`
+	MimeType         string    `gorm:"not null;size:100" json:"mime_type" validate:"required"`
+	FileType         FileType  `gorm:"not null;size:20;index" json:"file_type" validate:"required,oneof=avatar attachment document image video audio other"`
+	UploadedBy       uint      `gorm:"not null;index" json:"uploaded_by" validate:"required,min=1"`
+	EntityType       *string   `gorm:"size:50;index" json:"entity_type,omitempty"` // e.g., "user", "message", "task"
+	EntityID         *uint     `gorm:"index" json:"entity_id,omitempty"`           // ID of the related entity
+	IsPublic         bool      `gorm:"not null;default:false" json:"is_public"`
+	URL              string    `gorm:"-" json:"url,omitempty"`          // Computed field for public URL
+	ThumbnailURL     string    `gorm:"-" json:"thumbnail_url,omitempty"` // Computed field for thumbnail URL
 }
 
 // TableName returns the table name for File model
@@ -57,6 +61,7 @@ type FileResponse struct {
 	OriginalName string    `json:"original_name"`
 	FilePath     string    `json:"file_path"`
 	FileSize     int64     `json:"file_size"`
+	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
 	MimeType     string    `json:"mime_type"`
 	FileType     FileType  `json:"file_type"`
 	UploadedBy   uint      `json:"uploaded_by"`
@@ -75,12 +80,24 @@ func (f *File) ToResponse(baseURL string) *FileResponse {
 		url = baseURL + "/api/v1/files/public/" + f.FileName
 	}
 
+	// Generate thumbnail URL if thumbnail exists
+	thumbnailURL := ""
+	if f.ThumbnailPath != "" {
+		thumbnailFileName := filepath.Base(f.ThumbnailPath)
+		if f.IsPublic {
+			thumbnailURL = baseURL + "/api/v1/files/public/" + thumbnailFileName
+		} else {
+			thumbnailURL = baseURL + "/api/v1/files/download/" + thumbnailFileName
+		}
+	}
+
 	return &FileResponse{
 		ID:           f.ID,
 		FileName:     f.FileName,
 		OriginalName: f.OriginalName,
 		FilePath:     f.FilePath,
 		FileSize:     f.FileSize,
+		ThumbnailURL: thumbnailURL,
 		MimeType:     f.MimeType,
 		FileType:     f.FileType,
 		UploadedBy:   f.UploadedBy,

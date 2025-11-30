@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"tachyon-messenger/services/file/models"
 	"tachyon-messenger/services/file/usecase"
@@ -128,7 +129,7 @@ func (h *FileHandler) GetFile(c *gin.Context) {
 
 // DownloadFile handles file download by filename
 // @Summary Download file
-// @Description Download file by filename (requires authentication)
+// @Description Download file by filename (requires authentication). Supports thumbnails with _thumb suffix.
 // @Tags files
 // @Produce application/octet-stream
 // @Param filename path string true "Filename"
@@ -152,6 +153,9 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 		return
 	}
 
+	// Check if this is a thumbnail request
+	isThumbnail := strings.Contains(fileName, "_thumb")
+
 	// Get file record
 	file, err := h.fileUsecase.GetFileByName(fileName, userID.(uint))
 	if err != nil {
@@ -163,16 +167,25 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 		return
 	}
 
+	// Determine which file to serve (original or thumbnail)
+	filePath := file.FilePath
+	if isThumbnail && file.ThumbnailPath != "" {
+		filePath = file.ThumbnailPath
+	} else if isThumbnail && file.ThumbnailPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not available"})
+		return
+	}
+
 	// Serve file
 	c.Header("Content-Description", "File Transfer")
 	c.Header("Content-Disposition", "attachment; filename="+file.OriginalName)
 	c.Header("Content-Type", file.MimeType)
-	c.File(file.FilePath)
+	c.File(filePath)
 }
 
 // DownloadPublicFile handles public file download (no auth required)
 // @Summary Download public file
-// @Description Download public file by filename (no authentication required)
+// @Description Download public file by filename (no authentication required). Supports thumbnails with _thumb suffix.
 // @Tags files
 // @Produce application/octet-stream
 // @Param filename path string true "Filename"
@@ -187,10 +200,22 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 		return
 	}
 
+	// Check if this is a thumbnail request
+	isThumbnail := strings.Contains(fileName, "_thumb")
+
 	// Get file record
 	file, err := h.fileUsecase.GetPublicFileByName(fileName)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		return
+	}
+
+	// Determine which file to serve (original or thumbnail)
+	filePath := file.FilePath
+	if isThumbnail && file.ThumbnailPath != "" {
+		filePath = file.ThumbnailPath
+	} else if isThumbnail && file.ThumbnailPath == "" {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not available"})
 		return
 	}
 
@@ -199,7 +224,7 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 	c.Header("Content-Disposition", "inline; filename="+file.OriginalName)
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
-	c.File(file.FilePath)
+	c.File(filePath)
 }
 
 // ListFiles handles listing files with filters

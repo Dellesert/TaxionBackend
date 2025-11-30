@@ -38,17 +38,18 @@ const (
 // User represents a user in the system
 type User struct {
 	BaseModel
-	Email          string     `gorm:"uniqueIndex;not null" json:"email"`
-	Name           string     `gorm:"not null" json:"name"`
-	HashedPassword string     `gorm:"not null" json:"-"`
-	Role           Role       `gorm:"not null;default:'employee'" json:"role"`
-	Status         UserStatus `gorm:"not null;default:'offline'" json:"status"`
-	Avatar         string     `json:"avatar,omitempty"`
-	Phone          string     `json:"phone,omitempty"`
-	Department     string     `json:"department,omitempty"`
-	Position       string     `json:"position,omitempty"`
-	LastActiveAt   *time.Time `json:"last_active_at,omitempty"`
-	IsActive       bool       `gorm:"not null;default:true" json:"is_active"`
+	Email           string     `gorm:"uniqueIndex;not null" json:"email"`
+	Name            string     `gorm:"not null" json:"name"`
+	HashedPassword  string     `gorm:"not null" json:"-"`
+	Role            Role       `gorm:"not null;default:'employee'" json:"role"`
+	Status          UserStatus `gorm:"not null;default:'offline'" json:"status"`
+	Avatar          string     `json:"avatar,omitempty"`
+	AvatarThumbnail string     `json:"avatar_thumbnail,omitempty"`
+	Phone           string     `json:"phone,omitempty"`
+	Department      string     `json:"department,omitempty"`
+	Position        string     `json:"position,omitempty"`
+	LastActiveAt    *time.Time `json:"last_active_at,omitempty"`
+	IsActive        bool       `gorm:"not null;default:true" json:"is_active"`
 }
 
 // JWT Related Structures

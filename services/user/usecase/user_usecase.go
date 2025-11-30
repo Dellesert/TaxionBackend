@@ -266,6 +266,9 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 	if req.Avatar != nil {
 		updates["avatar"] = *req.Avatar
 	}
+	if req.AvatarThumbnail != nil {
+		updates["avatar_thumbnail"] = *req.AvatarThumbnail
+	}
 	if req.Phone != nil {
 		updates["phone"] = *req.Phone
 	}

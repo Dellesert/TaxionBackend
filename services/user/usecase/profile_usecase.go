@@ -110,6 +110,9 @@ func (p *profileUsecase) UpdateProfile(id uint, req *models.UpdateProfileRequest
 	if req.Avatar != nil {
 		user.Avatar = strings.TrimSpace(*req.Avatar)
 	}
+	if req.AvatarThumbnail != nil {
+		user.AvatarThumbnail = strings.TrimSpace(*req.AvatarThumbnail)
+	}
 	if req.Phone != nil {
 		user.Phone = strings.TrimSpace(*req.Phone)
 	}

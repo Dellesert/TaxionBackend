@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
 	"mime/multipart"
 	"os"
@@ -14,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nfnt/resize"
 	"tachyon-messenger/services/file/models"
 	"tachyon-messenger/services/file/repository"
 )
@@ -99,6 +103,116 @@ func NewFileUsecase(repo *repository.FileRepository, uploadDir, baseURL string) 
 // isHEIC checks if the file is a HEIC/HEIF image
 func (u *FileUsecase) isHEIC(mimeType string) bool {
 	return mimeType == "image/heic" || mimeType == "image/heif"
+}
+
+// isImage checks if the file is an image that supports thumbnails
+func (u *FileUsecase) isImage(mimeType string) bool {
+	supportedFormats := []string{
+		"image/jpeg",
+		"image/png",
+		"image/gif",
+		"image/webp",
+		"image/bmp",
+	}
+	for _, format := range supportedFormats {
+		if mimeType == format {
+			return true
+		}
+	}
+	return false
+}
+
+// createThumbnail creates a thumbnail for an image file
+// Target size: 400x300px, maintaining aspect ratio
+func (u *FileUsecase) createThumbnail(originalPath string, mimeType string) (string, int64, error) {
+	// Open original file
+	file, err := os.Open(originalPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to open image: %w", err)
+	}
+	defer file.Close()
+
+	// Decode image based on MIME type
+	var img image.Image
+	switch mimeType {
+	case "image/jpeg", "image/jpg":
+		img, err = jpeg.Decode(file)
+	case "image/png":
+		img, err = png.Decode(file)
+	default:
+		// For other formats, try generic decode
+		img, _, err = image.Decode(file)
+	}
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	// Calculate thumbnail dimensions (max 400x300, maintain aspect ratio)
+	const maxWidth = 400
+	const maxHeight = 300
+	bounds := img.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
+
+	// Calculate new dimensions maintaining aspect ratio
+	var newWidth, newHeight uint
+	aspectRatio := float64(width) / float64(height)
+
+	if aspectRatio > float64(maxWidth)/float64(maxHeight) {
+		// Width is the limiting factor
+		newWidth = maxWidth
+		newHeight = uint(float64(maxWidth) / aspectRatio)
+	} else {
+		// Height is the limiting factor
+		newHeight = maxHeight
+		newWidth = uint(float64(maxHeight) * aspectRatio)
+	}
+
+	// Resize image
+	thumbnail := resize.Resize(newWidth, newHeight, img, resize.Lanczos3)
+
+	// Generate thumbnail filename
+	ext := filepath.Ext(originalPath)
+	thumbnailPath := strings.TrimSuffix(originalPath, ext) + "_thumb" + ext
+
+	// Create thumbnail file
+	out, err := os.Create(thumbnailPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create thumbnail file: %w", err)
+	}
+	defer out.Close()
+
+	// Encode thumbnail with quality optimization
+	switch mimeType {
+	case "image/jpeg", "image/jpg":
+		// JPEG with quality 85 for good balance between size and quality
+		err = jpeg.Encode(out, thumbnail, &jpeg.Options{Quality: 85})
+	case "image/png":
+		// PNG encoding
+		err = png.Encode(out, thumbnail)
+	default:
+		// Default to JPEG for other formats
+		err = jpeg.Encode(out, thumbnail, &jpeg.Options{Quality: 85})
+		if err == nil {
+			// Update path if we converted to JPEG
+			newThumbnailPath := strings.TrimSuffix(thumbnailPath, ext) + ".jpg"
+			os.Rename(thumbnailPath, newThumbnailPath)
+			thumbnailPath = newThumbnailPath
+		}
+	}
+
+	if err != nil {
+		os.Remove(thumbnailPath) // Clean up on error
+		return "", 0, fmt.Errorf("failed to encode thumbnail: %w", err)
+	}
+
+	// Get thumbnail file size
+	fileInfo, err := os.Stat(thumbnailPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to get thumbnail file info: %w", err)
+	}
+
+	return thumbnailPath, fileInfo.Size(), nil
 }
 
 // convertHEICtoJPEG converts a HEIC file to JPEG using heif-convert
@@ -206,18 +320,35 @@ func (u *FileUsecase) UploadFile(
 		written = fileInfo.Size()
 	}
 
+	// Create thumbnail for images
+	var thumbnailPath string
+	var thumbnailSize int64
+	if u.isImage(finalMimeType) {
+		thumbPath, thumbSize, err := u.createThumbnail(filePath, finalMimeType)
+		if err != nil {
+			// Log error but don't fail the upload if thumbnail creation fails
+			// Just continue without thumbnail
+			fmt.Printf("Warning: failed to create thumbnail: %v\n", err)
+		} else {
+			thumbnailPath = thumbPath
+			thumbnailSize = thumbSize
+		}
+	}
+
 	// Create file record
 	fileRecord := &models.File{
-		FileName:     fileName,
-		OriginalName: originalName,
-		FilePath:     filePath,
-		FileSize:     written,
-		MimeType:     finalMimeType,
-		FileType:     fileType,
-		UploadedBy:   uploadedBy,
-		EntityType:   entityType,
-		EntityID:     entityID,
-		IsPublic:     isPublic,
+		FileName:      fileName,
+		OriginalName:  originalName,
+		FilePath:      filePath,
+		FileSize:      written,
+		ThumbnailPath: thumbnailPath,
+		ThumbnailSize: thumbnailSize,
+		MimeType:      finalMimeType,
+		FileType:      fileType,
+		UploadedBy:    uploadedBy,
+		EntityType:    entityType,
+		EntityID:      entityID,
+		IsPublic:      isPublic,
 	}
 
 	// Save to database
@@ -250,8 +381,19 @@ func (u *FileUsecase) GetFileByID(id uint) (*models.File, error) {
 }
 
 // GetFileByName retrieves a file by filename
+// If the filename ends with _thumb, it will try to find the original file and return it with thumbnail path
 func (u *FileUsecase) GetFileByName(fileName string, userID uint) (*models.File, error) {
-	file, err := u.repo.GetByFileName(fileName)
+	// Check if this is a thumbnail request
+	isThumbnail := strings.Contains(fileName, "_thumb")
+
+	// If it's a thumbnail, get the original filename
+	originalFileName := fileName
+	if isThumbnail {
+		ext := filepath.Ext(fileName)
+		originalFileName = strings.Replace(fileName, "_thumb"+ext, ext, 1)
+	}
+
+	file, err := u.repo.GetByFileName(originalFileName)
 	if err != nil {
 		return nil, err
 	}
@@ -265,8 +407,19 @@ func (u *FileUsecase) GetFileByName(fileName string, userID uint) (*models.File,
 }
 
 // GetPublicFileByName retrieves a public file by filename (no auth required)
+// If the filename ends with _thumb, it will try to find the original file and return it with thumbnail path
 func (u *FileUsecase) GetPublicFileByName(fileName string) (*models.File, error) {
-	file, err := u.repo.GetByFileName(fileName)
+	// Check if this is a thumbnail request
+	isThumbnail := strings.Contains(fileName, "_thumb")
+
+	// If it's a thumbnail, get the original filename
+	originalFileName := fileName
+	if isThumbnail {
+		ext := filepath.Ext(fileName)
+		originalFileName = strings.Replace(fileName, "_thumb"+ext, ext, 1)
+	}
+
+	file, err := u.repo.GetByFileName(originalFileName)
 	if err != nil {
 		return nil, err
 	}
@@ -319,6 +472,14 @@ func (u *FileUsecase) DeleteFile(id uint, userID uint) error {
 	// Delete physical file
 	if err := os.Remove(file.FilePath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to delete physical file: %w", err)
+	}
+
+	// Delete thumbnail if exists
+	if file.ThumbnailPath != "" {
+		if err := os.Remove(file.ThumbnailPath); err != nil && !os.IsNotExist(err) {
+			// Log error but continue - don't fail if thumbnail deletion fails
+			fmt.Printf("Warning: failed to delete thumbnail: %v\n", err)
+		}
 	}
 
 	// Delete database record
