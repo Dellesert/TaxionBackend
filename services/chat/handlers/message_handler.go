@@ -1431,6 +1431,111 @@ func (h *MessageHandler) GetMessagesBeforeID(c *gin.Context) {
 	c.JSON(http.StatusOK, response)
 }
 
+// GetMessagesAfterID handles loading newer messages after a specific message ID (new refactored API)
+func (h *MessageHandler) GetMessagesAfterID(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse query parameters
+	var req models.GetMessagesAfterRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Warn("Invalid query parameters")
+	}
+
+	// Get messages after ID
+	response, err := h.messageUsecase.GetMessagesAfterID(userID, uint(chatID), uint(messageID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to get messages after ID")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get messages"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"chat_id":       chatID,
+		"message_id":    messageID,
+		"message_count": len(response.Messages),
+		"has_newer":     response.HasNewer,
+	}).Info("Messages after ID retrieved successfully")
+
+	c.JSON(http.StatusOK, response)
+}
+
 // GetMessageContext handles getting messages around a specific message (new refactored API)
 func (h *MessageHandler) GetMessageContext(c *gin.Context) {
 	requestID := requestid.Get(c)

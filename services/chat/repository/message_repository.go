@@ -60,10 +60,14 @@ type MessageRepository interface {
 	// New cursor-based pagination methods for refactored API
 	GetLatestMessages(chatID, userID uint, limit int) ([]*models.Message, int64, error)
 	GetMessagesBeforeID(chatID, userID, beforeID uint, limit int) ([]*models.Message, error)
+	GetMessagesAfterID(chatID, userID, afterID uint, limit int) ([]*models.Message, error)
 	GetMessageContext(chatID, userID, targetMessageID uint, before, after int) ([]*models.Message, error)
 	GetFirstUnreadMessage(chatID, userID uint) (*models.Message, int64, error)
 	HasOlderMessages(chatID, userID, oldestID uint) (bool, error)
 	HasNewerMessages(chatID, userID, newestID uint) (bool, error)
+
+	// Pinned messages
+	GetPinnedMessages(chatID, userID uint) ([]*models.Message, error)
 }
 
 // messageRepository implements MessageRepository interface
@@ -1236,4 +1240,71 @@ func (r *messageRepository) HasNewerMessages(chatID, userID, newestID uint) (boo
 	}
 
 	return count > 0, nil
+}
+
+// GetMessagesAfterID retrieves messages after a specific message ID in chronological order
+func (r *messageRepository) GetMessagesAfterID(chatID, userID, afterID uint, limit int) ([]*models.Message, error) {
+	var messages []*models.Message
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND id > ?", chatID, afterID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id ASC"). // Chronological order (oldest to newest)
+		Limit(limit).
+		Find(&messages).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages after ID: %w", err)
+	}
+
+	return messages, nil
+}
+
+// GetPinnedMessages retrieves all pinned messages in a chat
+func (r *messageRepository) GetPinnedMessages(chatID, userID uint) ([]*models.Message, error) {
+	var messages []*models.Message
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.
+		Preload("Sender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND is_pinned = ?", chatID, true).
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id DESC"). // Most recently pinned first
+		Find(&messages).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pinned messages: %w", err)
+	}
+
+	return messages, nil
 }

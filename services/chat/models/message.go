@@ -218,6 +218,11 @@ type GetMessageContextRequest struct {
 	After  int `form:"after" validate:"omitempty,min=0,max=50"`  // Messages after target (default: 15)
 }
 
+// GetMessagesAfterRequest represents request for loading newer messages (cursor-based)
+type GetMessagesAfterRequest struct {
+	Limit int `form:"limit" validate:"omitempty,min=1,max=100"` // Number of messages to load (default: 30)
+}
+
 // UnreadInfo represents information about unread messages
 type UnreadInfo struct {
 	FirstUnreadID *uint `json:"first_unread_id"` // ID of first unread message (null if all read)
@@ -226,10 +231,11 @@ type UnreadInfo struct {
 
 // GetLatestMessagesResponse represents response for latest messages endpoint
 type GetLatestMessagesResponse struct {
-	Messages   []MessageResponse `json:"messages"`    // Messages in chronological order (old to new)
-	Total      int64             `json:"total"`       // Total number of messages in chat
-	HasOlder   bool              `json:"has_older"`   // Are there older messages to load?
-	UnreadInfo *UnreadInfo       `json:"unread_info"` // Information about unread messages (null if not requested)
+	Messages       []MessageResponse `json:"messages"`         // Messages in chronological order (old to new)
+	Total          int64             `json:"total"`            // Total number of messages in chat
+	HasOlder       bool              `json:"has_older"`        // Are there older messages to load?
+	UnreadInfo     *UnreadInfo       `json:"unread_info"`      // Information about unread messages (null if not requested)
+	PinnedMessages []MessageResponse `json:"pinned_messages"`  // All pinned messages in this chat (most recent first)
 }
 
 // GetMessagesBeforeResponse represents response for loading older messages
@@ -245,6 +251,13 @@ type GetMessageContextResponse struct {
 	TargetMessageID uint              `json:"target_message_id"` // ID of the target message
 	HasOlder        bool              `json:"has_older"`         // Are there older messages?
 	HasNewer        bool              `json:"has_newer"`         // Are there newer messages?
+}
+
+// GetMessagesAfterResponse represents response for loading newer messages
+type GetMessagesAfterResponse struct {
+	Messages []MessageResponse `json:"messages"`  // Messages in chronological order (old to new)
+	HasNewer bool              `json:"has_newer"` // Are there newer messages to load?
+	NewestID *uint             `json:"newest_id"` // ID of newest message in this response (cursor for next request)
 }
 
 // MessageResponse represents message response

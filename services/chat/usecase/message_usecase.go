@@ -44,6 +44,7 @@ type MessageUsecase interface {
 	// New refactored API methods
 	GetLatestMessages(userID, chatID uint, req *models.GetLatestMessagesRequest) (*models.GetLatestMessagesResponse, error)
 	GetMessagesBeforeID(userID, chatID, beforeID uint, req *models.GetMessagesBeforeRequest) (*models.GetMessagesBeforeResponse, error)
+	GetMessagesAfterID(userID, chatID, afterID uint, req *models.GetMessagesAfterRequest) (*models.GetMessagesAfterResponse, error)
 	GetMessageContext(userID, chatID, targetMessageID uint, req *models.GetMessageContextRequest) (*models.GetMessageContextResponse, error)
 }
 
@@ -1258,8 +1259,24 @@ func (uc *messageUsecase) GetLatestMessages(userID, chatID uint, req *models.Get
 		}
 	}
 
-	fmt.Printf("✅ Retrieved %d latest messages for chat %d (total: %d, has_older: %v)\n",
-		len(messageResponses), chatID, total, hasOlder)
+	// Get pinned messages for this chat
+	pinnedMessages, err := uc.messageRepo.GetPinnedMessages(chatID, userID)
+	if err != nil {
+		fmt.Printf("⚠️ Failed to get pinned messages: %v\n", err)
+		// Don't fail the request, just set empty array
+		response.PinnedMessages = []models.MessageResponse{}
+	} else {
+		// Convert to response format
+		pinnedResponses := make([]models.MessageResponse, len(pinnedMessages))
+		for i, msg := range pinnedMessages {
+			pinnedResponses[i] = *msg.ToResponseForUser(userID, uc.baseURL)
+		}
+		response.PinnedMessages = pinnedResponses
+		fmt.Printf("📌 Retrieved %d pinned messages for chat %d\n", len(pinnedResponses), chatID)
+	}
+
+	fmt.Printf("✅ Retrieved %d latest messages for chat %d (total: %d, has_older: %v, pinned: %d)\n",
+		len(messageResponses), chatID, total, hasOlder, len(response.PinnedMessages))
 
 	return response, nil
 }
@@ -1317,6 +1334,64 @@ func (uc *messageUsecase) GetMessagesBeforeID(userID, chatID, beforeID uint, req
 
 	fmt.Printf("✅ Retrieved %d messages before ID %d for chat %d (has_older: %v)\n",
 		len(messageResponses), beforeID, chatID, hasOlder)
+
+	return response, nil
+}
+
+// GetMessagesAfterID retrieves messages after a specific message ID
+func (uc *messageUsecase) GetMessagesAfterID(userID, chatID, afterID uint, req *models.GetMessagesAfterRequest) (*models.GetMessagesAfterResponse, error) {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set default limit
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Get messages after the specified ID
+	messages, err := uc.messageRepo.GetMessagesAfterID(chatID, userID, afterID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages after ID: %w", err)
+	}
+
+	// Convert to response format
+	messageResponses := make([]models.MessageResponse, len(messages))
+	for i, message := range messages {
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
+	}
+
+	// Determine newest message ID and check for newer messages
+	var newestID *uint
+	hasNewer := false
+	if len(messages) > 0 {
+		// Messages are in ascending order (oldest first), so newest is last
+		newestID = &messages[len(messages)-1].ID
+		hasNewer, err = uc.messageRepo.HasNewerMessages(chatID, userID, *newestID)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to check for newer messages: %v\n", err)
+			// Don't fail the request, assume there might be more
+			hasNewer = len(messages) == limit
+		}
+	}
+
+	response := &models.GetMessagesAfterResponse{
+		Messages: messageResponses,
+		HasNewer: hasNewer,
+		NewestID: newestID,
+	}
+
+	fmt.Printf("✅ Retrieved %d messages after ID %d for chat %d (has_newer: %v)\n",
+		len(messageResponses), afterID, chatID, hasNewer)
 
 	return response, nil
 }

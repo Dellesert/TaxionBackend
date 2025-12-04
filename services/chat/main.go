@@ -260,6 +260,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		// NEW refactored message endpoints (under chats) - using :id for consistency
 		chats.GET("/:id/messages/latest", messageHandler.GetLatestMessages)                     // GET /api/v1/chats/:id/messages/latest
 		chats.GET("/:id/messages/before/:messageId", messageHandler.GetMessagesBeforeID)        // GET /api/v1/chats/:id/messages/before/:messageId
+		chats.GET("/:id/messages/after/:messageId", messageHandler.GetMessagesAfterID)          // GET /api/v1/chats/:id/messages/after/:messageId
 		chats.GET("/:id/messages/context/:messageId", messageHandler.GetMessageContext)         // GET /api/v1/chats/:id/messages/context/:messageId
 
 		// Chat-specific routes
