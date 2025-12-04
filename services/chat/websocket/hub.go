@@ -469,14 +469,23 @@ func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
+	log.Printf("🔴 [LeaveChatRoom] User %d attempting to leave chat room %d", userID, chatID)
+
 	// Remove user from chat room
 	if users, exists := h.chatRooms[chatID]; exists {
+		wasInRoom := users[userID]
 		delete(users, userID)
 		if len(users) == 0 {
 			delete(h.chatRooms, chatID)
 		}
 
-		log.Printf("User %d left chat room %d (room has %d users)", userID, chatID, len(users))
+		if wasInRoom {
+			log.Printf("✅ [LeaveChatRoom] User %d successfully left chat room %d (room has %d users remaining)", userID, chatID, len(users))
+		} else {
+			log.Printf("⚠️ [LeaveChatRoom] User %d was NOT in chat room %d", userID, chatID)
+		}
+	} else {
+		log.Printf("⚠️ [LeaveChatRoom] Chat room %d does not exist in chatRooms map", chatID)
 	}
 
 	// Remove chat room from client
@@ -484,6 +493,7 @@ func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 		client.mutex.Lock()
 		delete(client.chatRooms, chatID)
 		client.mutex.Unlock()
+		log.Printf("✅ [LeaveChatRoom] Removed chat %d from client %d's chatRooms", chatID, userID)
 
 		// Notify other users in the chat
 		leaveData := map[string]interface{}{
@@ -505,6 +515,8 @@ func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 		default:
 			log.Println("Broadcast channel full, dropping leave message")
 		}
+	} else {
+		log.Printf("⚠️ [LeaveChatRoom] Client %d not found in h.clients", userID)
 	}
 }
 

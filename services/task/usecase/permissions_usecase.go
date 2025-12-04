@@ -69,6 +69,48 @@ func (u *taskUsecase) enrichTaskResponseWithPermissions(ctx context.Context, res
 	return nil
 }
 
+// enrichTasksWithPermissions adds permissions to multiple task responses
+func (u *taskUsecase) enrichTasksWithPermissions(ctx context.Context, responses []*models.TaskResponse, userID uint) error {
+	if len(responses) == 0 {
+		return nil
+	}
+
+	// For each task, get permissions and attach them
+	for _, response := range responses {
+		// Get task from cache/repository
+		task, err := u.taskRepo.GetByID(response.ID)
+		if err != nil {
+			// Log error but continue with other tasks
+			fmt.Printf("Failed to get task %d for permissions enrichment: %v\n", response.ID, err)
+			continue
+		}
+
+		// Get permissions
+		perms, err := permissions.GetTaskPermissions(ctx, task, userID)
+		if err != nil {
+			// Log error but continue with other tasks
+			fmt.Printf("Failed to get permissions for task %d: %v\n", response.ID, err)
+			continue
+		}
+
+		// Attach to response
+		response.Permissions = &models.TaskPermissions{
+			CanView:              perms.CanView,
+			CanViewSubtasks:      perms.CanViewSubtasks,
+			CanEdit:              perms.CanEdit,
+			CanChangeStatus:      perms.CanChangeStatus,
+			CanCheckItems:        perms.CanCheckItems,
+			CanCreateSubtasks:    perms.CanCreateSubtasks,
+			CanDelegate:          perms.CanDelegate,
+			CanEmergencyComplete: perms.CanEmergencyComplete,
+			CanAssignUsers:       perms.CanAssignUsers,
+			CanDelete:            perms.CanDelete,
+		}
+	}
+
+	return nil
+}
+
 // EmergencyCompleteTask completes a task in emergency mode (for users in delegation chain when task is overdue)
 func (u *taskUsecase) EmergencyCompleteTask(ctx context.Context, taskID uint, userID uint) error {
 	// Get task

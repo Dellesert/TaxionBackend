@@ -242,9 +242,10 @@ func (r *taskRepository) GetAllTasks(filter *models.TaskFilterRequest) ([]*model
 		return nil, 0, fmt.Errorf("failed to get all tasks: %w", err)
 	}
 
-	// Load comment counts and subtask counts
+	// Load comment counts, subtask counts, and attachment counts
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
 
 	return tasks, total, nil
 }
@@ -280,9 +281,10 @@ func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequ
 		return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)
 	}
 
-	// Load comment counts and subtask counts
+	// Load comment counts, subtask counts, and attachment counts
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
 
 	return tasks, total, nil
 }
@@ -309,9 +311,10 @@ func (r *taskRepository) GetTasksByAssignee(assigneeID uint, filter *models.Task
 		return nil, 0, fmt.Errorf("failed to get assignee tasks: %w", err)
 	}
 
-	// Load comment counts and subtask counts
+	// Load comment counts, subtask counts, and attachment counts
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
 
 	return tasks, total, nil
 }
@@ -338,9 +341,10 @@ func (r *taskRepository) GetTasksByCreator(creatorID uint, filter *models.TaskFi
 		return nil, 0, fmt.Errorf("failed to get creator tasks: %w", err)
 	}
 
-	// Load comment counts and subtask counts
+	// Load comment counts, subtask counts, and attachment counts
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
 
 	return tasks, total, nil
 }
@@ -435,9 +439,10 @@ func (r *taskRepository) GetOverdueTasks(userID *uint) ([]*models.Task, error) {
 		return nil, fmt.Errorf("failed to get overdue tasks: %w", err)
 	}
 
-	// Load comment counts and subtask counts
+	// Load comment counts, subtask counts, and attachment counts
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
 
 	return tasks, nil
 }
@@ -450,9 +455,10 @@ func (r *taskRepository) GetTasksWithComments(taskIDs []uint) ([]*models.Task, e
 		return nil, fmt.Errorf("failed to get tasks with comments: %w", err)
 	}
 
-	// Load comment counts and subtask counts
+	// Load comment counts, subtask counts, and attachment counts
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
 
 	return tasks, nil
 }
@@ -465,14 +471,25 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 		return query
 	}
 
-	if filter.Status != nil {
+	// Status filter - support both single and multiple statuses
+	if len(filter.Statuses) > 0 {
+		// Multiple statuses (array)
+		query = query.Where("status IN ?", filter.Statuses)
+	} else if filter.Status != nil {
+		// Single status (backward compatibility)
 		query = query.Where("status = ?", *filter.Status)
 	}
 
-	if filter.Priority != nil {
+	// Priority filter - support both single and multiple priorities
+	if len(filter.Priorities) > 0 {
+		// Multiple priorities (array)
+		query = query.Where("priority IN ?", filter.Priorities)
+	} else if filter.Priority != nil {
+		// Single priority (backward compatibility)
 		query = query.Where("priority = ?", *filter.Priority)
 	}
 
+	// Filter by assignee
 	if filter.AssignedTo != nil {
 		// Filter by assignee: check both old field (assigned_to) and new table (task_assignees)
 		query = query.Where(
@@ -481,10 +498,52 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 		)
 	}
 
+	// Filter by assignee (new field)
+	if filter.AssignedToUserID != nil {
+		query = query.Where(
+			"assigned_to_user_id = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)",
+			*filter.AssignedToUserID, *filter.AssignedToUserID,
+		)
+	}
+
+	// Filter by creator
 	if filter.CreatedBy != nil {
 		query = query.Where("created_by = ?", *filter.CreatedBy)
 	}
 
+	// Filter by creator (new field)
+	if filter.CreatedByUserID != nil {
+		query = query.Where("created_by_user_id = ?", *filter.CreatedByUserID)
+	}
+
+	// Filter by delegated tasks
+	if filter.IsDelegated != nil && *filter.IsDelegated {
+		query = query.Where("delegated_from_user_id IS NOT NULL OR original_assignee_id IS NOT NULL")
+	}
+
+	// Filter by parent task
+	if filter.ParentTaskID != nil {
+		query = query.Where("parent_task_id = ?", *filter.ParentTaskID)
+	}
+
+	// Filter by subtask flag
+	if filter.IsSubtask != nil {
+		if *filter.IsSubtask {
+			// Only subtasks
+			query = query.Where("parent_task_id IS NOT NULL")
+		} else {
+			// Only parent tasks (top-level)
+			query = query.Where("parent_task_id IS NULL")
+		}
+	}
+
+	// Filter by tasks that have subtasks
+	if filter.HasSubtasks != nil && *filter.HasSubtasks {
+		// Only tasks that have at least one subtask
+		query = query.Where("id IN (SELECT DISTINCT parent_task_id FROM tasks WHERE parent_task_id IS NOT NULL AND deleted_at IS NULL)")
+	}
+
+	// Filter by due date
 	if filter.DueBefore != nil {
 		query = query.Where("due_date < ?", *filter.DueBefore)
 	}
@@ -623,6 +682,41 @@ func (r *taskRepository) loadSubtaskCounts(tasks []*models.Task) {
 
 	for _, task := range tasks {
 		task.SubtaskCount = countMap[task.ID]
+	}
+}
+
+// loadAttachmentCounts loads attachment counts for a batch of tasks
+func (r *taskRepository) loadAttachmentCounts(tasks []*models.Task) {
+	if len(tasks) == 0 {
+		return
+	}
+
+	taskIDs := make([]uint, len(tasks))
+	for i, task := range tasks {
+		taskIDs[i] = task.ID
+	}
+
+	// Get attachment counts for all tasks in one query
+	type attachmentCount struct {
+		TaskID uint
+		Count  int
+	}
+
+	var counts []attachmentCount
+	r.db.Model(&models.TaskAttachment{}).
+		Select("task_id, COUNT(*) as count").
+		Where("task_id IN ?", taskIDs).
+		Group("task_id").
+		Scan(&counts)
+
+	// Map counts to tasks
+	countMap := make(map[uint]int)
+	for _, count := range counts {
+		countMap[count.TaskID] = count.Count
+	}
+
+	for _, task := range tasks {
+		task.AttachmentCount = countMap[task.ID]
 	}
 }
 

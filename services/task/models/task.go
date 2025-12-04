@@ -389,21 +389,29 @@ type TaskStatsInternalResponse struct {
 
 // TaskFilterRequest represents filtering parameters for tasks
 type TaskFilterRequest struct {
-	Status           *TaskStatus   `form:"status" binding:"omitempty,oneof=new viewed in_progress review done cancelled"`
-	Priority         *TaskPriority `form:"priority" binding:"omitempty,oneof=low medium high critical"`
-	AssignedTo       *uint         `form:"assigned_to" binding:"omitempty,min=1"`
-	AssignedToUserID *uint         `form:"assigned_to_user_id" binding:"omitempty,min=1"`
-	CreatedBy        *uint         `form:"created_by" binding:"omitempty,min=1"`
-	CreatedByUserID  *uint         `form:"created_by_user_id" binding:"omitempty,min=1"`
-	ParentTaskID     *uint         `form:"parent_task_id" binding:"omitempty,min=1"`
-	IsSubtask        *bool         `form:"is_subtask"` // true = only subtasks, false = only parent tasks
-	DueBefore        *time.Time    `form:"due_before" time_format:"2006-01-02"`
-	DueAfter         *time.Time    `form:"due_after" time_format:"2006-01-02"`
-	Search           string        `form:"search" binding:"omitempty"` // Text search in title and description
-	Limit            int           `form:"limit" binding:"omitempty,min=1,max=100"`
-	Offset           int           `form:"offset" binding:"omitempty,min=0"`
-	SortBy           string        `form:"sort_by" binding:"omitempty,oneof=created_at updated_at due_date priority title progress_percentage"`
-	SortOrder        string        `form:"sort_order" binding:"omitempty,oneof=asc desc"`
+	// Status filters - both single and multiple supported through same field
+	Status   *TaskStatus  `form:"status" binding:"omitempty,oneof=new viewed in_progress review done cancelled"`
+	Statuses []TaskStatus `form:"status" binding:"omitempty"`
+
+	// Priority filters - both single and multiple supported through same field
+	Priority   *TaskPriority  `form:"priority" binding:"omitempty,oneof=low medium high critical"`
+	Priorities []TaskPriority `form:"priority" binding:"omitempty"`
+
+	AssignedTo       *uint `form:"assigned_to" binding:"omitempty,min=1"`
+	AssignedToUserID *uint `form:"assigned_to_user_id" binding:"omitempty,min=1"`
+	CreatedBy        *uint `form:"created_by" binding:"omitempty,min=1"`
+	CreatedByUserID  *uint `form:"created_by_user_id" binding:"omitempty,min=1"`
+	ParentTaskID     *uint `form:"parent_task_id" binding:"omitempty,min=1"`
+	IsSubtask        *bool `form:"is_subtask"`     // true = only subtasks, false = only parent tasks
+	HasSubtasks      *bool `form:"has_subtasks"`   // true = only tasks with subtasks (subtask_count > 0)
+	IsDelegated      *bool `form:"is_delegated"`   // true = only delegated tasks (has delegated_from_user_id or original_assignee_id)
+	DueBefore        *time.Time `form:"due_before" time_format:"2006-01-02"`
+	DueAfter         *time.Time `form:"due_after" time_format:"2006-01-02"`
+	Search           string     `form:"search" binding:"omitempty"` // Text search in title and description
+	Limit            int        `form:"limit" binding:"omitempty,min=1,max=100"`
+	Offset           int        `form:"offset" binding:"omitempty,min=0"`
+	SortBy           string     `form:"sort_by" binding:"omitempty,oneof=created_at updated_at due_date priority title progress_percentage"`
+	SortOrder        string     `form:"sort_order" binding:"omitempty,oneof=asc desc"`
 
 	// Incremental sync parameters
 	UpdatedSince *time.Time `form:"updated_since" time_format:"2006-01-02T15:04:05Z07:00"` // For incremental sync: only records updated after this timestamp

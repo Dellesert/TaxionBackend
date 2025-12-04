@@ -194,9 +194,11 @@ func (req *VotePollRequest) Validate(poll *Poll) error {
 
 // ValidatePollFilterRequest validates poll filter request
 func (req *PollFilterRequest) Validate() error {
-	// Validate status
-	if req.Status != "" && !isValidPollStatus(req.Status) {
-		return errors.New("invalid poll status")
+	// Validate status (now it's a slice)
+	for _, status := range req.Status {
+		if !isValidPollStatus(status) {
+			return errors.New("invalid poll status: " + string(status))
+		}
 	}
 
 	// Validate type

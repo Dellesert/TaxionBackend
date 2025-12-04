@@ -582,8 +582,8 @@ func (r *pollRepository) applyFilters(query *gorm.DB, filter *models.PollFilterR
 		return query
 	}
 
-	if filter.Status != "" {
-		query = query.Where("status = ?", filter.Status)
+	if len(filter.Status) > 0 {
+		query = query.Where("status IN ?", filter.Status)
 	}
 
 	if filter.Type != "" {

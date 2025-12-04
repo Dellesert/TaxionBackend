@@ -1167,6 +1167,13 @@ func (u *taskUsecase) GetUserTasks(userID uint, userRole sharedmodels.Role, filt
 		fmt.Printf("Failed to enrich tasks with user info: %v\n", err)
 	}
 
+	// Enrich all tasks with permissions
+	ctx := context.Background()
+	if err := u.enrichTasksWithPermissions(ctx, responses, userID); err != nil {
+		// Log error but don't fail the request
+		fmt.Printf("Failed to enrich tasks with permissions: %v\n", err)
+	}
+
 	return responses, total, nil
 }
 

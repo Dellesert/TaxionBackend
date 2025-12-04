@@ -87,7 +87,7 @@ type CreateCommentRequest struct {
 
 // PollFilterRequest represents request for filtering polls
 type PollFilterRequest struct {
-	Status       PollStatus     `json:"status,omitempty" validate:"omitempty,oneof=draft active closed archived cancelled"`
+	Status       []PollStatus   `json:"status,omitempty" form:"status" validate:"omitempty,dive,oneof=draft active closed archived cancelled"`
 	Type         PollType       `json:"type,omitempty" validate:"omitempty,oneof=single_choice multiple_choice ranking rating open_text"`
 	Visibility   PollVisibility `json:"visibility,omitempty" validate:"omitempty,oneof=public department invite_only private"`
 	Category     string         `json:"category,omitempty" validate:"omitempty,max=100"`

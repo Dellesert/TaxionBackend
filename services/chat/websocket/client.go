@@ -190,11 +190,9 @@ func (c *Client) handleJoinMessage(wsMsg *models.WSMessage) {
 
 // handleLeaveMessage handles user leave messages
 func (c *Client) handleLeaveMessage(wsMsg *models.WSMessage) {
-	// ВРЕМЕННО ОТКЛЮЧЕНО: НЕ удаляем пользователя из комнаты при leave сообщении
-	// Это решает проблему с постоянным join/leave из-за багов на фронтенде
-	// Пользователь останется в комнате до полного disconnect WebSocket
-	log.Printf("User %d requested to leave chat room %d (ignored - staying in room)", c.userID, wsMsg.ChatID)
-	// c.leaveChatRoom(wsMsg.ChatID)
+	// FIXED: Re-enabled leave handling now that frontend properly sends join/leave events
+	log.Printf("User %d leaving chat room %d", c.userID, wsMsg.ChatID)
+	c.leaveChatRoom(wsMsg.ChatID)
 }
 
 // handleReadMessage handles message read notifications

@@ -19,6 +19,7 @@ import (
 type WebSocketHub interface {
 	BroadcastToChat(chatID uint, data interface{}, msgType models.WSMessageType, senderID uint)
 	BroadcastToChatExcludeSender(chatID uint, data interface{}, msgType models.WSMessageType, senderID uint)
+	GetChatRoomUsers(chatID uint) []uint
 }
 
 type MessageUsecase interface {
@@ -1047,6 +1048,27 @@ func (uc *messageUsecase) validateSendMessageRequest(req *models.SendMessageRequ
 }
 
 
+// isUserActiveInChat checks if user is actively viewing the chat (connected via WebSocket and in the chat room)
+func (uc *messageUsecase) isUserActiveInChat(userID, chatID uint) bool {
+	if uc.wsHub == nil {
+		fmt.Printf("🔍 [isUserActiveInChat] wsHub is nil for user %d in chat %d\n", userID, chatID)
+		return false
+	}
+
+	// Get list of users currently in the chat room (actively viewing)
+	activeUsers := uc.wsHub.GetChatRoomUsers(chatID)
+	fmt.Printf("🔍 [isUserActiveInChat] Active users in chat %d: %v (checking for user %d)\n", chatID, activeUsers, userID)
+
+	for _, id := range activeUsers {
+		if id == userID {
+			fmt.Printf("✅ [isUserActiveInChat] User %d IS active in chat %d\n", userID, chatID)
+			return true
+		}
+	}
+	fmt.Printf("❌ [isUserActiveInChat] User %d is NOT active in chat %d\n", userID, chatID)
+	return false
+}
+
 // sendMessageNotifications sends notifications to chat members about new message
 func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, message *models.Message, response *models.MessageResponse) error {
 	// Get chat information
@@ -1133,6 +1155,13 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 			notificationTitle = "💬 Ответ на ваше сообщение"
 		}
 
+		// NEW: If user is actively viewing this chat, skip PUSH notification but keep in_app
+		channels := []string{"in_app", "push"}
+		if uc.isUserActiveInChat(memberID, chatID) {
+			fmt.Printf("⏭️ User %d is actively viewing chat %d - sending in_app only (no push)\n", memberID, chatID)
+			channels = []string{"in_app"} // Only in-app notification, no push
+		}
+
 		notificationReq := &client.NotificationRequest{
 			UserID:      memberID,
 			Type:        "message",
@@ -1146,7 +1175,7 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 				"message_id": message.ID,
 				"sender_id":  senderID, // Add sender_id for notification grouping
 			},
-			Channels: []string{"in_app", "push"},
+			Channels: channels,
 		}
 
 		// Send notification async (don't block on errors)
