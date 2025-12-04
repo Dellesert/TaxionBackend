@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
 	"tachyon-messenger/shared/logger"
@@ -38,13 +39,18 @@ type CalendarUsecase interface {
 
 	// Sync methods
 	GetDeletedEventIDsSince(since time.Time) ([]uint, error)
+
+	// Background processing methods
+	ProcessEventReminders() error
 }
 
 // calendarUsecase implements CalendarUsecase interface
 type calendarUsecase struct {
-	eventRepo       repository.EventRepository
-	participantRepo repository.ParticipantRepository
-	reminderRepo    repository.ReminderRepository
+	eventRepo          repository.EventRepository
+	participantRepo    repository.ParticipantRepository
+	reminderRepo       repository.ReminderRepository
+	notificationClient *clients.NotificationClient
+	userClient         *clients.UserClient
 }
 
 // NewCalendarUsecase creates a new calendar usecase
@@ -54,9 +60,11 @@ func NewCalendarUsecase(
 	reminderRepo repository.ReminderRepository,
 ) CalendarUsecase {
 	return &calendarUsecase{
-		eventRepo:       eventRepo,
-		participantRepo: participantRepo,
-		reminderRepo:    reminderRepo,
+		eventRepo:          eventRepo,
+		participantRepo:    participantRepo,
+		reminderRepo:       reminderRepo,
+		notificationClient: clients.NewNotificationClient(),
+		userClient:         clients.NewUserClient(),
 	}
 }
 
@@ -168,6 +176,11 @@ func (u *calendarUsecase) CreateEvent(userID uint, req *models.CreateEventReques
 		return nil, fmt.Errorf("failed to get created event: %w", err)
 	}
 
+	// Send notifications to invited participants (async, don't block)
+	if len(req.ParticipantIDs) > 0 {
+		go u.sendEventCreatedNotification(event, userID, req.ParticipantIDs)
+	}
+
 	return createdEvent.ToResponse(), nil
 }
 
@@ -245,8 +258,11 @@ func (u *calendarUsecase) UpdateEvent(userID, eventID uint, req *models.UpdateEv
 		event.AllDay = *req.AllDay
 	}
 
+	// Track if time changed for notification
+	timeChanged := req.StartTime != nil || req.EndTime != nil
+
 	// Handle time changes - conflict checking DISABLED to allow overlapping events
-	if req.StartTime != nil || req.EndTime != nil {
+	if timeChanged {
 		startTime := event.StartTime
 		endTime := event.EndTime
 
@@ -282,6 +298,9 @@ func (u *calendarUsecase) UpdateEvent(userID, eventID uint, req *models.UpdateEv
 		return nil, fmt.Errorf("failed to get updated event: %w", err)
 	}
 
+	// Send update notifications to participants (async, don't block)
+	go u.sendEventUpdatedNotification(event, userID, timeChanged)
+
 	return updatedEvent.ToResponse(), nil
 }
 
@@ -300,6 +319,9 @@ func (u *calendarUsecase) DeleteEvent(userID, eventID uint) error {
 	if event.CreatedBy != userID {
 		return fmt.Errorf("access denied: only event creator can delete the event")
 	}
+
+	// Send cancellation notifications before deleting (async)
+	go u.sendEventCancelledNotification(event, userID)
 
 	// Delete event (cascades to participants and reminders)
 	if err := u.eventRepo.DeleteEvent(eventID); err != nil {
@@ -410,6 +432,9 @@ func (u *calendarUsecase) InviteParticipants(userID, eventID uint, req *models.A
 		return fmt.Errorf("access denied: only event creator can invite participants")
 	}
 
+	// Track successfully added participants
+	var addedParticipants []uint
+
 	// Add participants
 	for _, participantID := range req.UserIDs {
 		// Check if user is already a participant
@@ -431,6 +456,14 @@ func (u *calendarUsecase) InviteParticipants(userID, eventID uint, req *models.A
 			// Log error but continue with other participants
 			continue
 		}
+
+		// Track successfully added participant
+		addedParticipants = append(addedParticipants, participantID)
+	}
+
+	// Send notifications to newly added participants (async)
+	if len(addedParticipants) > 0 {
+		go u.sendParticipantAddedNotification(event, userID, addedParticipants)
 	}
 
 	return nil
@@ -462,6 +495,12 @@ func (u *calendarUsecase) RemoveParticipant(userID, eventID, participantID uint)
 		return fmt.Errorf("failed to remove participant: %w", err)
 	}
 
+	// Send notification to removed participant (async)
+	// Only if they were removed by organizer (not self-removal)
+	if event.CreatedBy == userID && participantID != userID {
+		go u.sendParticipantRemovedNotification(event, participantID)
+	}
+
 	return nil
 }
 
@@ -470,6 +509,12 @@ func (u *calendarUsecase) UpdateParticipantStatus(userID, eventID uint, req *mod
 	// Validate request
 	if err := u.validateUpdateParticipantStatusRequest(req); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Get event for notification
+	event, err := u.eventRepo.GetEventByID(eventID)
+	if err != nil {
+		return fmt.Errorf("failed to get event: %w", err)
 	}
 
 	// Check if user is a participant
@@ -485,6 +530,9 @@ func (u *calendarUsecase) UpdateParticipantStatus(userID, eventID uint, req *mod
 	if err := u.participantRepo.UpdateParticipantStatus(eventID, userID, req.Status); err != nil {
 		return fmt.Errorf("failed to update participant status: %w", err)
 	}
+
+	// Send notification to organizer about status change (async)
+	go u.sendParticipantStatusNotification(event, userID, req.Status)
 
 	return nil
 }

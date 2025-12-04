@@ -148,12 +148,13 @@ func (u *notificationUsecase) SendNotification(req *models.CreateNotificationReq
 		return nil, nil
 	}
 
-	// Check if this is a message notification that can be grouped
-	if req.Type == models.NotificationTypeMessage && req.Data != nil {
+	// Check if this notification can be grouped (messages or calendar events)
+	if req.GroupKey != "" || (req.Type == models.NotificationTypeMessage && req.Data != nil) {
 		// Try to group this notification with recent ones
 		if grouped, err := u.tryGroupNotification(req, channels); err != nil {
 			logger.WithFields(map[string]interface{}{
 				"user_id": req.UserID,
+				"type":    req.Type,
 				"error":   err.Error(),
 			}).Warn("Failed to group notification, creating new one")
 		} else if grouped != nil {
@@ -1610,28 +1611,37 @@ func (u *notificationUsecase) getAndroidPriority(priority models.NotificationPri
 	}
 }
 
-// tryGroupNotification attempts to group a message notification with recent ones from the same sender
+// tryGroupNotification attempts to group a notification with recent ones using the same group key
 func (u *notificationUsecase) tryGroupNotification(req *models.CreateNotificationRequest, channels []models.DeliveryChannel) (*models.NotificationResponse, error) {
-	// Extract chat_id and sender_id from data
-	var chatID, senderID uint
-	if chatIDVal, ok := req.Data["chat_id"].(uint); ok {
-		chatID = chatIDVal
-	} else if chatIDFloat, ok := req.Data["chat_id"].(float64); ok {
-		chatID = uint(chatIDFloat)
-	} else {
-		return nil, nil // Can't group without chat_id
-	}
+	var groupKey string
 
-	if senderIDVal, ok := req.Data["sender_id"].(uint); ok {
-		senderID = senderIDVal
-	} else if senderIDFloat, ok := req.Data["sender_id"].(float64); ok {
-		senderID = uint(senderIDFloat)
-	} else {
-		return nil, nil // Can't group without sender_id
-	}
+	// Use provided GroupKey if available
+	if req.GroupKey != "" {
+		groupKey = req.GroupKey
+	} else if req.Type == models.NotificationTypeMessage && req.Data != nil {
+		// Extract chat_id and sender_id from data for message notifications
+		var chatID, senderID uint
+		if chatIDVal, ok := req.Data["chat_id"].(uint); ok {
+			chatID = chatIDVal
+		} else if chatIDFloat, ok := req.Data["chat_id"].(float64); ok {
+			chatID = uint(chatIDFloat)
+		} else {
+			return nil, nil // Can't group without chat_id
+		}
 
-	// Create group key
-	groupKey := fmt.Sprintf("message:chat_%d:sender_%d", chatID, senderID)
+		if senderIDVal, ok := req.Data["sender_id"].(uint); ok {
+			senderID = senderIDVal
+		} else if senderIDFloat, ok := req.Data["sender_id"].(float64); ok {
+			senderID = uint(senderIDFloat)
+		} else {
+			return nil, nil // Can't group without sender_id
+		}
+
+		// Create group key for messages
+		groupKey = fmt.Sprintf("message:chat_%d:sender_%d", chatID, senderID)
+	} else {
+		return nil, nil // Can't group without group key
+	}
 
 	// Look for recent groupable notification within 5 minutes
 	groupingWindow := 5 // minutes
@@ -1716,12 +1726,22 @@ func (u *notificationUsecase) tryGroupNotification(req *models.CreateNotificatio
 
 // buildGroupedNotificationTitle builds a title for grouped notifications
 func (u *notificationUsecase) buildGroupedNotificationTitle(req *models.CreateNotificationRequest, messageCount int) string {
-	// Extract sender name from title (format: "📩 SenderName" or "👥 SenderName в \"ChatName\"")
 	title := req.Title
 
 	// Simple approach: just update the count in the title
 	if messageCount > 1 {
-		// Try to preserve the emoji and format
+		// Calendar notifications grouping
+		if req.Type == models.NotificationTypeCalendar {
+			if strings.Contains(title, "✅ Участник подтвердил") {
+				return fmt.Sprintf("✅ %d участников подтвердили присутствие", messageCount)
+			} else if strings.Contains(title, "❌ Участник отклонил") {
+				return fmt.Sprintf("❌ %d участников отклонили приглашение", messageCount)
+			} else if strings.Contains(title, "❓ Участник под вопросом") {
+				return fmt.Sprintf("❓ %d участников под вопросом", messageCount)
+			}
+		}
+
+		// Message notifications grouping
 		if strings.Contains(title, "📩") {
 			// Private chat format
 			parts := strings.SplitN(title, " ", 2)

@@ -111,6 +111,9 @@ func main() {
 		Handler: r,
 	}
 
+	// Start background tasks
+	startBackgroundTasks(calendarUsecase)
+
 	// Start server in a goroutine
 	go func() {
 		log.Infof("Calendar service starting on port %s", port)
@@ -208,4 +211,32 @@ func setupRoutes(
 	}
 
 	return r
+}
+
+// startBackgroundTasks starts background workers for processing reminders
+func startBackgroundTasks(calendarUC usecase.CalendarUsecase) {
+	log := logger.New(&logger.Config{
+		Level:       "info",
+		Format:      "json",
+		Environment: os.Getenv("ENVIRONMENT"),
+	})
+
+	log.Info("Starting background tasks for calendar notifications")
+
+	// Start reminder processor (runs every minute)
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := calendarUC.ProcessEventReminders(); err != nil {
+					log.WithField("error", err.Error()).Error("Failed to process event reminders")
+				}
+			}
+		}
+	}()
+
+	log.Info("Background tasks started successfully")
 }
