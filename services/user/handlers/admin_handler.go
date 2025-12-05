@@ -62,6 +62,11 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 	role := c.Query("role")
 	departmentIDStr := c.Query("department_id")
 	isActiveStr := c.Query("is_active")
+	searchQuery := c.Query("search") // Search by name, first_name, last_name, email, phone, position
+
+	// Parse sorting parameters
+	sortBy := c.DefaultQuery("sort_by", "created_at")  // name, email, created_at, department, role
+	sortOrder := c.DefaultQuery("sort_order", "desc")  // asc, desc
 
 	// Parse filters
 	var departmentID *uint
@@ -83,11 +88,6 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 		}
 	}
 
-	var roleFilter *string
-	if role != "" {
-		roleFilter = &role
-	}
-
 	// Get current user role from context
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
@@ -106,10 +106,31 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 		"role":          role,
 		"department_id": departmentID,
 		"is_active":     isActive,
+		"search":        searchQuery,
+		"sort_by":       sortBy,
+		"sort_order":    sortOrder,
 	}).Info("Admin getting users list with filters")
 
-	// Use GetUsersWithFilters to support filtering
-	users, total, err := h.userUsecase.GetUsersWithFilters(limit, offset, departmentID, isActive, roleFilter, string(userRole))
+	// Parse role filter
+	var includeRoles []string
+	if role != "" {
+		includeRoles = []string{role}
+	}
+
+	// Use GetUsersWithFiltersAdvanced to support filtering and search
+	users, total, err := h.userUsecase.GetUsersWithFiltersAdvanced(
+		limit,
+		offset,
+		departmentID,
+		isActive,
+		includeRoles,
+		nil, // excludeRoles
+		string(userRole),
+		nil, // currentUserDeptID
+		sortBy,
+		sortOrder,
+		searchQuery,
+	)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
