@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/notification/models"
 	"tachyon-messenger/services/notification/usecase"
@@ -1033,5 +1034,113 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 		"task_count": len(taskIDs),
 		"category":   notification.Data["category"],
 		"request_id": requestID,
+	})
+}
+
+// SendTestPush handles sending a test push notification
+// POST /api/v1/notifications/test-push
+func (h *NotificationHandler) SendTestPush(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req struct {
+		Title string                 `json:"title"`
+		Body  string                 `json:"body"`
+		Data  map[string]interface{} `json:"data"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for test push")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Set default values
+	if req.Title == "" {
+		req.Title = "Test Push Notification"
+	}
+	if req.Body == "" {
+		req.Body = "This is a test push notification from Taxion backend"
+	}
+	if req.Data == nil {
+		req.Data = make(map[string]interface{})
+	}
+	req.Data["test"] = true
+	req.Data["timestamp"] = fmt.Sprintf("%d", time.Now().Unix())
+
+	// Create notification request
+	notificationReq := &models.CreateNotificationRequest{
+		UserID:   userID,
+		Type:     models.NotificationTypeSystem,
+		Title:    req.Title,
+		Message:  req.Body,
+		Priority: models.NotificationPriorityHigh,
+		Channels: []models.NotificationChannel{
+			models.NotificationChannelInApp,
+			models.NotificationChannelPush,
+		},
+		Data: req.Data,
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"title":      req.Title,
+		"body":       req.Body,
+	}).Info("Sending test push notification")
+
+	// Send notification
+	notification, err := h.notificationUsecase.CreateNotification(notificationReq)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to send test push notification")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to send test push notification",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":      requestID,
+		"user_id":         userID,
+		"notification_id": notification.ID,
+	}).Info("Test push notification sent successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":         "Test push notification sent successfully",
+		"notification_id": notification.ID,
+		"title":           req.Title,
+		"body":            req.Body,
+		"request_id":      requestID,
 	})
 }
