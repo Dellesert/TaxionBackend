@@ -290,7 +290,12 @@ func (r *deviceTokenRepository) UpsertDeviceToken(token *models.DeviceToken) err
 	existing.OSVersion = token.OSVersion
 	existing.IsActive = true
 	existing.LastUsedAt = time.Now()
-	existing.Metadata = token.Metadata
+	// Keep existing metadata if new one is empty
+	if token.Metadata != "" {
+		existing.Metadata = token.Metadata
+	} else if existing.Metadata == "" {
+		existing.Metadata = "{}"
+	}
 
 	// If user changed, update user_id as well
 	if token.UserID != 0 && token.UserID != existing.UserID {
