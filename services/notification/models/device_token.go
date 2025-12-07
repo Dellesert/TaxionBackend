@@ -60,6 +60,10 @@ func (dt *DeviceToken) BeforeUpdate(tx *gorm.DB) error {
 	if dt.IsActive {
 		dt.LastUsedAt = time.Now()
 	}
+	// Ensure Metadata is valid JSON
+	if dt.Metadata == "" {
+		dt.Metadata = "{}"
+	}
 	return nil
 }
 
