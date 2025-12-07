@@ -31,7 +31,7 @@ type DeviceToken struct {
 	IsActive   bool           `gorm:"not null;default:true;index" json:"is_active"`                                                // Whether token is active
 	LastUsedAt time.Time      `gorm:"not null;default:CURRENT_TIMESTAMP" json:"last_used_at"`                                      // Last time token was used successfully
 	ExpiresAt  *time.Time     `gorm:"index" json:"expires_at,omitempty"`                                                           // Token expiration time (optional)
-	Metadata   string         `gorm:"type:jsonb" json:"metadata,omitempty" validate:"omitempty"`                                   // Additional metadata (JSON)
+	Metadata   string         `gorm:"type:jsonb;default:'{}'" json:"metadata,omitempty" validate:"omitempty"`                    // Additional metadata (JSON)
 }
 
 // TableName returns the table name for DeviceToken model
@@ -47,6 +47,9 @@ func (dt *DeviceToken) BeforeCreate(tx *gorm.DB) error {
 	}
 	if dt.LastUsedAt.IsZero() {
 		dt.LastUsedAt = time.Now()
+	}
+	if dt.Metadata == "" {
+		dt.Metadata = "{}"
 	}
 	return nil
 }
