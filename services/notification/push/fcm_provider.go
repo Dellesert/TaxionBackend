@@ -31,9 +31,12 @@ func NewFCMProvider(config *PushConfig) (PushProvider, error) {
 		return nil, fmt.Errorf("credentials_file is required for FCM")
 	}
 
-	// Initialize Firebase app
+	// Initialize Firebase app with project ID
 	opt := option.WithCredentialsFile(config.CredentialsFile)
-	app, err := firebase.NewApp(context.Background(), nil, opt)
+	firebaseConfig := &firebase.Config{
+		ProjectID: config.ProjectID,
+	}
+	app, err := firebase.NewApp(context.Background(), firebaseConfig, opt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Firebase app: %w", err)
 	}

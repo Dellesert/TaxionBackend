@@ -216,6 +216,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			notifications.Any("/*path", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
 		}
 
+		// Device routes (FCM tokens) - proxy to notification service
+		devices := v1.Group("/devices")
+		{
+			devices.Any("", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
+			devices.Any("/*path", proxyRequest(proxyConfig.NotificationService.URL, proxyConfig.NotificationService.Name))
+		}
+
 		// File routes - proxy to file service
 		files := v1.Group("/files")
 		{

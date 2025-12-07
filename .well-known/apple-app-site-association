@@ -1,17 +1,20 @@
 {
   "webcredentials": {
     "apps": [
-      "QNVQ55232N.com.anonymous.tachyon-messenger"
+      "QNVQ55232N.com.dellesert.tachyon-messenger",
+      "QNVQ55232N.com.dellesert.tachyon-messenger.release"
     ]
   },
   "applinks": {
     "apps": [],
     "details": [
       {
-        "appID": "QNVQ55232N.com.anonymous.tachyon-messenger",
-        "paths": [
-          "/.well-known/*"
-        ]
+        "appID": "QNVQ55232N.com.dellesert.tachyon-messenger",
+        "paths": ["/.well-known/*"]
+      },
+      {
+        "appID": "QNVQ55232N.com.dellesert.tachyon-messenger.release",
+        "paths": ["/.well-known/*"]
       }
     ]
   }
