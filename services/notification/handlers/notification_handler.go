@@ -1093,15 +1093,16 @@ func (h *NotificationHandler) SendTestPush(c *gin.Context) {
 	req.Data["timestamp"] = fmt.Sprintf("%d", time.Now().Unix())
 
 	// Create notification request
+	priority := models.NotificationPriorityHigh
 	notificationReq := &models.CreateNotificationRequest{
 		UserID:   userID,
 		Type:     models.NotificationTypeSystem,
 		Title:    req.Title,
 		Message:  req.Body,
-		Priority: models.NotificationPriorityHigh,
-		Channels: []models.NotificationChannel{
-			models.NotificationChannelInApp,
-			models.NotificationChannelPush,
+		Priority: &priority,
+		Channels: []models.DeliveryChannel{
+			models.DeliveryChannelInApp,
+			models.DeliveryChannelPush,
 		},
 		Data: req.Data,
 	}
@@ -1114,7 +1115,7 @@ func (h *NotificationHandler) SendTestPush(c *gin.Context) {
 	}).Info("Sending test push notification")
 
 	// Send notification
-	notification, err := h.notificationUsecase.CreateNotification(notificationReq)
+	notification, err := h.notificationUsecase.SendNotification(notificationReq)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
