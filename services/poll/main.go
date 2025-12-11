@@ -105,7 +105,7 @@ func main() {
 	// Start notification worker for poll reminders
 	notificationClient := clients.NewNotificationClient()
 	userClient := clients.NewUserClient()
-	notificationWorker := worker.NewNotificationWorker(pollRepo, participantRepo, voteRepo, notificationClient, userClient)
+	notificationWorker := worker.NewNotificationWorker(pollRepo, participantRepo, voteRepo, notificationClient, userClient, redisClient)
 	notificationWorker.Start()
 
 	// Setup routes
