@@ -99,7 +99,7 @@ func main() {
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
 
 	// Initialize notification worker
-	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient)
+	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient, redisClient)
 
 	// Initialize handlers
 	calendarHandler := handlers.NewCalendarHandler(calendarUsecase)
