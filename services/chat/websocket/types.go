@@ -4,6 +4,7 @@ import (
 	"sync"
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/usecase"
+	"tachyon-messenger/shared/redis"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -93,6 +94,9 @@ type Hub struct {
 
 	// Repository for getting chat members (NEW)
 	chatRepo ChatRepository
+
+	// Redis client for distributed presence tracking
+	redisClient *redis.Client
 }
 
 // BroadcastMessage represents a message to be broadcasted to a room

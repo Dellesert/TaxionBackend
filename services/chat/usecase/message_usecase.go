@@ -59,7 +59,7 @@ type messageUsecase struct {
 }
 
 // NewMessageUsecase creates a new message usecase
-func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo repository.ChatRepository) MessageUsecase {
+func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo repository.ChatRepository, notificationClient *client.NotificationClient) MessageUsecase {
 	// Get base URL from environment
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
@@ -71,7 +71,7 @@ func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo reposi
 		chatRepo:           chatRepo,
 		wsHub:              nil, // Will be set later to avoid circular dependency
 		fileClient:         client.NewFileClient(),
-		notificationClient: client.NewNotificationClient(),
+		notificationClient: notificationClient,
 		baseURL:            baseURL,
 	}
 }
