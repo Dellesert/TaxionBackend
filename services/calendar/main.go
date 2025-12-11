@@ -9,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/handlers"
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
 	"tachyon-messenger/services/calendar/usecase"
+	"tachyon-messenger/services/calendar/worker"
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
@@ -89,9 +91,15 @@ func main() {
 	participantRepo := repository.NewParticipantRepository(db)
 	reminderRepo := repository.NewReminderRepository(db)
 
+	// Initialize clients
+	notificationClient := clients.NewNotificationClient()
+	userClient := clients.NewUserClient()
 
 	// Initialize usecases
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
+
+	// Initialize notification worker
+	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient)
 
 	// Initialize handlers
 	calendarHandler := handlers.NewCalendarHandler(calendarUsecase)
@@ -113,6 +121,9 @@ func main() {
 
 	// Start background tasks
 	startBackgroundTasks(calendarUsecase)
+
+	// Start notification worker
+	notificationWorker.Start()
 
 	// Start server in a goroutine
 	go func() {
