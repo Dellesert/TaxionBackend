@@ -266,6 +266,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		chats.GET("/:id/messages/before/:messageId", messageHandler.GetMessagesBeforeID)        // GET /api/v1/chats/:id/messages/before/:messageId
 		chats.GET("/:id/messages/after/:messageId", messageHandler.GetMessagesAfterID)          // GET /api/v1/chats/:id/messages/after/:messageId
 		chats.GET("/:id/messages/context/:messageId", messageHandler.GetMessageContext)         // GET /api/v1/chats/:id/messages/context/:messageId
+		chats.GET("/:id/messages/search", messageHandler.SearchMessages)                        // GET /api/v1/chats/:id/messages/search?q=query
 
 		// Chat-specific routes
 		chats.POST("/:id/read", messageHandler.MarkChatAsRead)            // POST /api/v1/chats/:id/read (mark all messages as read)

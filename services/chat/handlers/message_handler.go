@@ -1723,3 +1723,111 @@ func (h *MessageHandler) UnpinMessage(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// SearchMessages handles searching messages in a chat
+func (h *MessageHandler) SearchMessages(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from context
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get chat ID from URL parameter
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatIDStr,
+			"error":      err.Error(),
+		}).Warn("Invalid chat ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse query parameters
+	var req models.SearchMessagesRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"error":      err.Error(),
+		}).Warn("Invalid query parameters for search")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid query parameters",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Validate that query is not empty
+	if strings.TrimSpace(req.Query) == "" {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+		}).Warn("Search query is empty")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Search query cannot be empty",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Search messages
+	response, err := h.messageUsecase.SearchMessages(userID, uint(chatID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"query":      req.Query,
+			"error":      err.Error(),
+		}).Error("Failed to search messages")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to search messages"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":    requestID,
+		"user_id":       userID,
+		"chat_id":       chatID,
+		"query":         req.Query,
+		"results_count": len(response.Messages),
+		"total":         response.Total,
+	}).Info("Messages searched successfully")
+
+	c.JSON(http.StatusOK, response)
+}

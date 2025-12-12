@@ -223,6 +223,13 @@ type GetMessagesAfterRequest struct {
 	Limit int `form:"limit" validate:"omitempty,min=1,max=100"` // Number of messages to load (default: 30)
 }
 
+// SearchMessagesRequest represents request for searching messages in a chat
+type SearchMessagesRequest struct {
+	Query  string `form:"q" json:"q" validate:"required,min=1,max=200"`    // Search query
+	Limit  int    `form:"limit" validate:"omitempty,min=1,max=100"`        // Number of results (default: 20)
+	Offset int    `form:"offset" validate:"omitempty,min=0"`               // Offset for pagination (default: 0)
+}
+
 // UnreadInfo represents information about unread messages
 type UnreadInfo struct {
 	FirstUnreadID *uint `json:"first_unread_id"` // ID of first unread message (null if all read)
@@ -258,6 +265,16 @@ type GetMessagesAfterResponse struct {
 	Messages []MessageResponse `json:"messages"`  // Messages in chronological order (old to new)
 	HasNewer bool              `json:"has_newer"` // Are there newer messages to load?
 	NewestID *uint             `json:"newest_id"` // ID of newest message in this response (cursor for next request)
+}
+
+// SearchMessagesResponse represents response for search messages endpoint
+type SearchMessagesResponse struct {
+	Messages []MessageResponse `json:"messages"` // Found messages (most relevant first)
+	Total    int64             `json:"total"`    // Total number of matching messages
+	Limit    int               `json:"limit"`    // Limit used in request
+	Offset   int               `json:"offset"`   // Offset used in request
+	HasMore  bool              `json:"has_more"` // Are there more results?
+	Query    string            `json:"query"`    // Search query used
 }
 
 // MessageResponse represents message response
