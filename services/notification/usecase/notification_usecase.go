@@ -1456,11 +1456,39 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 	dataBuilder := push.NewDataBuilder().
 		SetType(notification.Type)
 
-	// Add related object info
+	// Parse notification.Data JSON and add to push payload
+	if len(notification.Data) > 0 {
+		var notifData map[string]interface{}
+		if err := json.Unmarshal(notification.Data, &notifData); err == nil {
+			// Add chat_id if present (for message notifications)
+			if chatID, ok := notifData["chat_id"].(float64); ok {
+				dataBuilder.SetChatID(uint(chatID))
+			}
+			// Add message_id if present
+			if messageID, ok := notifData["message_id"].(float64); ok {
+				dataBuilder.SetMessageID(uint(messageID))
+			}
+			// Add task_id if present (for task notifications)
+			if taskID, ok := notifData["task_id"].(float64); ok {
+				dataBuilder.SetTaskID(uint(taskID))
+			}
+			// Add event_id if present (for calendar notifications)
+			if eventID, ok := notifData["event_id"].(float64); ok {
+				dataBuilder.SetEventID(uint(eventID))
+			}
+			// Add poll_id if present (for poll notifications)
+			if pollID, ok := notifData["poll_id"].(float64); ok {
+				dataBuilder.SetPollID(uint(pollID))
+			}
+		}
+	}
+
+	// Add related object info as fallback (if not already set from Data)
 	if notification.RelatedID != nil {
 		switch notification.Type {
 		case models.NotificationTypeMessage:
-			dataBuilder.SetChatID(*notification.RelatedID)
+			// chat_id should come from Data, RelatedID is message_id
+			dataBuilder.SetMessageID(*notification.RelatedID)
 		case models.NotificationTypeTask:
 			dataBuilder.SetTaskID(*notification.RelatedID)
 		case models.NotificationTypeCalendar:
