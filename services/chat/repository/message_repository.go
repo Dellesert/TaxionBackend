@@ -43,7 +43,7 @@ type MessageRepository interface {
 	MarkAllAsRead(chatID, userID uint) ([]uint, error)
 
 	// Search and filtering
-	SearchMessages(chatID uint, query string, limit, offset int) ([]*models.Message, error)
+	SearchMessages(chatID, userID uint, query string, limit, offset int) ([]*models.Message, int64, error)
 	GetMessagesByType(chatID uint, messageType models.MessageType, limit, offset int) ([]*models.Message, error)
 
 	// Personal message deletion operations ("delete for me")
@@ -531,24 +531,73 @@ func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 
 // Search and filtering operations
 
-// SearchMessages searches for messages containing a query string
-func (r *messageRepository) SearchMessages(chatID uint, query string, limit, offset int) ([]*models.Message, error) {
+// SearchMessages searches for messages containing a query string in content or file names
+func (r *messageRepository) SearchMessages(chatID, userID uint, query string, limit, offset int) ([]*models.Message, int64, error) {
 	var messages []*models.Message
+	var total int64
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Build search condition for content and file names
+	searchPattern := "%" + query + "%"
+
+	// Count total matching messages
+	countQuery := r.db.Model(&models.Message{}).
+		Where("chat_id = ?", chatID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Where(
+			r.db.Where("content ILIKE ?", searchPattern).
+			Or("file_name ILIKE ?", searchPattern).
+			Or("id IN (?)",
+				r.db.Table("message_attachments").
+					Select("message_id").
+					Where("file_name ILIKE ?", searchPattern),
+			),
+		)
+
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
+	}
+
+	// Search for messages matching in content, file_name, or attachments
 	err := r.db.
 		Preload("Sender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
 		Preload("Attachments").
-		Where("chat_id = ? AND content ILIKE ? AND is_deleted = ?", chatID, "%"+query+"%", false).
+		Where("chat_id = ?", chatID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Where(
+			r.db.Where("content ILIKE ?", searchPattern).
+			Or("file_name ILIKE ?", searchPattern).
+			Or("id IN (?)",
+				r.db.Table("message_attachments").
+					Select("message_id").
+					Where("file_name ILIKE ?", searchPattern),
+			),
+		).
 		Limit(limit).
 		Offset(offset).
 		Order("created_at DESC").
 		Find(&messages).Error
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to search messages: %w", err)
+		return nil, 0, fmt.Errorf("failed to search messages: %w", err)
 	}
-	return messages, nil
+
+	fmt.Printf("🔍 Search for '%s' in chat %d: found %d/%d messages\n", query, chatID, len(messages), total)
+
+	return messages, total, nil
 }
 
 // GetMessagesByType retrieves messages of a specific type

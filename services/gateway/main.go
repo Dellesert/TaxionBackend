@@ -108,6 +108,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		// User routes - proxy to user service
 		users := v1.Group("/users")
 		{
+			users.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			users.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 

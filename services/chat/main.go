@@ -9,19 +9,20 @@ import (
 	"syscall"
 	"time"
 
+	"tachyon-messenger/services/chat/client"
 	"tachyon-messenger/services/chat/handlers"
 	"tachyon-messenger/services/chat/migrations"
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/repository"
 	"tachyon-messenger/services/chat/usecase"
 	"tachyon-messenger/services/chat/websocket"
+	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
 	sharedredis "tachyon-messenger/shared/redis"
-	"tachyon-messenger/shared/analytics"
 
 	"github.com/gin-gonic/gin"
 )
@@ -111,12 +112,15 @@ func main() {
 		"session_duration": sessionDuration,
 	}).Info("Authentication configuration initialized")
 
+	// Initialize notification client with Redis for duplicate prevention
+	notificationClient := client.NewNotificationClient(redisClient)
+
 	// Initialize usecases
 	chatUsecase := usecase.NewChatUsecase(chatRepo, messageRepo)
-	messageUsecase := usecase.NewMessageUsecase(messageRepo, chatRepo)
+	messageUsecase := usecase.NewMessageUsecase(messageRepo, chatRepo, notificationClient)
 
-	// Initialize WebSocket hub С messageUsecase
-	wsHub := websocket.NewHub(messageUsecase)
+	// Initialize WebSocket hub with messageUsecase and Redis for distributed presence tracking
+	wsHub := websocket.NewHub(messageUsecase, redisClient)
 
 	// Set WebSocket hub in usecases to enable broadcasting
 	messageUsecase.SetWebSocketHub(wsHub)
@@ -262,6 +266,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		chats.GET("/:id/messages/before/:messageId", messageHandler.GetMessagesBeforeID)        // GET /api/v1/chats/:id/messages/before/:messageId
 		chats.GET("/:id/messages/after/:messageId", messageHandler.GetMessagesAfterID)          // GET /api/v1/chats/:id/messages/after/:messageId
 		chats.GET("/:id/messages/context/:messageId", messageHandler.GetMessageContext)         // GET /api/v1/chats/:id/messages/context/:messageId
+		chats.GET("/:id/messages/search", messageHandler.SearchMessages)                        // GET /api/v1/chats/:id/messages/search?q=query
 
 		// Chat-specific routes
 		chats.POST("/:id/read", messageHandler.MarkChatAsRead)            // POST /api/v1/chats/:id/read (mark all messages as read)

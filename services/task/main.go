@@ -147,7 +147,7 @@ func main() {
 
 	// Start notification worker for deadline checks and reminders
 	notificationClient := clients.NewNotificationClient()
-	notificationWorker := worker.NewNotificationWorker(taskRepo, notificationClient, userClient)
+	notificationWorker := worker.NewNotificationWorker(taskRepo, notificationClient, userClient, redisClient)
 	notificationWorker.Start()
 
 	// Setup routes

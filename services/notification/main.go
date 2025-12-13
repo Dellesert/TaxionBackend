@@ -297,6 +297,9 @@ func setupRoutes(
 		// User preferences endpoints
 		notifications.GET("/preferences", notificationHandler.GetUserPreferences)         // GET /api/v1/notifications/preferences
 		notifications.PUT("/preferences/:type", notificationHandler.UpdateUserPreference) // PUT /api/v1/notifications/preferences/:type
+
+		// Test push notification endpoint
+		notifications.POST("/test-push", notificationHandler.SendTestPush) // POST /api/v1/notifications/test-push
 	}
 
 	// Device management endpoints (require JWT authentication)

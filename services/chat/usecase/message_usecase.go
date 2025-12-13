@@ -46,6 +46,9 @@ type MessageUsecase interface {
 	GetMessagesBeforeID(userID, chatID, beforeID uint, req *models.GetMessagesBeforeRequest) (*models.GetMessagesBeforeResponse, error)
 	GetMessagesAfterID(userID, chatID, afterID uint, req *models.GetMessagesAfterRequest) (*models.GetMessagesAfterResponse, error)
 	GetMessageContext(userID, chatID, targetMessageID uint, req *models.GetMessageContextRequest) (*models.GetMessageContextResponse, error)
+
+	// Search messages
+	SearchMessages(userID, chatID uint, req *models.SearchMessagesRequest) (*models.SearchMessagesResponse, error)
 }
 
 // messageUsecase implements MessageUsecase interface
@@ -59,7 +62,7 @@ type messageUsecase struct {
 }
 
 // NewMessageUsecase creates a new message usecase
-func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo repository.ChatRepository) MessageUsecase {
+func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo repository.ChatRepository, notificationClient *client.NotificationClient) MessageUsecase {
 	// Get base URL from environment
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
@@ -71,7 +74,7 @@ func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo reposi
 		chatRepo:           chatRepo,
 		wsHub:              nil, // Will be set later to avoid circular dependency
 		fileClient:         client.NewFileClient(),
-		notificationClient: client.NewNotificationClient(),
+		notificationClient: notificationClient,
 		baseURL:            baseURL,
 	}
 }
@@ -1463,6 +1466,61 @@ func (uc *messageUsecase) GetMessageContext(userID, chatID, targetMessageID uint
 
 	fmt.Printf("✅ Retrieved %d messages around target ID %d for chat %d (has_older: %v, has_newer: %v)\n",
 		len(messageResponses), targetMessageID, chatID, hasOlder, hasNewer)
+
+	return response, nil
+}
+
+// SearchMessages searches for messages in a chat by content or file names
+func (uc *messageUsecase) SearchMessages(userID, chatID uint, req *models.SearchMessagesRequest) (*models.SearchMessagesResponse, error) {
+	// Check if user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set default pagination
+	limit := req.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Search messages
+	messages, total, err := uc.messageRepo.SearchMessages(chatID, userID, req.Query, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search messages: %w", err)
+	}
+
+	// Convert to response format
+	messageResponses := make([]models.MessageResponse, len(messages))
+	for i, message := range messages {
+		messageResponses[i] = *message.ToResponseForUser(userID, uc.baseURL)
+	}
+
+	// Check if there are more results
+	hasMore := int64(offset+len(messages)) < total
+
+	response := &models.SearchMessagesResponse{
+		Messages: messageResponses,
+		Total:    total,
+		Limit:    limit,
+		Offset:   offset,
+		HasMore:  hasMore,
+		Query:    req.Query,
+	}
+
+	fmt.Printf("🔍 Search results for '%s' in chat %d: %d/%d messages (offset: %d, has_more: %v)\n",
+		req.Query, chatID, len(messageResponses), total, offset, hasMore)
 
 	return response, nil
 }

@@ -39,7 +39,30 @@ func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := c.Request.Header.Get("Origin")
 
-		// Check if origin is allowed
+		// Handle preflight OPTIONS requests first
+		if c.Request.Method == "OPTIONS" {
+			// Check if origin is allowed
+			if origin != "" && allowedOriginsMap[origin] {
+				// Set CORS headers for allowed origin
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Access-Control-Allow-Credentials", "true")
+				c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Request-ID, X-Requested-With, X-Session-ID")
+				c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
+				c.Header("Access-Control-Expose-Headers", "X-Request-ID")
+				c.Header("Access-Control-Max-Age", "43200")
+				c.AbortWithStatus(204)
+			} else {
+				// Origin not allowed - return 403 Forbidden
+				logger.WithFields(map[string]interface{}{
+					"origin":          origin,
+					"allowed_origins": allowedOrigins,
+				}).Warn("CORS preflight request from non-allowed origin")
+				c.AbortWithStatus(403)
+			}
+			return
+		}
+
+		// For non-OPTIONS requests, set CORS headers if origin is allowed
 		if origin != "" && allowedOriginsMap[origin] {
 			c.Header("Access-Control-Allow-Origin", origin)
 			c.Header("Access-Control-Allow-Credentials", "true")
@@ -47,12 +70,6 @@ func CORSMiddleware() gin.HandlerFunc {
 			c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH")
 			c.Header("Access-Control-Expose-Headers", "X-Request-ID")
 			c.Header("Access-Control-Max-Age", "43200")
-		}
-
-		// Handle preflight requests
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
 		}
 
 		c.Next()

@@ -30,6 +30,7 @@ type EventRepository interface {
 	GetEventStats(userID uint) (*models.EventStatsResponse, error)
 	SearchEvents(userID uint, searchQuery string, filter *models.EventFilterRequest) ([]*models.Event, int64, error)
 	GetRecurringEvents(userID uint) ([]*models.Event, error)
+	GetEventsInTimeRange(startTime, endTime time.Time) ([]*models.Event, error)
 
 	// Sync methods
 	GetDeletedEventIDsSince(since time.Time) ([]uint, error)
@@ -527,6 +528,23 @@ func (r *eventRepository) GetRecurringEvents(userID uint) ([]*models.Event, erro
 
 	// Load participant counts and user status
 	r.loadEventDetails(events, userID)
+
+	return events, nil
+}
+
+// GetEventsInTimeRange retrieves all events in the specified time range (for worker notifications)
+func (r *eventRepository) GetEventsInTimeRange(startTime, endTime time.Time) ([]*models.Event, error) {
+	var events []*models.Event
+
+	err := r.db.Model(&models.Event{}).
+		Preload("Participants").
+		Where("start_time >= ? AND start_time <= ?", startTime, endTime).
+		Order("start_time ASC").
+		Find(&events).Error
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events in time range: %w", err)
+	}
 
 	return events, nil
 }

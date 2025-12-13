@@ -8,6 +8,7 @@ import (
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/repository"
 	"tachyon-messenger/shared/logger"
+	"tachyon-messenger/shared/redis"
 )
 
 // NotificationWorker handles background task notifications
@@ -15,6 +16,7 @@ type NotificationWorker struct {
 	taskRepo           repository.TaskRepository
 	notificationClient *clients.NotificationClient
 	userClient         *clients.UserClient
+	redisClient        *redis.Client
 	log                *logger.Logger
 }
 
@@ -23,11 +25,13 @@ func NewNotificationWorker(
 	taskRepo repository.TaskRepository,
 	notificationClient *clients.NotificationClient,
 	userClient *clients.UserClient,
+	redisClient *redis.Client,
 ) *NotificationWorker {
 	return &NotificationWorker{
 		taskRepo:           taskRepo,
 		notificationClient: notificationClient,
 		userClient:         userClient,
+		redisClient:        redisClient,
 		log: logger.New(&logger.Config{
 			Level:  "info",
 			Format: "json",
@@ -182,6 +186,20 @@ func (w *NotificationWorker) sendGroupedDeadlineNotification(userID uint, catego
 		return nil
 	}
 
+	// Format date for group key
+	dateKey := now.Format("2006-01-02")
+	tempGroupKey := fmt.Sprintf("task_deadline_%s_%s", category, dateKey)
+
+	// Check if we already sent this group notification recently
+	if w.hasRecentGroupNotification(userID, tempGroupKey) {
+		w.log.WithFields(map[string]interface{}{
+			"user_id":   userID,
+			"category":  category,
+			"task_count": len(tasks),
+		}).Debug("Skipping duplicate group notification")
+		return nil
+	}
+
 	var title, message, emoji string
 	var priority string = "high"
 	var groupKey string
@@ -191,9 +209,6 @@ func (w *NotificationWorker) sendGroupedDeadlineNotification(userID uint, catego
 	for i, task := range tasks {
 		taskIDs[i] = task.ID
 	}
-
-	// Format date for group key
-	dateKey := now.Format("2006-01-02")
 
 	switch category {
 	case "overdue":
@@ -262,9 +277,26 @@ func (w *NotificationWorker) sendGroupedDeadlineNotification(userID uint, catego
 		return fmt.Errorf("failed to send grouped notification: %w", err)
 	}
 
+	// Mark group notification as sent in Redis with appropriate TTL
+	var ttl time.Duration
+	switch category {
+	case "overdue":
+		ttl = 24 * time.Hour // Daily reminders for overdue
+	case "3hours":
+		ttl = 3 * time.Hour // Send again after 3 hours if still due
+	case "24hours":
+		ttl = 24 * time.Hour // Once per day for 24h warnings
+	default:
+		ttl = 12 * time.Hour
+	}
+	w.markGroupNotificationSent(userID, tempGroupKey, ttl)
+
 	// Update last notification timestamp for all tasks
 	for _, task := range tasks {
 		task.LastDeadlineNotificationSentAt = &now
+		// Also mark individual task notifications in Redis
+		w.markDeadlineNotificationSent(task.ID, userID, category, ttl)
+
 		if err := w.taskRepo.Update(task); err != nil {
 			w.log.WithFields(map[string]interface{}{
 				"task_id": task.ID,
@@ -272,6 +304,13 @@ func (w *NotificationWorker) sendGroupedDeadlineNotification(userID uint, catego
 			}).Warn("Failed to update last notification timestamp")
 		}
 	}
+
+	w.log.WithFields(map[string]interface{}{
+		"user_id":    userID,
+		"category":   category,
+		"task_count": len(tasks),
+		"ttl":        ttl,
+	}).Info("Sent grouped deadline notification")
 
 	return nil
 }
@@ -464,4 +503,87 @@ func (w *NotificationWorker) sendGroupedStaleTaskNotification(userID uint, tasks
 	}
 
 	return nil
+}
+
+// hasRecentDeadlineNotification checks if we recently sent a deadline notification
+// Uses Redis for fast lookups and prevents duplicates across worker restarts
+func (w *NotificationWorker) hasRecentDeadlineNotification(taskID, userID uint, category string) bool {
+	if w.redisClient == nil {
+		return false // Fall back to database-based tracking
+	}
+
+	key := fmt.Sprintf("task:deadline_notification:%d:%d:%s", taskID, userID, category)
+
+	exists, err := w.redisClient.Exists(key)
+	if err != nil {
+		w.log.WithFields(map[string]interface{}{
+			"task_id":  taskID,
+			"user_id":  userID,
+			"category": category,
+			"error":    err.Error(),
+		}).Warn("Failed to check deadline notification status in Redis")
+		return false
+	}
+
+	return exists
+}
+
+// markDeadlineNotificationSent marks a deadline notification as sent in Redis
+func (w *NotificationWorker) markDeadlineNotificationSent(taskID, userID uint, category string, ttl time.Duration) {
+	if w.redisClient == nil {
+		return
+	}
+
+	key := fmt.Sprintf("task:deadline_notification:%d:%d:%s", taskID, userID, category)
+
+	err := w.redisClient.Set(key, "1", ttl)
+	if err != nil {
+		w.log.WithFields(map[string]interface{}{
+			"task_id":  taskID,
+			"user_id":  userID,
+			"category": category,
+			"ttl":      ttl,
+			"error":    err.Error(),
+		}).Warn("Failed to mark deadline notification as sent in Redis")
+	}
+}
+
+// hasRecentGroupNotification checks if we recently sent a group notification
+func (w *NotificationWorker) hasRecentGroupNotification(userID uint, groupKey string) bool {
+	if w.redisClient == nil {
+		return false
+	}
+
+	key := fmt.Sprintf("task:group_notification:%d:%s", userID, groupKey)
+
+	exists, err := w.redisClient.Exists(key)
+	if err != nil {
+		w.log.WithFields(map[string]interface{}{
+			"user_id":   userID,
+			"group_key": groupKey,
+			"error":     err.Error(),
+		}).Warn("Failed to check group notification status in Redis")
+		return false
+	}
+
+	return exists
+}
+
+// markGroupNotificationSent marks a group notification as sent in Redis
+func (w *NotificationWorker) markGroupNotificationSent(userID uint, groupKey string, ttl time.Duration) {
+	if w.redisClient == nil {
+		return
+	}
+
+	key := fmt.Sprintf("task:group_notification:%d:%s", userID, groupKey)
+
+	err := w.redisClient.Set(key, "1", ttl)
+	if err != nil {
+		w.log.WithFields(map[string]interface{}{
+			"user_id":   userID,
+			"group_key": groupKey,
+			"ttl":       ttl,
+			"error":     err.Error(),
+		}).Warn("Failed to mark group notification as sent in Redis")
+	}
 }

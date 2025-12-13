@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/usecase"
+	"tachyon-messenger/shared/redis"
 	sharedmodels "tachyon-messenger/shared/models"
 
 	"github.com/gorilla/websocket"
@@ -53,7 +55,7 @@ type UserPresence struct {
 }
 
 // NewHub creates a new WebSocket hub
-func NewHub(messageUsecase usecase.MessageUsecase) *Hub {
+func NewHub(messageUsecase usecase.MessageUsecase, redisClient *redis.Client) *Hub {
 	return &Hub{
 		clients:        make(map[uint]*Client),
 		chatRooms:      make(map[uint]map[uint]bool),
@@ -63,6 +65,7 @@ func NewHub(messageUsecase usecase.MessageUsecase) *Hub {
 		shutdown:       make(chan struct{}),
 		messageUsecase: messageUsecase, // ДОБАВЛЯЕМ messageUsecase
 		chatRepo:       nil,             // Will be set later via SetChatRepository
+		redisClient:    redisClient,
 		metrics: &HubMetrics{
 			Uptime: time.Now(),
 		},
@@ -433,6 +436,9 @@ func (h *Hub) JoinChatRoom(userID, chatID uint) {
 	}
 	h.chatRooms[chatID][userID] = true
 
+	// Mark user active in Redis for distributed presence tracking
+	h.setUserActiveInChat(userID, chatID)
+
 	// Add chat room to client
 	if client, exists := h.clients[userID]; exists {
 		client.mutex.Lock()
@@ -470,6 +476,9 @@ func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 	defer h.mutex.Unlock()
 
 	log.Printf("🔴 [LeaveChatRoom] User %d attempting to leave chat room %d", userID, chatID)
+
+	// Remove user active status from Redis
+	h.removeUserFromChat(userID, chatID)
 
 	// Remove user from chat room
 	if users, exists := h.chatRooms[chatID]; exists {
@@ -615,7 +624,17 @@ func (h *Hub) GetConnectedUsers() []uint {
 }
 
 // GetChatRoomUsers returns the list of users in a chat room
+// Uses Redis for distributed presence tracking if available, falls back to in-memory
 func (h *Hub) GetChatRoomUsers(chatID uint) []uint {
+	// Try Redis first for distributed tracking
+	if h.redisClient != nil {
+		userIDs := h.getActiveUsersFromRedis(chatID)
+		if len(userIDs) > 0 {
+			return userIDs
+		}
+	}
+
+	// Fallback to in-memory tracking
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
@@ -713,4 +732,85 @@ func (h *Hub) RegisterClient(client *Client) {
 // UnregisterClient unregisters a client from the hub
 func (h *Hub) UnregisterClient(client *Client) {
 	h.unregister <- client
+}
+
+// Redis-based presence tracking methods
+
+// setUserActiveInChat marks a user as active in a specific chat using Redis
+func (h *Hub) setUserActiveInChat(userID, chatID uint) {
+	if h.redisClient == nil {
+		return
+	}
+
+	key := fmt.Sprintf("chat:active_user:%d:%d", chatID, userID)
+	// Set with 30 second TTL - will be refreshed by heartbeat/ping
+	err := h.redisClient.Set(key, "1", 30*time.Second)
+	if err != nil {
+		log.Printf("Failed to set user %d active in chat %d in Redis: %v", userID, chatID, err)
+	}
+}
+
+// removeUserFromChat removes a user's active status from a chat in Redis
+func (h *Hub) removeUserFromChat(userID, chatID uint) {
+	if h.redisClient == nil {
+		return
+	}
+
+	key := fmt.Sprintf("chat:active_user:%d:%d", chatID, userID)
+	err := h.redisClient.Delete(key)
+	if err != nil {
+		log.Printf("Failed to remove user %d from chat %d in Redis: %v", userID, chatID, err)
+	}
+}
+
+// getActiveUsersFromRedis gets the list of active users in a chat from Redis
+func (h *Hub) getActiveUsersFromRedis(chatID uint) []uint {
+	if h.redisClient == nil {
+		return []uint{}
+	}
+
+	// Get all keys matching the pattern chat:active_user:chatID:*
+	pattern := fmt.Sprintf("chat:active_user:%d:*", chatID)
+
+	// Use the underlying Redis client to call Keys with background context
+	ctx := context.Background()
+	keys, err := h.redisClient.Client.Keys(ctx, pattern).Result()
+	if err != nil {
+		log.Printf("Failed to get active users for chat %d from Redis: %v", chatID, err)
+		return []uint{}
+	}
+
+	userIDs := make([]uint, 0, len(keys))
+	for _, key := range keys {
+		// Extract userID from key: chat:active_user:chatID:userID
+		var userID uint
+		if _, err := fmt.Sscanf(key, fmt.Sprintf("chat:active_user:%d:%%d", chatID), &userID); err == nil {
+			userIDs = append(userIDs, userID)
+		}
+	}
+
+	return userIDs
+}
+
+// refreshUserPresence refreshes a user's presence in all their active chats
+func (h *Hub) refreshUserPresence(userID uint) {
+	if h.redisClient == nil {
+		return
+	}
+
+	// Get the user's active chat rooms from in-memory state
+	h.mutex.RLock()
+	client, exists := h.clients[userID]
+	h.mutex.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	// Refresh presence in all active chat rooms
+	client.mutex.RLock()
+	for chatID := range client.chatRooms {
+		h.setUserActiveInChat(userID, chatID)
+	}
+	client.mutex.RUnlock()
 }
