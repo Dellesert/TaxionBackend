@@ -198,6 +198,17 @@ func setupRoutes(
 	{
 		// Public file download
 		public.GET("/public/:filename", fileHandler.DownloadPublicFile)
+		// Handle CORS preflight for public files
+		public.OPTIONS("/public/:filename", func(c *gin.Context) {
+			origin := c.Request.Header.Get("Origin")
+			if origin != "" {
+				c.Header("Access-Control-Allow-Origin", origin)
+				c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+				c.Header("Access-Control-Allow-Headers", "Origin, Content-Type")
+				c.Header("Access-Control-Max-Age", "86400") // 24 hours
+			}
+			c.Status(http.StatusNoContent)
+		})
 	}
 
 	// Protected routes (require JWT)

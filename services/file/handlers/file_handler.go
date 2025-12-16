@@ -224,6 +224,16 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 	c.Header("Content-Disposition", "inline; filename="+file.OriginalName)
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+
+	// Add CORS headers for public files (needed for cross-origin requests)
+	// This is safe for public files as they are meant to be accessible from anywhere
+	origin := c.Request.Header.Get("Origin")
+	if origin != "" {
+		c.Header("Access-Control-Allow-Origin", origin)
+		c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type")
+	}
+
 	c.File(filePath)
 }
 
