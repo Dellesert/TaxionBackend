@@ -222,6 +222,22 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 		}
 		defer resp.Body.Close()
 
+		// Save CORS headers that were set by middleware before proxying
+		corsHeaders := make(map[string]string)
+		corsHeaderNames := []string{
+			"Access-Control-Allow-Origin",
+			"Access-Control-Allow-Credentials",
+			"Access-Control-Allow-Headers",
+			"Access-Control-Allow-Methods",
+			"Access-Control-Expose-Headers",
+			"Access-Control-Max-Age",
+		}
+		for _, headerName := range corsHeaderNames {
+			if val := c.Writer.Header().Get(headerName); val != "" {
+				corsHeaders[headerName] = val
+			}
+		}
+
 		// Read response body
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
@@ -242,6 +258,20 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 
 		// Copy response headers
 		copyHeaders(resp.Header, c.Writer.Header())
+
+		// Restore CORS headers that may have been overwritten
+		for headerName, headerValue := range corsHeaders {
+			c.Writer.Header().Set(headerName, headerValue)
+		}
+
+		// Log CORS headers restoration if any were restored
+		if len(corsHeaders) > 0 {
+			logger.WithFields(map[string]interface{}{
+				"request_id":   requestID,
+				"service":      serviceName,
+				"cors_headers": corsHeaders,
+			}).Debug("Restored CORS headers after proxying")
+		}
 
 		// Log successful proxy response
 		duration := time.Since(startTime)
