@@ -67,6 +67,19 @@ const (
 	DatabaseError             ErrorCode = "DATABASE_ERROR"
 )
 
+// File management error codes
+const (
+	FileNotFound              ErrorCode = "FILE_NOT_FOUND"
+	FileUploadFailed          ErrorCode = "FILE_UPLOAD_FAILED"
+	FileDeleteFailed          ErrorCode = "FILE_DELETE_FAILED"
+	FileAccessDenied          ErrorCode = "FILE_ACCESS_DENIED"
+	FileInvalidType           ErrorCode = "FILE_INVALID_TYPE"
+	FileTooLarge              ErrorCode = "FILE_TOO_LARGE"
+	FileNoFileProvided        ErrorCode = "FILE_NO_FILE_PROVIDED"
+	FileInvalidFormat         ErrorCode = "FILE_INVALID_FORMAT"
+	FileThumbnailNotAvailable ErrorCode = "FILE_THUMBNAIL_NOT_AVAILABLE"
+)
+
 // FieldError represents a validation error for a specific field
 type FieldError struct {
 	Field   string    `json:"field"`
@@ -246,4 +259,59 @@ func PasswordTooShortError(minLength int) *APIError {
 func PasswordTooWeakError() *APIError {
 	return NewAPIError(http.StatusBadRequest, ValidationPasswordTooWeak, "Password is too weak").
 		WithField("password", ValidationPasswordTooWeak, "Password must contain at least one letter and one number or symbol")
+}
+
+// File specific errors
+
+// FileNotFoundError creates a file not found error
+func FileNotFoundError() *APIError {
+	return NewAPIError(http.StatusNotFound, FileNotFound, "Файл не найден")
+}
+
+// FileUploadFailedError creates a file upload failed error
+func FileUploadFailedError(details string) *APIError {
+	return NewAPIError(http.StatusInternalServerError, FileUploadFailed, "Не удалось загрузить файл").
+		WithDetails(details)
+}
+
+// FileDeleteFailedError creates a file deletion failed error
+func FileDeleteFailedError(details string) *APIError {
+	return NewAPIError(http.StatusInternalServerError, FileDeleteFailed, "Не удалось удалить файл").
+		WithDetails(details)
+}
+
+// FileAccessDeniedError creates a file access denied error
+func FileAccessDeniedError() *APIError {
+	return NewAPIError(http.StatusForbidden, FileAccessDenied, "Доступ к файлу запрещен")
+}
+
+// FileInvalidTypeError creates an invalid file type error
+func FileInvalidTypeError(allowedTypes []string) *APIError {
+	err := NewAPIError(http.StatusBadRequest, FileInvalidType, "Недопустимый тип файла")
+	if len(allowedTypes) > 0 {
+		err.WithMetadata("allowed_types", allowedTypes)
+	}
+	return err
+}
+
+// FileTooLargeError creates a file too large error
+func FileTooLargeError(maxSize int64) *APIError {
+	return NewAPIError(http.StatusBadRequest, FileTooLarge, "Файл слишком большой").
+		WithMetadata("max_size_mb", maxSize/(1024*1024))
+}
+
+// FileNoFileProvidedError creates a no file provided error
+func FileNoFileProvidedError() *APIError {
+	return NewAPIError(http.StatusBadRequest, FileNoFileProvided, "Файл не был предоставлен")
+}
+
+// FileInvalidFormatError creates an invalid file format error
+func FileInvalidFormatError(details string) *APIError {
+	return NewAPIError(http.StatusBadRequest, FileInvalidFormat, "Недопустимый формат файла").
+		WithDetails(details)
+}
+
+// FileThumbnailNotAvailableError creates a thumbnail not available error
+func FileThumbnailNotAvailableError() *APIError {
+	return NewAPIError(http.StatusNotFound, FileThumbnailNotAvailable, "Миниатюра недоступна")
 }

@@ -8,7 +8,9 @@ import (
 
 	"tachyon-messenger/services/file/models"
 	"tachyon-messenger/services/file/usecase"
+	sharedErrors "tachyon-messenger/shared/errors"
 
+	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
 )
 
@@ -41,10 +43,13 @@ func NewFileHandler(fileUsecase *usecase.FileUsecase) *FileHandler {
 // @Failure 500 {object} map[string]interface{}
 // @Router /files/upload [post]
 func (h *FileHandler) UploadFile(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context (set by auth middleware)
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Не авторизован").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -54,14 +59,27 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 		fmt.Printf("❌ Error getting file from form: %v\n", err)
 		fmt.Printf("📋 Request headers: %v\n", c.Request.Header)
 		fmt.Printf("📋 Content-Type: %s\n", c.ContentType())
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Failed to get file from request: %v", err)})
+		apiErr := sharedErrors.FileNoFileProvidedError().
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Parse request
 	var req models.UploadFileRequest
 	if err := c.ShouldBind(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiErr := sharedErrors.BadRequestError("Неверные данные запроса").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
+	}
+
+	// Validate file type
+	if strings.TrimSpace(req.FileType) == "" {
+		apiErr := sharedErrors.RequiredFieldError("file_type").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -75,7 +93,21 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 		req.IsPublic,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		// Determine appropriate error based on error message
+		var apiErr *sharedErrors.APIError
+
+		if strings.Contains(err.Error(), "file too large") || strings.Contains(err.Error(), "too large") {
+			apiErr = sharedErrors.FileTooLargeError(50 * 1024 * 1024) // 50MB default
+		} else if strings.Contains(err.Error(), "invalid file type") || strings.Contains(err.Error(), "unsupported") {
+			apiErr = sharedErrors.FileInvalidTypeError(nil)
+		} else if strings.Contains(err.Error(), "invalid format") {
+			apiErr = sharedErrors.FileInvalidFormatError(err.Error())
+		} else {
+			apiErr = sharedErrors.FileUploadFailedError(err.Error())
+		}
+
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -97,28 +129,37 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 // @Failure 404 {object} map[string]interface{}
 // @Router /files/{id} [get]
 func (h *FileHandler) GetFile(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Не авторизован").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Parse file ID
 	fileID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		apiErr := sharedErrors.BadRequestError("Неверный ID файла").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Get file
 	file, err := h.fileUsecase.GetFile(uint(fileID), userID.(uint))
 	if err != nil {
+		var apiErr *sharedErrors.APIError
 		if err.Error() == "access denied" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
+			apiErr = sharedErrors.FileAccessDeniedError()
+		} else {
+			apiErr = sharedErrors.FileNotFoundError()
 		}
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -139,17 +180,21 @@ func (h *FileHandler) GetFile(c *gin.Context) {
 // @Failure 404 {object} map[string]interface{}
 // @Router /files/{filename} [get]
 func (h *FileHandler) DownloadFile(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Не авторизован").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Get filename from URL
 	fileName := c.Param("filename")
 	if fileName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename is required"})
+		apiErr := sharedErrors.RequiredFieldError("filename").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -159,11 +204,14 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 	// Get file record
 	file, err := h.fileUsecase.GetFileByName(fileName, userID.(uint))
 	if err != nil {
+		var apiErr *sharedErrors.APIError
 		if err.Error() == "access denied" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
+			apiErr = sharedErrors.FileAccessDeniedError()
+		} else {
+			apiErr = sharedErrors.FileNotFoundError()
 		}
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -172,7 +220,8 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 	if isThumbnail && file.ThumbnailPath != "" {
 		filePath = file.ThumbnailPath
 	} else if isThumbnail && file.ThumbnailPath == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not available"})
+		apiErr := sharedErrors.FileThumbnailNotAvailableError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -193,10 +242,13 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 // @Failure 404 {object} map[string]interface{}
 // @Router /files/public/{filename} [get]
 func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get filename from URL
 	fileName := c.Param("filename")
 	if fileName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Filename is required"})
+		apiErr := sharedErrors.RequiredFieldError("filename").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -206,7 +258,8 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 	// Get file record
 	file, err := h.fileUsecase.GetPublicFileByName(fileName)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		apiErr := sharedErrors.FileNotFoundError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -215,7 +268,8 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 	if isThumbnail && file.ThumbnailPath != "" {
 		filePath = file.ThumbnailPath
 	} else if isThumbnail && file.ThumbnailPath == "" {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Thumbnail not available"})
+		apiErr := sharedErrors.FileThumbnailNotAvailableError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -252,24 +306,33 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 // @Failure 401 {object} map[string]interface{}
 // @Router /files [get]
 func (h *FileHandler) ListFiles(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Не авторизован").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Parse query parameters
 	var filter models.FileFilterRequest
 	if err := c.ShouldBindQuery(&filter); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		apiErr := sharedErrors.BadRequestError("Неверные параметры запроса").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Get files
 	files, total, err := h.fileUsecase.ListFiles(&filter, userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apiErr := sharedErrors.InternalError("Не удалось получить список файлов").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -299,31 +362,46 @@ func (h *FileHandler) ListFiles(c *gin.Context) {
 // @Failure 404 {object} map[string]interface{}
 // @Router /files/{id} [delete]
 func (h *FileHandler) DeleteFile(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Не авторизован").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Parse file ID
 	fileID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		apiErr := sharedErrors.BadRequestError("Неверный ID файла").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Delete file
 	if err := h.fileUsecase.DeleteFile(uint(fileID), userID.(uint)); err != nil {
-		if err.Error() == "access denied: only the uploader can delete this file" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
-			return
+		var apiErr *sharedErrors.APIError
+		if strings.Contains(err.Error(), "access denied") {
+			apiErr = sharedErrors.FileAccessDeniedError().
+				WithDetails("Только загрузивший пользователь может удалить этот файл")
+		} else if strings.Contains(err.Error(), "not found") {
+			apiErr = sharedErrors.FileNotFoundError()
+		} else {
+			apiErr = sharedErrors.FileDeleteFailedError(err.Error())
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		apiErr.WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "File deleted successfully"})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Файл успешно удален",
+		"request_id": requestID,
+	})
 }
 
 // GetUserAvatar handles getting user's avatar
@@ -336,17 +414,23 @@ func (h *FileHandler) DeleteFile(c *gin.Context) {
 // @Failure 404 {object} map[string]interface{}
 // @Router /files/avatar [get]
 func (h *FileHandler) GetUserAvatar(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		apiErr := sharedErrors.UnauthorizedError("Не авторизован").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Get avatar
 	avatar, err := h.fileUsecase.GetUserAvatar(userID.(uint))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Avatar not found"})
+		apiErr := sharedErrors.FileNotFoundError().
+			WithRequestID(requestID).
+			WithDetails("Аватар не найден")
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
@@ -367,17 +451,23 @@ func (h *FileHandler) GetUserAvatar(c *gin.Context) {
 // @Failure 404 {object} map[string]interface{}
 // @Router /internal/files/{id} [get]
 func (h *FileHandler) GetFileInternal(c *gin.Context) {
+	requestID := requestid.Get(c)
+
 	// Parse file ID
 	fileID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file ID"})
+		apiErr := sharedErrors.BadRequestError("Неверный ID файла").
+			WithRequestID(requestID).
+			WithDetails(err.Error())
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
 	// Get file without access control check
 	file, err := h.fileUsecase.GetFileByID(uint(fileID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "File not found"})
+		apiErr := sharedErrors.FileNotFoundError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
 		return
 	}
 
