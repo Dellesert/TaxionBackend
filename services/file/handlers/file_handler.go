@@ -77,7 +77,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 	}
 
 	// Validate file type
-	if strings.TrimSpace(req.FileType) == "" {
+	if strings.TrimSpace(string(req.FileType)) == "" {
 		apiErr := sharedErrors.RequiredFieldError("file_type").WithRequestID(requestID)
 		c.JSON(apiErr.StatusCode, apiErr)
 		return
