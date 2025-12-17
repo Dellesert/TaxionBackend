@@ -340,6 +340,13 @@ func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequ
 		return nil, fmt.Errorf("failed to update poll: %w", err)
 	}
 
+	// Handle option updates if provided
+	if len(req.Options) > 0 {
+		if err := u.updatePollOptions(poll.ID, req.Options); err != nil {
+			return nil, fmt.Errorf("failed to update poll options: %w", err)
+		}
+	}
+
 	// Get updated poll with all details
 	updatedPoll, err := u.pollRepo.GetByIDWithAll(poll.ID)
 	if err != nil {
@@ -1327,4 +1334,89 @@ func (u *pollUsecase) GetPollVoters(userID, pollID uint, userRole sharedModels.R
 // GetDeletedPollIDsSince returns IDs of polls deleted since the given timestamp
 func (u *pollUsecase) GetDeletedPollIDsSince(since time.Time) ([]uint, error) {
 	return u.pollRepo.GetDeletedPollIDsSince(since)
+}
+
+// updatePollOptions handles updating, creating, and deleting poll options
+func (u *pollUsecase) updatePollOptions(pollID uint, optionRequests []models.UpdatePollOptionRequest) error {
+	// Get existing options for the poll
+	existingOptions, err := u.optionRepo.GetByPollID(pollID)
+	if err != nil {
+		return fmt.Errorf("failed to get existing options: %w", err)
+	}
+
+	// Create a map of existing option IDs for quick lookup
+	existingOptionsMap := make(map[uint]*models.PollOption)
+	for _, option := range existingOptions {
+		existingOptionsMap[option.ID] = option
+	}
+
+	// Track which existing options are being updated
+	updatedOptionIDs := make(map[uint]bool)
+
+	// Process each option in the request
+	for _, optionReq := range optionRequests {
+		if optionReq.ID != nil {
+			// Update existing option
+			existingOption, exists := existingOptionsMap[*optionReq.ID]
+			if !exists {
+				return fmt.Errorf("option with ID %d not found", *optionReq.ID)
+			}
+
+			// Update option fields
+			existingOption.Text = strings.TrimSpace(optionReq.Text)
+			existingOption.Description = strings.TrimSpace(optionReq.Description)
+			existingOption.Position = optionReq.Position
+			existingOption.Color = optionReq.Color
+			existingOption.ImageURL = optionReq.ImageURL
+
+			if err := u.optionRepo.Update(existingOption); err != nil {
+				return fmt.Errorf("failed to update option %d: %w", *optionReq.ID, err)
+			}
+
+			updatedOptionIDs[*optionReq.ID] = true
+		} else {
+			// Create new option
+			newOption := &models.PollOption{
+				PollID:      pollID,
+				Text:        strings.TrimSpace(optionReq.Text),
+				Description: strings.TrimSpace(optionReq.Description),
+				Position:    optionReq.Position,
+				Color:       optionReq.Color,
+				ImageURL:    optionReq.ImageURL,
+			}
+
+			if err := u.optionRepo.Create(newOption); err != nil {
+				return fmt.Errorf("failed to create new option: %w", err)
+			}
+		}
+	}
+
+	// Delete options that are no longer in the request
+	for optionID := range existingOptionsMap {
+		if !updatedOptionIDs[optionID] {
+			// Check if option has votes before deleting
+			voteCount, err := u.voteRepo.GetByOptionID(optionID)
+			if err == nil && len(voteCount) > 0 {
+				// Option has votes, don't delete it
+				logger.WithFields(map[string]interface{}{
+					"poll_id":   pollID,
+					"option_id": optionID,
+					"votes":     len(voteCount),
+				}).Warn("Skipping deletion of option with existing votes")
+				continue
+			}
+
+			// Delete option
+			if err := u.optionRepo.Delete(optionID); err != nil {
+				logger.WithFields(map[string]interface{}{
+					"poll_id":   pollID,
+					"option_id": optionID,
+					"error":     err.Error(),
+				}).Error("Failed to delete option")
+				// Continue with other deletions instead of failing completely
+			}
+		}
+	}
+
+	return nil
 }
