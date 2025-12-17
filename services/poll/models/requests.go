@@ -48,19 +48,30 @@ type CreatePollOptionRequest struct {
 
 // UpdatePollRequest represents request for updating a poll
 type UpdatePollRequest struct {
-	Title             *string         `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
-	Description       *string         `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Status            *PollStatus     `json:"status,omitempty" binding:"omitempty,oneof=draft active closed archived cancelled" validate:"omitempty,oneof=draft active closed archived cancelled"`
-	Visibility        *PollVisibility `json:"visibility,omitempty" binding:"omitempty,oneof=public department invite_only private" validate:"omitempty,oneof=public department invite_only private"`
-	Category          *string         `json:"category,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	StartTime         *time.Time      `json:"start_time,omitempty"`
-	EndTime           *time.Time      `json:"end_time,omitempty"`
-	AllowAnonymous    *bool           `json:"allow_anonymous,omitempty"`
-	AllowMultipleVote *bool           `json:"allow_multiple_vote,omitempty"`
-	RequireComment    *bool           `json:"require_comment,omitempty"`
-	ShowResults       *bool           `json:"show_results,omitempty"`
-	ShowResultsAfter  *bool           `json:"show_results_after,omitempty"`
-	DepartmentID      *uint           `json:"department_id,omitempty" validate:"omitempty,min=1"`
+	Title             *string                    `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
+	Description       *string                    `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Status            *PollStatus                `json:"status,omitempty" binding:"omitempty,oneof=draft active closed archived cancelled" validate:"omitempty,oneof=draft active closed archived cancelled"`
+	Visibility        *PollVisibility            `json:"visibility,omitempty" binding:"omitempty,oneof=public department invite_only private" validate:"omitempty,oneof=public department invite_only private"`
+	Category          *string                    `json:"category,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	StartTime         *time.Time                 `json:"start_time,omitempty"`
+	EndTime           *time.Time                 `json:"end_time,omitempty"`
+	AllowAnonymous    *bool                      `json:"allow_anonymous,omitempty"`
+	AllowMultipleVote *bool                      `json:"allow_multiple_vote,omitempty"`
+	RequireComment    *bool                      `json:"require_comment,omitempty"`
+	ShowResults       *bool                      `json:"show_results,omitempty"`
+	ShowResultsAfter  *bool                      `json:"show_results_after,omitempty"`
+	DepartmentID      *uint                      `json:"department_id,omitempty" validate:"omitempty,min=1"`
+	Options           []UpdatePollOptionRequest  `json:"options,omitempty" binding:"omitempty,min=1,max=20" validate:"omitempty,min=1,max=20,dive"`
+}
+
+// UpdatePollOptionRequest represents request for updating a poll option
+type UpdatePollOptionRequest struct {
+	ID          *uint  `json:"id,omitempty"` // If provided, update existing option; if nil, create new option
+	Text        string `json:"text" binding:"required,min=1,max=500" validate:"required,min=1,max=500"`
+	Description string `json:"description,omitempty" binding:"omitempty,max=1000" validate:"omitempty,max=1000"`
+	Position    int    `json:"position"`
+	Color       string `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
+	ImageURL    string `json:"image_url,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
 }
 
 // VotePollRequest represents request for voting on a poll
