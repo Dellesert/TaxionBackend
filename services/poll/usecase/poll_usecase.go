@@ -1059,7 +1059,12 @@ func (u *pollUsecase) canViewResults(userID uint, poll *models.Poll) bool {
 		return false
 	}
 
-	// If show results after voting is enabled, check if user has voted
+	// If poll is closed or archived, everyone with access can view results
+	if poll.Status == models.PollStatusClosed || poll.Status == models.PollStatusArchived {
+		return u.hasPollAccess(userID, poll)
+	}
+
+	// If show results after voting is enabled (and poll is still active), check if user has voted
 	if poll.ShowResultsAfter {
 		hasVoted, err := u.voteRepo.HasUserVoted(userID, poll.ID)
 		return err == nil && hasVoted
