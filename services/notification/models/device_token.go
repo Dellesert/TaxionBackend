@@ -16,6 +16,7 @@ const (
 	DevicePlatformIOS     DevicePlatform = "ios"
 	DevicePlatformAndroid DevicePlatform = "android"
 	DevicePlatformWeb     DevicePlatform = "web"
+	DevicePlatformElectron DevicePlatform = "electron"
 )
 
 // DeviceToken represents a push notification device token (FCM token)
@@ -23,7 +24,7 @@ type DeviceToken struct {
 	models.BaseModel
 	UserID     uint           `gorm:"not null;index:idx_user_device" json:"user_id" validate:"required,min=1"`
 	Token      string         `gorm:"not null;uniqueIndex;size:500" json:"token" validate:"required,max=500"`
-	Platform   DevicePlatform `gorm:"not null;size:20;index" json:"platform" validate:"required,oneof=ios android web"`
+	Platform   DevicePlatform `gorm:"not null;size:20;index" json:"platform" validate:"required,oneof=ios android web electron"`
 	DeviceID   string         `gorm:"size:255;index:idx_user_device" json:"device_id,omitempty" validate:"omitempty,max=255"`      // Unique device identifier
 	DeviceName string         `gorm:"size:255" json:"device_name,omitempty" validate:"omitempty,max=255"`                          // e.g., "iPhone 13 Pro", "Pixel 7"
 	AppVersion string         `gorm:"size:50" json:"app_version,omitempty" validate:"omitempty,max=50"`                            // e.g., "1.2.3"
@@ -72,7 +73,7 @@ func (dt *DeviceToken) BeforeUpdate(tx *gorm.DB) error {
 // RegisterDeviceRequest represents request for registering a device token
 type RegisterDeviceRequest struct {
 	Token      string         `json:"token" binding:"required,min=10,max=500" validate:"required,min=10,max=500"`
-	Platform   DevicePlatform `json:"platform" binding:"required,oneof=ios android web" validate:"required,oneof=ios android web"`
+	Platform   DevicePlatform `json:"platform" binding:"required,oneof=ios android web electron" validate:"required,oneof=ios android web electron"`
 	DeviceID   string         `json:"device_id,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
 	DeviceName string         `json:"device_name,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
 	AppVersion string         `json:"app_version,omitempty" binding:"omitempty,max=50" validate:"omitempty,max=50"`
