@@ -10,10 +10,16 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
 	// Get app store links from environment
 	appStoreURL := getEnvOrDefault("APP_STORE_URL", "https://apps.apple.com/app/tachyon-messenger")
 	googlePlayURL := getEnvOrDefault("GOOGLE_PLAY_URL", "https://play.google.com/store/apps/details?id=com.tachyon.messenger")
+	windowsAppURL := getEnvOrDefault("WINDOWS_APP_URL", "")
 
 	// Get backend URL for invitation redirect page
 	backendURL := getEnvOrDefault("BACKEND_URL", getEnvOrDefault("USER_SERVICE_URL", "http://localhost:8081"))
 	inviteURL := backendURL + "/invite/" + inviteToken
+
+	// If Windows URL is not set, use downloads page
+	if windowsAppURL == "" {
+		windowsAppURL = backendURL + "/downloads/windows/latest"
+	}
 
 	tmpl := `
 <!DOCTYPE html>
@@ -205,14 +211,18 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
                 Установите приложение
             </div>
             <p style="margin: 10px 0 15px 40px;">
-                Скачайте приложение Tachyon Messenger из App Store или Google Play:
+                Скачайте приложение Tachyon Messenger для вашей платформы:
             </p>
             <div class="app-links">
-                <a href="{{.AppStoreURL}}" class="app-link" target="_blank" rel="noopener">
-                    <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on App Store" />
+                <a href="{{.WindowsAppURL}}" class="app-link" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; background: #0078D4; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                    <span style="font-size: 20px; margin-right: 8px;">🪟</span>
+                    <span>Windows</span>
                 </a>
                 <a href="{{.GooglePlayURL}}" class="app-link" target="_blank" rel="noopener">
                     <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height: 58px;" />
+                </a>
+                <a href="{{.AppStoreURL}}" class="app-link" target="_blank" rel="noopener">
+                    <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on App Store" />
                 </a>
             </div>
         </div>
@@ -303,6 +313,7 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
 		InviteURL     string
 		AppStoreURL   string
 		GooglePlayURL string
+		WindowsAppURL string
 	}{
 		UserName:      userName,
 		InviteToken:   inviteToken,
@@ -310,6 +321,7 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
 		InviteURL:     inviteURL,
 		AppStoreURL:   appStoreURL,
 		GooglePlayURL: googlePlayURL,
+		WindowsAppURL: windowsAppURL,
 	}
 
 	var buf bytes.Buffer

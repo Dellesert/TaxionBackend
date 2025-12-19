@@ -107,7 +107,7 @@ func main() {
 	}
 	defer db.Close()
 
-	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, SMTP settings, user settings, and subdepartments tables)
+	// Run database migrations (including 2FA, passkey, system settings, invitations, password resets, SMTP settings, user settings, subdepartments, and app_versions tables)
 	// First migrate all models except UserSettings
 	if err := db.Migrate(
 		&models.Department{},
@@ -119,6 +119,7 @@ func main() {
 		&models.Invitation{},
 		&models.PasswordReset{},
 		&models.SMTPSettings{},
+		&models.AppVersion{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -163,6 +164,7 @@ func main() {
 	invitationRepo := repository.NewInvitationRepository(db.DB)
 	passwordResetRepo := repository.NewPasswordResetRepository(db.DB)
 	smtpRepo := repository.NewSMTPRepository(db.DB)
+	appVersionRepo := repository.NewAppVersionRepository(db.DB)
 
 	// Initialize email service with dynamic config loader
 	// This allows the email service to reload SMTP settings from database on each send
@@ -226,6 +228,7 @@ func main() {
 	invitationUsecase := usecase.NewInvitationUsecase(invitationRepo, userRepo, departmentRepo, emailService, authUsecase)
 	passwordResetUsecase := usecase.NewPasswordResetUsecase(passwordResetRepo, userRepo, emailService, authUsecase)
 	smtpUsecase := usecase.NewSMTPUsecase(smtpRepo)
+	appVersionUsecase := usecase.NewAppVersionUsecase(appVersionRepo, userRepo)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -247,6 +250,7 @@ func main() {
 	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)
 	passwordResetHandler := handlers.NewPasswordResetHandler(passwordResetUsecase)
 	smtpHandler := handlers.NewSMTPHandler(smtpUsecase)
+	appVersionHandler := handlers.NewAppVersionHandler(appVersionUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "user-service", startTime)
 	quickStartHandler := handlers.NewQuickStartHandler(departmentUsecase, subdepartmentUsecase, userUsecase)
 
@@ -263,7 +267,7 @@ func main() {
 	router.Use(metricsHandler.MetricsMiddleware())
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, metricsHandler, quickStartHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, appVersionHandler, metricsHandler, quickStartHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -298,7 +302,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, appVersionHandler *handlers.AppVersionHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -396,6 +400,14 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			passwordResets.POST("/reset/:token", passwordResetHandler.ResetPassword)
 		}
 
+		// Public app version routes (no auth required)
+		appVersions := v1.Group("/app-versions")
+		{
+			appVersions.GET("/latest", appVersionHandler.GetLatestVersions)
+			appVersions.GET("/latest/:platform", appVersionHandler.GetLatestByPlatform)
+		}
+
+		// Authenticated routes
 		v1Auth := v1.Group("/auth")
 		{
 			v1Auth.POST("/register", authHandler.Register)
@@ -594,7 +606,26 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			{
 				v1AdminPasswordResets.POST("/initiate", middleware.LogAdminAction("initiate_password_reset"), passwordResetHandler.InitiatePasswordReset)
 			}
+
+			// App version management endpoints (admin and super admin)
+			v1AdminAppVersions := v1Admin.Group("/app-versions")
+			{
+				v1AdminAppVersions.POST("", middleware.LogAdminAction("create_app_version"), appVersionHandler.CreateAppVersion)
+				v1AdminAppVersions.GET("", middleware.LogAdminAction("list_app_versions"), appVersionHandler.ListAppVersions)
+				v1AdminAppVersions.GET("/stats", middleware.LogAdminAction("get_app_version_stats"), appVersionHandler.GetStats)
+				v1AdminAppVersions.GET("/:id", middleware.LogAdminAction("get_app_version"), appVersionHandler.GetAppVersion)
+				v1AdminAppVersions.PUT("/:id", middleware.LogAdminAction("update_app_version"), appVersionHandler.UpdateAppVersion)
+				v1AdminAppVersions.DELETE("/:id", middleware.LogAdminAction("delete_app_version"), appVersionHandler.DeleteAppVersion)
+				v1AdminAppVersions.POST("/:id/activate", middleware.LogAdminAction("activate_app_version"), appVersionHandler.ActivateVersion)
+			}
 		}
+	}
+
+	// Public download endpoints (no auth required)
+	downloads := router.Group("/downloads")
+	{
+		downloads.GET("/:platform/latest", appVersionHandler.DownloadLatest)
+		downloads.GET("/:platform/:version", appVersionHandler.DownloadVersion)
 	}
 
 	// Admin routes with specific middleware and logging

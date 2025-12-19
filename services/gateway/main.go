@@ -258,6 +258,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			passwordResets.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
+		// App version routes (public) - proxy to user service
+		appVersions := v1.Group("/app-versions")
+		{
+			appVersions.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Admin routes within /api/v1
 		admin := v1.Group("/admin")
 		{
@@ -282,6 +288,8 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			admin.Any("/smtp-settings/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/password-resets", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/password-resets/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/app-versions", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/app-versions/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
 		// Super Admin routes within /api/v1 - proxy to user service
@@ -298,6 +306,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 	// These are HTML pages that redirect to the mobile app
 	router.GET("/invite/:token", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 	router.GET("/reset-password/:token", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+
+	// Public app download endpoints (no /api/v1 prefix)
+	downloads := router.Group("/downloads")
+	{
+		downloads.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+	}
 
 	// Admin routes (direct) - proxy to user service
 	adminDirect := router.Group("/admin")
