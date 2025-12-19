@@ -16,16 +16,16 @@ import (
 // PasskeyUsecase defines interface for passkey business logic
 type PasskeyUsecase interface {
 	// Registration flow
-	BeginRegistration(userID uint, passkeyName string, origin string) (*protocol.CredentialCreation, error)
-	FinishRegistration(userID uint, response *protocol.ParsedCredentialCreationData, origin string) error
+	BeginRegistration(userID uint, passkeyName string) (*protocol.CredentialCreation, error)
+	FinishRegistration(userID uint, response *protocol.ParsedCredentialCreationData) error
 
 	// Authentication flow (legacy - requires email)
-	BeginAuthentication(email string, origin string) (*protocol.CredentialAssertion, error)
-	FinishAuthentication(email string, response *protocol.ParsedCredentialAssertionData, origin string) (*models.User, error)
+	BeginAuthentication(email string) (*protocol.CredentialAssertion, error)
+	FinishAuthentication(email string, response *protocol.ParsedCredentialAssertionData) (*models.User, error)
 
 	// Discoverable authentication flow (no email required)
-	BeginDiscoverableAuthentication(origin string) (*protocol.CredentialAssertion, error)
-	FinishAuthenticationByCredential(response *protocol.ParsedCredentialAssertionData, origin string) (*models.User, error)
+	BeginDiscoverableAuthentication() (*protocol.CredentialAssertion, error)
+	FinishAuthenticationByCredential(response *protocol.ParsedCredentialAssertionData) (*models.User, error)
 
 	// Management
 	ListUserPasskeys(userID uint) ([]*models.PasskeyCredential, error)
@@ -59,7 +59,7 @@ func NewPasskeyUsecase(
 }
 
 // BeginRegistration starts the passkey registration process
-func (u *passkeyUsecase) BeginRegistration(userID uint, passkeyName string, origin string) (*protocol.CredentialCreation, error) {
+func (u *passkeyUsecase) BeginRegistration(userID uint, passkeyName string) (*protocol.CredentialCreation, error) {
 	// Get user
 	user, err := u.userRepo.GetByID(userID)
 	if err != nil {
@@ -105,18 +105,8 @@ func (u *passkeyUsecase) BeginRegistration(userID uint, passkeyName string, orig
 	// Create WebAuthnUser
 	webAuthnUser := NewWebAuthnUser(user, existingPasskeys)
 
-	// Get the appropriate WebAuthn instance for this origin
-	webAuthnInstance, err := u.webAuthn.GetWebAuthnForOrigin(origin)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"origin": origin,
-			"error":  err.Error(),
-		}).Error("Failed to get WebAuthn instance for origin")
-		return nil, fmt.Errorf("failed to get WebAuthn configuration: %w", err)
-	}
-
 	// Begin registration
-	options, sessionData, err := webAuthnInstance.BeginRegistration(webAuthnUser)
+	options, sessionData, err := u.webAuthn.webAuthn.BeginRegistration(webAuthnUser)
 	if err != nil {
 		logger.WithField("error", err.Error()).Error("Failed to begin passkey registration")
 		return nil, fmt.Errorf("failed to begin passkey registration: %w", err)
@@ -129,14 +119,13 @@ func (u *passkeyUsecase) BeginRegistration(userID uint, passkeyName string, orig
 	logger.WithFields(map[string]interface{}{
 		"user_id": userID,
 		"email":   user.Email,
-		"origin":  origin,
 	}).Info("Passkey registration started")
 
 	return options, nil
 }
 
 // FinishRegistration completes the passkey registration process
-func (u *passkeyUsecase) FinishRegistration(userID uint, response *protocol.ParsedCredentialCreationData, origin string) error {
+func (u *passkeyUsecase) FinishRegistration(userID uint, response *protocol.ParsedCredentialCreationData) error {
 	// Get user
 	user, err := u.userRepo.GetByID(userID)
 	if err != nil {
@@ -166,18 +155,8 @@ func (u *passkeyUsecase) FinishRegistration(userID uint, response *protocol.Pars
 		return fmt.Errorf("invalid session data")
 	}
 
-	// Get the appropriate WebAuthn instance for this origin
-	webAuthnInstance, err := u.webAuthn.GetWebAuthnForOrigin(origin)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"origin": origin,
-			"error":  err.Error(),
-		}).Error("Failed to get WebAuthn instance for origin")
-		return fmt.Errorf("failed to get WebAuthn configuration: %w", err)
-	}
-
 	// Verify and create credential
-	credential, err := webAuthnInstance.CreateCredential(webAuthnUser, *webAuthnSessionData, response)
+	credential, err := u.webAuthn.webAuthn.CreateCredential(webAuthnUser, *webAuthnSessionData, response)
 	if err != nil {
 		logger.WithField("error", err.Error()).Error("Failed to create passkey credential")
 		return fmt.Errorf("failed to verify passkey: %w", err)
@@ -219,7 +198,7 @@ func (u *passkeyUsecase) FinishRegistration(userID uint, response *protocol.Pars
 }
 
 // BeginAuthentication starts the passkey authentication process
-func (u *passkeyUsecase) BeginAuthentication(email string, origin string) (*protocol.CredentialAssertion, error) {
+func (u *passkeyUsecase) BeginAuthentication(email string) (*protocol.CredentialAssertion, error) {
 	// Check security settings to see if passkey login is allowed
 	settings, err := u.settingsRepo.GetOrCreate()
 	if err == nil && settings != nil {
@@ -253,18 +232,8 @@ func (u *passkeyUsecase) BeginAuthentication(email string, origin string) (*prot
 	// Create WebAuthnUser
 	webAuthnUser := NewWebAuthnUser(user, passkeys)
 
-	// Get the appropriate WebAuthn instance for this origin
-	webAuthnInstance, err := u.webAuthn.GetWebAuthnForOrigin(origin)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"origin": origin,
-			"error":  err.Error(),
-		}).Error("Failed to get WebAuthn instance for origin")
-		return nil, fmt.Errorf("failed to get WebAuthn configuration: %w", err)
-	}
-
 	// Begin authentication
-	options, sessionData, err := webAuthnInstance.BeginLogin(webAuthnUser)
+	options, sessionData, err := u.webAuthn.webAuthn.BeginLogin(webAuthnUser)
 	if err != nil {
 		logger.WithField("error", err.Error()).Error("Failed to begin passkey authentication")
 		return nil, fmt.Errorf("failed to begin passkey authentication: %w", err)
@@ -277,7 +246,6 @@ func (u *passkeyUsecase) BeginAuthentication(email string, origin string) (*prot
 	logger.WithFields(map[string]interface{}{
 		"user_id": user.ID,
 		"email":   email,
-		"origin":  origin,
 	}).Info("Passkey authentication started")
 
 	return options, nil
@@ -285,8 +253,8 @@ func (u *passkeyUsecase) BeginAuthentication(email string, origin string) (*prot
 
 // BeginDiscoverableAuthentication starts the passkey authentication process WITHOUT requiring email
 // This uses discoverable credentials (resident keys) where the passkey itself contains user information
-func (u *passkeyUsecase) BeginDiscoverableAuthentication(origin string) (*protocol.CredentialAssertion, error) {
-	logger.WithField("origin", origin).Info("Starting discoverable passkey authentication")
+func (u *passkeyUsecase) BeginDiscoverableAuthentication() (*protocol.CredentialAssertion, error) {
+	logger.Info("Starting discoverable passkey authentication")
 
 	// Check security settings to see if passkey login is allowed
 	settings, err := u.settingsRepo.GetOrCreate()
@@ -306,20 +274,10 @@ func (u *passkeyUsecase) BeginDiscoverableAuthentication(origin string) (*protoc
 		}
 	}
 
-	// Get the appropriate WebAuthn instance for this origin
-	webAuthnInstance, err := u.webAuthn.GetWebAuthnForOrigin(origin)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"origin": origin,
-			"error":  err.Error(),
-		}).Error("Failed to get WebAuthn instance for origin")
-		return nil, fmt.Errorf("failed to get WebAuthn configuration: %w", err)
-	}
-
 	// For discoverable credentials, we call BeginDiscoverableLogin with custom options
 	// that don't include allowCredentials (empty list means browser will show all available passkeys)
 	logger.Debug("Calling BeginDiscoverableLogin")
-	options, sessionData, err := webAuthnInstance.BeginDiscoverableLogin(
+	options, sessionData, err := u.webAuthn.webAuthn.BeginDiscoverableLogin(
 		// Explicitly set userVerification to preferred (not required)
 		// This is important for discoverable credentials
 		webauthn.WithUserVerification(protocol.VerificationPreferred),
@@ -342,14 +300,13 @@ func (u *passkeyUsecase) BeginDiscoverableAuthentication(origin string) (*protoc
 		"challenge":     challengeStr,
 		"challenge_len": len(challengeStr),
 		"session_key":   sessionKey,
-		"origin":        origin,
 	}).Info("Discoverable passkey authentication started successfully")
 
 	return options, nil
 }
 
 // FinishAuthentication completes the passkey authentication process
-func (u *passkeyUsecase) FinishAuthentication(email string, response *protocol.ParsedCredentialAssertionData, origin string) (*models.User, error) {
+func (u *passkeyUsecase) FinishAuthentication(email string, response *protocol.ParsedCredentialAssertionData) (*models.User, error) {
 	// Normalize email
 	email = strings.ToLower(strings.TrimSpace(email))
 
@@ -380,18 +337,8 @@ func (u *passkeyUsecase) FinishAuthentication(email string, response *protocol.P
 		return nil, fmt.Errorf("invalid session data")
 	}
 
-	// Get the appropriate WebAuthn instance for this origin
-	webAuthnInstance, err := u.webAuthn.GetWebAuthnForOrigin(origin)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"origin": origin,
-			"error":  err.Error(),
-		}).Error("Failed to get WebAuthn instance for origin")
-		return nil, fmt.Errorf("failed to get WebAuthn configuration: %w", err)
-	}
-
 	// Verify the assertion
-	credential, err := webAuthnInstance.ValidateLogin(webAuthnUser, *webAuthnSessionData, response)
+	credential, err := u.webAuthn.webAuthn.ValidateLogin(webAuthnUser, *webAuthnSessionData, response)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to validate passkey authentication")
 		return nil, fmt.Errorf("invalid passkey: %w", err)
@@ -430,8 +377,8 @@ func (u *passkeyUsecase) FinishAuthentication(email string, response *protocol.P
 // FinishAuthenticationByCredential completes the passkey authentication process by credential ID
 // This method looks up the user by the credential ID instead of requiring email
 // Used for discoverable credentials (resident keys) authentication flow
-func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.ParsedCredentialAssertionData, origin string) (*models.User, error) {
-	logger.WithField("origin", origin).Info("Starting FinishAuthenticationByCredential")
+func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.ParsedCredentialAssertionData) (*models.User, error) {
+	logger.Info("Starting FinishAuthenticationByCredential")
 
 	// Check security settings to see if passkey login is allowed
 	settings, err := u.settingsRepo.GetOrCreate()
@@ -537,18 +484,8 @@ func (u *passkeyUsecase) FinishAuthenticationByCredential(response *protocol.Par
 		"updated_session_user_id": string(webAuthnSessionData.UserID),
 	}).Info("Updated session User ID to match the authenticated user")
 
-	// Get the appropriate WebAuthn instance for this origin
-	webAuthnInstance, err := u.webAuthn.GetWebAuthnForOrigin(origin)
-	if err != nil {
-		logger.WithFields(map[string]interface{}{
-			"origin": origin,
-			"error":  err.Error(),
-		}).Error("Failed to get WebAuthn instance for origin")
-		return nil, fmt.Errorf("failed to get WebAuthn configuration: %w", err)
-	}
-
 	// Verify the assertion
-	credential, err := webAuthnInstance.ValidateLogin(webAuthnUser, *webAuthnSessionData, response)
+	credential, err := u.webAuthn.webAuthn.ValidateLogin(webAuthnUser, *webAuthnSessionData, response)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to validate passkey authentication")
 		return nil, fmt.Errorf("invalid passkey: %w", err)
