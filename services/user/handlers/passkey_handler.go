@@ -104,20 +104,51 @@ func getOrigin(c *gin.Context) string {
 		}
 	}
 
-	// Fallback to X-Forwarded-Host or Host header for iOS apps
+	// Fallback to X-Forwarded-Host header (set by reverse proxy)
 	forwardedHost := c.GetHeader("X-Forwarded-Host")
 	if forwardedHost != "" {
 		// Assume HTTPS for production
 		return "https://" + forwardedHost
 	}
 
+	// Check Host header - but filter out internal Docker hosts
 	host := c.GetHeader("Host")
-	if host != "" && host != "localhost" && !strings.HasPrefix(host, "127.") {
-		// Assume HTTPS for production
+	if host != "" && !isInternalHost(host) {
 		return "https://" + host
 	}
 
+	// For iOS native apps without Origin header, use default production domain
+	// iOS apps use the domain from Associated Domains (webcredentials)
+	userAgent := c.GetHeader("User-Agent")
+	if isIOSNativeApp(userAgent) {
+		// Return the main iOS app domain
+		logger.WithField("user_agent", userAgent).Info("iOS native app detected, using default origin")
+		return "https://taxion.fusioninsight.cloud"
+	}
+
+	logger.Warn("Could not determine origin from request")
 	return ""
+}
+
+// isInternalHost checks if the host is an internal Docker/localhost host
+func isInternalHost(host string) bool {
+	return host == "localhost" ||
+		strings.HasPrefix(host, "127.") ||
+		strings.HasPrefix(host, "10.") ||
+		strings.HasPrefix(host, "172.") ||
+		strings.HasPrefix(host, "192.168.") ||
+		strings.Contains(host, "-service") || // Docker service names like "user-service"
+		strings.Contains(host, ":808")        // Internal ports like :8081
+}
+
+// isIOSNativeApp checks if the User-Agent indicates an iOS native app
+func isIOSNativeApp(userAgent string) bool {
+	// iOS native apps typically have User-Agent like:
+	// "AppName/version CFNetwork/... Darwin/..."
+	// or custom User-Agent set by the app
+	return strings.Contains(userAgent, "Darwin") ||
+		strings.Contains(userAgent, "CFNetwork") ||
+		strings.Contains(userAgent, "Tahion") // Your app name
 }
 
 // findHostEnd finds the end of host in a URL (first / or end of string)
