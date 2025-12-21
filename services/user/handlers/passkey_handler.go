@@ -18,6 +18,35 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 )
 
+// decodeBase64Flexible decodes base64 data trying multiple encodings:
+// 1. Standard base64 with padding
+// 2. URL-safe base64 without padding (used by WebAuthn/iOS)
+// 3. URL-safe base64 with padding
+// 4. Standard base64 without padding
+func decodeBase64Flexible(data string) ([]byte, error) {
+	// Try standard base64 with padding first
+	if decoded, err := base64.StdEncoding.DecodeString(data); err == nil {
+		return decoded, nil
+	}
+
+	// Try URL-safe base64 without padding (most common for WebAuthn)
+	if decoded, err := base64.RawURLEncoding.DecodeString(data); err == nil {
+		return decoded, nil
+	}
+
+	// Try URL-safe base64 with padding
+	if decoded, err := base64.URLEncoding.DecodeString(data); err == nil {
+		return decoded, nil
+	}
+
+	// Try standard base64 without padding
+	if decoded, err := base64.RawStdEncoding.DecodeString(data); err == nil {
+		return decoded, nil
+	}
+
+	return nil, fmt.Errorf("failed to decode base64 data with any encoding")
+}
+
 // PasskeyHandler handles passkey-related HTTP requests
 type PasskeyHandler struct {
 	passkeyUsecase usecase.PasskeyUsecase
@@ -145,20 +174,16 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 		return
 	}
 
-	// Decode base64 fields (using standard base64 decoding)
-	rawID, err := base64.StdEncoding.DecodeString(credData.RawID)
+	// Decode base64 fields (supports both standard and URL-safe base64)
+	rawID, err := decodeBase64Flexible(credData.RawID)
 	if err != nil {
-		// Try URL-safe base64
-		rawID, err = base64.RawURLEncoding.DecodeString(credData.RawID)
-		if err != nil {
-			logger.WithField("error", err.Error()).Warn("Failed to decode rawId")
-			apiErr := sharedErrors.BadRequestError("Invalid rawId encoding").WithRequestID(requestID)
-			c.JSON(apiErr.StatusCode, apiErr)
-			return
-		}
+		logger.WithField("error", err.Error()).Warn("Failed to decode rawId")
+		apiErr := sharedErrors.BadRequestError("Invalid rawId encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
 	}
 
-	clientDataJSON, err := base64.StdEncoding.DecodeString(credData.Response.ClientDataJSON)
+	clientDataJSON, err := decodeBase64Flexible(credData.Response.ClientDataJSON)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode clientDataJSON")
 		apiErr := sharedErrors.BadRequestError("Invalid clientDataJSON encoding").WithRequestID(requestID)
@@ -166,7 +191,7 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 		return
 	}
 
-	attestationObject, err := base64.StdEncoding.DecodeString(credData.Response.AttestationObject)
+	attestationObject, err := decodeBase64Flexible(credData.Response.AttestationObject)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode attestationObject")
 		apiErr := sharedErrors.BadRequestError("Invalid attestationObject encoding").WithRequestID(requestID)
@@ -300,20 +325,16 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		return
 	}
 
-	// Decode base64 fields
-	rawID, err := base64.StdEncoding.DecodeString(credData.RawID)
+	// Decode base64 fields (supports both standard and URL-safe base64)
+	rawID, err := decodeBase64Flexible(credData.RawID)
 	if err != nil {
-		// Try URL-safe base64
-		rawID, err = base64.RawURLEncoding.DecodeString(credData.RawID)
-		if err != nil {
-			logger.WithField("error", err.Error()).Warn("Failed to decode rawId")
-			apiErr := sharedErrors.BadRequestError("Invalid rawId encoding").WithRequestID(requestID)
-			c.JSON(apiErr.StatusCode, apiErr)
-			return
-		}
+		logger.WithField("error", err.Error()).Warn("Failed to decode rawId")
+		apiErr := sharedErrors.BadRequestError("Invalid rawId encoding").WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
 	}
 
-	clientDataJSON, err := base64.StdEncoding.DecodeString(credData.Response.ClientDataJSON)
+	clientDataJSON, err := decodeBase64Flexible(credData.Response.ClientDataJSON)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode clientDataJSON")
 		apiErr := sharedErrors.BadRequestError("Invalid clientDataJSON encoding").WithRequestID(requestID)
@@ -321,7 +342,7 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		return
 	}
 
-	authenticatorData, err := base64.StdEncoding.DecodeString(credData.Response.AuthenticatorData)
+	authenticatorData, err := decodeBase64Flexible(credData.Response.AuthenticatorData)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode authenticatorData")
 		apiErr := sharedErrors.BadRequestError("Invalid authenticatorData encoding").WithRequestID(requestID)
@@ -329,7 +350,7 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		return
 	}
 
-	signature, err := base64.StdEncoding.DecodeString(credData.Response.Signature)
+	signature, err := decodeBase64Flexible(credData.Response.Signature)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to decode signature")
 		apiErr := sharedErrors.BadRequestError("Invalid signature encoding").WithRequestID(requestID)
@@ -339,7 +360,7 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 
 	var userHandle []byte
 	if credData.Response.UserHandle != nil && *credData.Response.UserHandle != "" {
-		userHandle, err = base64.StdEncoding.DecodeString(*credData.Response.UserHandle)
+		userHandle, err = decodeBase64Flexible(*credData.Response.UserHandle)
 		if err != nil {
 			logger.WithField("error", err.Error()).Warn("Failed to decode userHandle")
 			apiErr := sharedErrors.BadRequestError("Invalid userHandle encoding").WithRequestID(requestID)
