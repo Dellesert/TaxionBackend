@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"tachyon-messenger/services/user/usecase"
 	sharedErrors "tachyon-messenger/shared/errors"
@@ -86,21 +87,36 @@ func getOrigin(c *gin.Context) string {
 	if origin != "" {
 		return origin
 	}
+
 	// Fallback to Referer
 	referer := c.GetHeader("Referer")
 	if referer != "" {
 		// Extract origin from referer (protocol + host)
-		if idx := len("https://"); len(referer) > idx {
-			if hostEnd := findHostEnd(referer[idx:]); hostEnd > 0 {
-				return referer[:idx+hostEnd]
+		if strings.HasPrefix(referer, "https://") {
+			if hostEnd := findHostEnd(referer[8:]); hostEnd > 0 {
+				return referer[:8+hostEnd]
 			}
 		}
-		if idx := len("http://"); len(referer) > idx {
-			if hostEnd := findHostEnd(referer[idx:]); hostEnd > 0 {
-				return referer[:idx+hostEnd]
+		if strings.HasPrefix(referer, "http://") {
+			if hostEnd := findHostEnd(referer[7:]); hostEnd > 0 {
+				return referer[:7+hostEnd]
 			}
 		}
 	}
+
+	// Fallback to X-Forwarded-Host or Host header for iOS apps
+	forwardedHost := c.GetHeader("X-Forwarded-Host")
+	if forwardedHost != "" {
+		// Assume HTTPS for production
+		return "https://" + forwardedHost
+	}
+
+	host := c.GetHeader("Host")
+	if host != "" && host != "localhost" && !strings.HasPrefix(host, "127.") {
+		// Assume HTTPS for production
+		return "https://" + host
+	}
+
 	return ""
 }
 
@@ -322,6 +338,15 @@ func (h *PasskeyHandler) BeginDiscoverableAuthentication(c *gin.Context) {
 	requestID := requestid.Get(c)
 
 	origin := getOrigin(c)
+	logger.WithFields(map[string]interface{}{
+		"origin":           origin,
+		"origin_header":    c.GetHeader("Origin"),
+		"referer":          c.GetHeader("Referer"),
+		"host":             c.GetHeader("Host"),
+		"x_forwarded_host": c.GetHeader("X-Forwarded-Host"),
+		"request_id":       requestID,
+	}).Info("BeginDiscoverableAuthentication called")
+
 	options, err := h.passkeyUsecase.BeginDiscoverableAuthentication(origin)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin discoverable passkey authentication")

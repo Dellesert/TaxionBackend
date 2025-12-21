@@ -33,12 +33,13 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 		rpDisplayName = "Tachyon Messenger"
 	}
 
-	// Parse RP IDs (comma-separated)
+	// Parse RP IDs (comma-separated) - OPTIONAL
+	// If not specified, RP ID will be extracted from origin hostname
 	rpIDsStr := os.Getenv("WEBAUTHN_RP_ID")
-	if rpIDsStr == "" {
-		rpIDsStr = "localhost"
+	var rpIDs []string
+	if rpIDsStr != "" {
+		rpIDs = parseCommaSeparated(rpIDsStr)
 	}
-	rpIDs := parseCommaSeparated(rpIDsStr)
 
 	// Parse origins (comma-separated)
 	rpOriginsStr := os.Getenv("WEBAUTHN_RP_ORIGIN")
@@ -58,16 +59,22 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 		// Extract hostname from origin (e.g., "https://taxion.fusioninsight.cloud" -> "taxion.fusioninsight.cloud")
 		hostname := extractHostname(origin)
 
-		// Find matching RP ID for this origin
-		matchedRPID := findMatchingRPID(hostname, rpIDs)
+		// If RP IDs are specified, find matching one; otherwise use hostname as RP ID
+		var rpID string
+		if len(rpIDs) > 0 {
+			rpID = findMatchingRPID(hostname, rpIDs)
+		} else {
+			// Auto-detect: use hostname as RP ID
+			rpID = hostname
+		}
 
-		originToRPID[origin] = matchedRPID
-		rpIDToOrigins[matchedRPID] = append(rpIDToOrigins[matchedRPID], origin)
+		originToRPID[origin] = rpID
+		rpIDToOrigins[rpID] = append(rpIDToOrigins[rpID], origin)
 
 		logger.WithFields(map[string]interface{}{
-			"origin":  origin,
-			"rp_id":   matchedRPID,
-		}).Debug("Mapped origin to RP ID")
+			"origin": origin,
+			"rp_id":  rpID,
+		}).Info("Mapped origin to RP ID")
 	}
 
 	// Create WebAuthn instance for each unique RP ID
@@ -121,11 +128,28 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 func (s *WebAuthnService) GetWebAuthnForOrigin(origin string) *webauthn.WebAuthn {
 	if rpID, ok := s.originToRPID[origin]; ok {
 		if webAuthn, ok := s.rpConfigs[rpID]; ok {
+			logger.WithFields(map[string]interface{}{
+				"origin": origin,
+				"rp_id":  rpID,
+			}).Info("Found WebAuthn instance for origin")
 			return webAuthn
 		}
 	}
 	// Fallback to primary
+	logger.WithFields(map[string]interface{}{
+		"origin":           origin,
+		"available_origins": fmt.Sprintf("%v", s.getAvailableOrigins()),
+	}).Warn("Origin not found in mapping, using primary WebAuthn")
 	return s.webAuthn
+}
+
+// getAvailableOrigins returns all configured origins for debugging
+func (s *WebAuthnService) getAvailableOrigins() []string {
+	origins := make([]string, 0, len(s.originToRPID))
+	for origin := range s.originToRPID {
+		origins = append(origins, origin)
+	}
+	return origins
 }
 
 // GetWebAuthnForRPID returns the WebAuthn instance for a given RP ID
