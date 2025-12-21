@@ -158,7 +158,23 @@ type ChatMemberResponse struct {
 
 // ToResponse converts Chat to ChatResponse
 // If baseURL is provided, it will be used to construct file URLs for message attachments
-func (c *Chat) ToResponse(baseURL ...string) *ChatResponse {
+// currentUserID can be optionally provided as second parameter to personalize private chat names
+func (c *Chat) ToResponse(params ...interface{}) *ChatResponse {
+	// Parse optional parameters
+	var baseURL string
+	var currentUserID uint
+
+	for i, param := range params {
+		switch v := param.(type) {
+		case string:
+			if i == 0 {
+				baseURL = v
+			}
+		case uint:
+			currentUserID = v
+		}
+	}
+
 	response := &ChatResponse{
 		ID:            c.ID,
 		Name:          c.Name,
@@ -172,6 +188,17 @@ func (c *Chat) ToResponse(baseURL ...string) *ChatResponse {
 		MemberCount:   len(c.Members),
 		CreatedAt:     c.CreatedAt,
 		UpdatedAt:     c.UpdatedAt,
+	}
+
+	// For private chats, set name to the other user's name
+	if c.Type == ChatTypePrivate && currentUserID > 0 && len(c.Members) > 0 {
+		for _, member := range c.Members {
+			if member.UserID != currentUserID && member.User != nil {
+				response.Name = member.User.Name
+				response.Avatar = member.User.Avatar
+				break
+			}
+		}
 	}
 
 	// Include members if loaded
@@ -192,7 +219,12 @@ func (c *Chat) ToResponse(baseURL ...string) *ChatResponse {
 
 	// Include last message if loaded
 	if len(c.Messages) > 0 {
-		response.LastMessage = c.Messages[0].ToResponse(baseURL...)
+		// Pass baseURL to message response
+		if baseURL != "" {
+			response.LastMessage = c.Messages[0].ToResponse(baseURL)
+		} else {
+			response.LastMessage = c.Messages[0].ToResponse()
+		}
 	}
 
 	return response

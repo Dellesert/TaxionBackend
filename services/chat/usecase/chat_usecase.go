@@ -113,10 +113,10 @@ func (uc *chatUsecase) CreatePersonalChat(userID, targetUserID uint) (*models.Ch
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(uc.baseURL), nil // Return what we have
+		return chat.ToResponse(uc.baseURL, userID), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(uc.baseURL), nil
+	return chatWithMembers.ToResponse(uc.baseURL, userID), nil
 }
 
 // CreateGroupChat creates a group chat with multiple users
@@ -166,10 +166,10 @@ func (uc *chatUsecase) CreateGroupChat(userID uint, req *models.CreateGroupChatR
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(uc.baseURL), nil // Return what we have
+		return chat.ToResponse(uc.baseURL, userID), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(uc.baseURL), nil
+	return chatWithMembers.ToResponse(uc.baseURL, userID), nil
 }
 
 // JoinChat allows a user to join an existing chat
@@ -440,10 +440,10 @@ func (uc *chatUsecase) CreateChat(userID uint, req *models.CreateChatRequest) (*
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(uc.baseURL), nil // Return what we have
+		return chat.ToResponse(uc.baseURL, userID), nil // Return what we have
 	}
 
-	response := chatWithMembers.ToResponse(uc.baseURL)
+	response := chatWithMembers.ToResponse(uc.baseURL, userID)
 
 	// Broadcast chat_create event to all members
 	if uc.wsHub != nil {
@@ -479,8 +479,8 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int, chatType str
 			chat.Messages = []models.Message{*lastMessage}
 		}
 
-		// Convert to response
-		response := chat.ToResponse(uc.baseURL)
+		// Convert to response (pass baseURL and currentUserID for private chat name resolution)
+		response := chat.ToResponse(uc.baseURL, userID)
 
 		// Get unread count for this chat
 		unreadCount, err := uc.messageRepo.GetUnreadCount(chat.ID, userID)
@@ -537,8 +537,8 @@ func (uc *chatUsecase) GetUserChatsWithSync(userID uint, limit, offset int, chat
 			chat.Messages = []models.Message{*lastMessage}
 		}
 
-		// Convert to response
-		response := chat.ToResponse(uc.baseURL)
+		// Convert to response (pass baseURL and currentUserID for private chat name resolution)
+		response := chat.ToResponse(uc.baseURL, userID)
 
 		// Get unread count for this chat
 		unreadCount, err := uc.messageRepo.GetUnreadCount(chat.ID, userID)
@@ -593,8 +593,8 @@ func (uc *chatUsecase) GetPinnedChats(userID uint, chatType string) ([]models.Ch
 			chat.Messages = []models.Message{*lastMessage}
 		}
 
-		// Convert to response
-		response := chat.ToResponse(uc.baseURL)
+		// Convert to response (pass baseURL and currentUserID for private chat name resolution)
+		response := chat.ToResponse(uc.baseURL, userID)
 
 		// Get unread count for this chat
 		unreadCount, err := uc.messageRepo.GetUnreadCount(chat.ID, userID)
@@ -641,7 +641,7 @@ func (uc *chatUsecase) GetChat(userID, chatID uint) (*models.ChatResponse, error
 		return nil, fmt.Errorf("failed to get chat: %w", err)
 	}
 
-	return chat.ToResponse(uc.baseURL), nil
+	return chat.ToResponse(uc.baseURL, userID), nil
 }
 
 // UpdateChat updates a chat
@@ -679,10 +679,10 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 	// Get updated chat with members
 	updatedChat, err := uc.chatRepo.GetWithMembers(chatID)
 	if err != nil {
-		return chat.ToResponse(uc.baseURL), nil // Return what we have
+		return chat.ToResponse(uc.baseURL, userID), nil // Return what we have
 	}
 
-	response := updatedChat.ToResponse(uc.baseURL)
+	response := updatedChat.ToResponse(uc.baseURL, userID)
 
 	// Broadcast chat_update event to all members
 	if uc.wsHub != nil {

@@ -52,8 +52,8 @@ func (uc *chatUsecase) GetOrCreateDirectChat(userID, targetUserID uint) (*models
 			fmt.Printf("Warning: failed to unhide chat for user %d: %v\n", targetUserID, err)
 		}
 
-		// Get unread count for this chat
-		response := existingChat.ToResponse(uc.baseURL)
+		// Get unread count for this chat (pass baseURL and currentUserID)
+		response := existingChat.ToResponse(uc.baseURL, userID)
 		unreadCount, err := uc.messageRepo.GetUnreadCount(existingChat.ID, userID)
 		if err == nil {
 			response.UnreadCount = unreadCount
@@ -114,8 +114,8 @@ func (uc *chatUsecase) GetOrCreateTaskChat(userID, taskID uint) (*models.ChatRes
 			}
 		}
 
-		// Get unread count and return
-		response := existingChat.ToResponse(uc.baseURL)
+		// Get unread count and return (pass baseURL and currentUserID)
+		response := existingChat.ToResponse(uc.baseURL, userID)
 		unreadCount, err := uc.messageRepo.GetUnreadCount(existingChat.ID, userID)
 		if err == nil {
 			response.UnreadCount = unreadCount
@@ -212,10 +212,10 @@ func (uc *chatUsecase) GetOrCreateTaskChat(userID, taskID uint) (*models.ChatRes
 	// Get chat with members for response
 	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
 	if err != nil {
-		return chat.ToResponse(uc.baseURL), nil // Return what we have
+		return chat.ToResponse(uc.baseURL, userID), nil // Return what we have
 	}
 
-	return chatWithMembers.ToResponse(uc.baseURL), nil
+	return chatWithMembers.ToResponse(uc.baseURL, userID), nil
 }
 
 // fetchTaskInfo fetches task information from task-service
