@@ -12,57 +12,193 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 )
 
-// WebAuthnService wraps the WebAuthn library
-type WebAuthnService struct {
-	webAuthn *webauthn.WebAuthn
+// RPConfig holds configuration for a single Relying Party
+type RPConfig struct {
+	RPID      string
+	RPOrigins []string
 }
 
-// NewWebAuthnService creates a new WebAuthn service
-func NewWebAuthnService() (*WebAuthnService, error) {
-	rpID := os.Getenv("WEBAUTHN_RP_ID")
-	if rpID == "" {
-		rpID = "localhost" // Default for development
-	}
+// WebAuthnService wraps the WebAuthn library with multi-RP support
+type WebAuthnService struct {
+	webAuthn      *webauthn.WebAuthn // Default/primary WebAuthn instance
+	rpConfigs     map[string]*webauthn.WebAuthn // Map of RP ID -> WebAuthn instance
+	originToRPID  map[string]string // Map of origin -> RP ID
+	rpDisplayName string
+}
 
+// NewWebAuthnService creates a new WebAuthn service with multi-RP support
+func NewWebAuthnService() (*WebAuthnService, error) {
 	rpDisplayName := os.Getenv("WEBAUTHN_RP_DISPLAY_NAME")
 	if rpDisplayName == "" {
 		rpDisplayName = "Tachyon Messenger"
 	}
 
-	rpOrigin := os.Getenv("WEBAUTHN_RP_ORIGIN")
-	if rpOrigin == "" {
-		rpOrigin = "http://localhost:8081" // Default for development
+	// Parse RP IDs (comma-separated)
+	rpIDsStr := os.Getenv("WEBAUTHN_RP_ID")
+	if rpIDsStr == "" {
+		rpIDsStr = "localhost"
+	}
+	rpIDs := parseCommaSeparated(rpIDsStr)
+
+	// Parse origins (comma-separated)
+	rpOriginsStr := os.Getenv("WEBAUTHN_RP_ORIGIN")
+	if rpOriginsStr == "" {
+		rpOriginsStr = "http://localhost:8081"
+	}
+	rpOrigins := parseCommaSeparated(rpOriginsStr)
+
+	// Build origin to RP ID mapping
+	originToRPID := make(map[string]string)
+	rpConfigs := make(map[string]*webauthn.WebAuthn)
+
+	// Group origins by their RP ID
+	rpIDToOrigins := make(map[string][]string)
+
+	for _, origin := range rpOrigins {
+		// Extract hostname from origin (e.g., "https://taxion.fusioninsight.cloud" -> "taxion.fusioninsight.cloud")
+		hostname := extractHostname(origin)
+
+		// Find matching RP ID for this origin
+		matchedRPID := findMatchingRPID(hostname, rpIDs)
+
+		originToRPID[origin] = matchedRPID
+		rpIDToOrigins[matchedRPID] = append(rpIDToOrigins[matchedRPID], origin)
+
+		logger.WithFields(map[string]interface{}{
+			"origin":  origin,
+			"rp_id":   matchedRPID,
+		}).Debug("Mapped origin to RP ID")
 	}
 
-	// Parse comma-separated origins
-	rpOrigins := strings.Split(rpOrigin, ",")
-	for i, origin := range rpOrigins {
-		rpOrigins[i] = strings.TrimSpace(origin)
+	// Create WebAuthn instance for each unique RP ID
+	var primaryWebAuthn *webauthn.WebAuthn
+	for rpID, origins := range rpIDToOrigins {
+		wconfig := &webauthn.Config{
+			RPDisplayName:         rpDisplayName,
+			RPID:                  rpID,
+			RPOrigins:             origins,
+			AttestationPreference: protocol.PreferNoAttestation,
+			AuthenticatorSelection: protocol.AuthenticatorSelection{
+				RequireResidentKey: protocol.ResidentKeyNotRequired(),
+				ResidentKey:        protocol.ResidentKeyRequirementPreferred,
+				UserVerification:   protocol.VerificationPreferred,
+			},
+		}
+
+		web, err := webauthn.New(wconfig)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"error": err.Error(),
+				"rp_id": rpID,
+			}).Error("Failed to create WebAuthn instance")
+			return nil, fmt.Errorf("failed to create WebAuthn instance for RP ID %s: %w", rpID, err)
+		}
+
+		rpConfigs[rpID] = web
+		if primaryWebAuthn == nil {
+			primaryWebAuthn = web
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"rp_id":   rpID,
+			"origins": origins,
+		}).Info("Created WebAuthn instance for RP")
 	}
 
-	wconfig := &webauthn.Config{
-		RPDisplayName:         rpDisplayName,
-		RPID:                  rpID,
-		RPOrigins:             rpOrigins,
-		AttestationPreference: protocol.PreferNoAttestation,
-		// Default settings for registration - use preferred for resident keys
-		// This allows both resident and non-resident keys
-		AuthenticatorSelection: protocol.AuthenticatorSelection{
-			RequireResidentKey: protocol.ResidentKeyNotRequired(),
-			ResidentKey:        protocol.ResidentKeyRequirementPreferred, // Preferred, not required
-			UserVerification:   protocol.VerificationPreferred,           // Preferred, not required
-		},
-	}
-
-	web, err := webauthn.New(wconfig)
-	if err != nil {
-		logger.WithField("error", err.Error()).Error("Failed to create WebAuthn instance")
-		return nil, fmt.Errorf("failed to create WebAuthn instance: %w", err)
+	if primaryWebAuthn == nil {
+		return nil, fmt.Errorf("no WebAuthn instances created")
 	}
 
 	return &WebAuthnService{
-		webAuthn: web,
+		webAuthn:      primaryWebAuthn,
+		rpConfigs:     rpConfigs,
+		originToRPID:  originToRPID,
+		rpDisplayName: rpDisplayName,
 	}, nil
+}
+
+// GetWebAuthnForOrigin returns the WebAuthn instance for a given origin
+func (s *WebAuthnService) GetWebAuthnForOrigin(origin string) *webauthn.WebAuthn {
+	if rpID, ok := s.originToRPID[origin]; ok {
+		if webAuthn, ok := s.rpConfigs[rpID]; ok {
+			return webAuthn
+		}
+	}
+	// Fallback to primary
+	return s.webAuthn
+}
+
+// GetWebAuthnForRPID returns the WebAuthn instance for a given RP ID
+func (s *WebAuthnService) GetWebAuthnForRPID(rpID string) *webauthn.WebAuthn {
+	if webAuthn, ok := s.rpConfigs[rpID]; ok {
+		return webAuthn
+	}
+	// Fallback to primary
+	return s.webAuthn
+}
+
+// GetDefault returns the default/primary WebAuthn instance
+func (s *WebAuthnService) GetDefault() *webauthn.WebAuthn {
+	return s.webAuthn
+}
+
+// parseCommaSeparated splits a comma-separated string and trims whitespace
+func parseCommaSeparated(s string) []string {
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
+}
+
+// extractHostname extracts hostname from an origin URL
+func extractHostname(origin string) string {
+	// Remove protocol
+	hostname := origin
+	if idx := strings.Index(hostname, "://"); idx != -1 {
+		hostname = hostname[idx+3:]
+	}
+	// Remove port if present
+	if idx := strings.Index(hostname, ":"); idx != -1 {
+		hostname = hostname[:idx]
+	}
+	// Remove path if present
+	if idx := strings.Index(hostname, "/"); idx != -1 {
+		hostname = hostname[:idx]
+	}
+	return hostname
+}
+
+// findMatchingRPID finds the best matching RP ID for a hostname
+// It checks if hostname matches or is a subdomain of any RP ID
+func findMatchingRPID(hostname string, rpIDs []string) string {
+	// First, check for exact match
+	for _, rpID := range rpIDs {
+		if hostname == rpID {
+			return rpID
+		}
+	}
+
+	// Then, check if hostname is a subdomain of any RP ID
+	for _, rpID := range rpIDs {
+		if strings.HasSuffix(hostname, "."+rpID) {
+			return rpID
+		}
+	}
+
+	// Finally, check if hostname ends with RP ID (subdomain match)
+	for _, rpID := range rpIDs {
+		if hostname == rpID || strings.HasSuffix(hostname, "."+rpID) {
+			return rpID
+		}
+	}
+
+	// Default to hostname itself as RP ID
+	return hostname
 }
 
 // WebAuthnUser implements the webauthn.User interface

@@ -79,6 +79,41 @@ type UpdatePasskeyNameRequest struct {
 	Name string `json:"name" binding:"required"`
 }
 
+// getOrigin extracts the origin from the request
+func getOrigin(c *gin.Context) string {
+	// Try Origin header first
+	origin := c.GetHeader("Origin")
+	if origin != "" {
+		return origin
+	}
+	// Fallback to Referer
+	referer := c.GetHeader("Referer")
+	if referer != "" {
+		// Extract origin from referer (protocol + host)
+		if idx := len("https://"); len(referer) > idx {
+			if hostEnd := findHostEnd(referer[idx:]); hostEnd > 0 {
+				return referer[:idx+hostEnd]
+			}
+		}
+		if idx := len("http://"); len(referer) > idx {
+			if hostEnd := findHostEnd(referer[idx:]); hostEnd > 0 {
+				return referer[:idx+hostEnd]
+			}
+		}
+	}
+	return ""
+}
+
+// findHostEnd finds the end of host in a URL (first / or end of string)
+func findHostEnd(s string) int {
+	for i, c := range s {
+		if c == '/' {
+			return i
+		}
+	}
+	return len(s)
+}
+
 // BeginRegistration starts the passkey registration process
 // POST /api/v1/auth/passkey/register/begin
 func (h *PasskeyHandler) BeginRegistration(c *gin.Context) {
@@ -102,7 +137,10 @@ func (h *PasskeyHandler) BeginRegistration(c *gin.Context) {
 		name = "Passkey"
 	}
 
-	options, err := h.passkeyUsecase.BeginRegistration(userID.(uint), name)
+	// Get origin from request
+	origin := getOrigin(c)
+
+	options, err := h.passkeyUsecase.BeginRegistration(userID.(uint), name, origin)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin passkey registration")
 		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyRegistrationFailed,
@@ -231,8 +269,11 @@ func (h *PasskeyHandler) FinishRegistration(c *gin.Context) {
 		return
 	}
 
+	// Get origin from request
+	origin := getOrigin(c)
+
 	// Finish registration
-	if err := h.passkeyUsecase.FinishRegistration(userID.(uint), parsedResponse); err != nil {
+	if err := h.passkeyUsecase.FinishRegistration(userID.(uint), parsedResponse, origin); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to finish passkey registration")
 		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyRegistrationFailed,
 			"Failed to finish passkey registration").
@@ -263,7 +304,8 @@ func (h *PasskeyHandler) BeginAuthentication(c *gin.Context) {
 		return
 	}
 
-	options, err := h.passkeyUsecase.BeginAuthentication(req.Email)
+	origin := getOrigin(c)
+	options, err := h.passkeyUsecase.BeginAuthentication(req.Email, origin)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin passkey authentication")
 		apiErr := sharedErrors.InvalidCredentialsError().WithRequestID(requestID)
@@ -279,7 +321,8 @@ func (h *PasskeyHandler) BeginAuthentication(c *gin.Context) {
 func (h *PasskeyHandler) BeginDiscoverableAuthentication(c *gin.Context) {
 	requestID := requestid.Get(c)
 
-	options, err := h.passkeyUsecase.BeginDiscoverableAuthentication()
+	origin := getOrigin(c)
+	options, err := h.passkeyUsecase.BeginDiscoverableAuthentication(origin)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to begin discoverable passkey authentication")
 		apiErr := sharedErrors.NewAPIError(http.StatusBadRequest, sharedErrors.AuthPasskeyInvalid,
@@ -398,9 +441,12 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		return
 	}
 
+	// Get origin from request
+	origin := getOrigin(c)
+
 	// Get the credential ID to look up the user
 	// We need to find which user this credential belongs to
-	user, err := h.passkeyUsecase.FinishAuthenticationByCredential(parsedResponse)
+	user, err := h.passkeyUsecase.FinishAuthenticationByCredential(parsedResponse, origin)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to finish passkey authentication")
 		apiErr := sharedErrors.NewAPIError(http.StatusUnauthorized, sharedErrors.AuthPasskeyInvalid,
