@@ -87,8 +87,9 @@ func (u *User) BeforeCreate(tx *gorm.DB) error {
 
 // BeforeUpdate hook is called before updating a user
 func (u *User) BeforeUpdate(tx *gorm.DB) error {
-	// Update last active time when status changes to online
-	if u.Status == models.StatusOnline {
+	// Update last active time when status changes (online, offline, away, busy)
+	// This ensures last_active_at is always current when user's status changes
+	if tx.Statement.Changed("Status") {
 		now := time.Now()
 		u.LastActiveAt = &now
 	}
