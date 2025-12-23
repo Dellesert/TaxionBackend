@@ -29,6 +29,31 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// applyDataMigrations applies SQL data migrations
+func applyDataMigrations(db *database.DB) error {
+	// Migration 001: Enable push notifications by default
+	log := logger.GetLogger()
+	log.Info("Applying data migration: Enable push notifications by default")
+
+	result := db.Exec(`
+		UPDATE user_notification_preferences
+		SET push_enabled = true
+		WHERE push_enabled = false
+	`)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to apply migration 001: %w", result.Error)
+	}
+
+	if result.RowsAffected > 0 {
+		log.WithField("updated_count", result.RowsAffected).Info("Migration 001: Enabled push notifications for existing preferences")
+	} else {
+		log.Info("Migration 001: No preferences needed updating")
+	}
+
+	return nil
+}
+
 func main() {
 	// Track service start time
 	startTime := time.Now()
@@ -65,6 +90,11 @@ func main() {
 		&models.DeviceToken{},
 	); err != nil {
 		log.Fatalf("Failed to run GORM migrations: %v", err)
+	}
+
+	// Apply data migrations
+	if err := applyDataMigrations(db); err != nil {
+		log.Fatalf("Failed to apply data migrations: %v", err)
 	}
 
 	log.Info("Database connected and migrations completed")
