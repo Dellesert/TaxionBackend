@@ -32,8 +32,7 @@ import (
 // applyDataMigrations applies SQL data migrations
 func applyDataMigrations(db *database.DB) error {
 	// Migration 001: Enable push notifications by default
-	log := logger.GetLogger()
-	log.Info("Applying data migration: Enable push notifications by default")
+	logger.Info("Applying data migration: Enable push notifications by default")
 
 	result := db.Exec(`
 		UPDATE user_notification_preferences
@@ -46,9 +45,9 @@ func applyDataMigrations(db *database.DB) error {
 	}
 
 	if result.RowsAffected > 0 {
-		log.WithField("updated_count", result.RowsAffected).Info("Migration 001: Enabled push notifications for existing preferences")
+		logger.WithField("updated_count", result.RowsAffected).Info("Migration 001: Enabled push notifications for existing preferences")
 	} else {
-		log.Info("Migration 001: No preferences needed updating")
+		logger.Info("Migration 001: No preferences needed updating")
 	}
 
 	return nil
