@@ -139,8 +139,8 @@ func (h *Hub) unregisterClient(client *Client) {
 		// Notify about user going offline BEFORE removing from clients map
 		userID := client.userID
 
-		// Update status in user-service directly (client will be removed)
-		go updateUserStatus(userID, "offline")
+		// Update status in user-service synchronously to ensure it completes
+		updateUserStatus(userID, "offline")
 
 		// Broadcast offline presence to all chat rooms
 		presence := &UserPresence{
@@ -387,29 +387,34 @@ func updateUserStatus(userID uint, status string) {
 
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Failed to marshal status update for user %d: %v", userID, err)
+		log.Printf("❌ Failed to marshal status update for user %d: %v", userID, err)
 		return
 	}
 
 	url := fmt.Sprintf("%s/internal/users/%d/status", userServiceURL, userID)
-	req, err := http.NewRequest("PUT", url, bytes.NewBuffer(jsonData))
+
+	// Create request with context for better timeout control
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		log.Printf("Failed to create status update request for user %d: %v", userID, err)
+		log.Printf("❌ Failed to create status update request for user %d: %v", userID, err)
 		return
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 5 * time.Second}
+	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to update status for user %d in user-service: %v", userID, err)
+		log.Printf("❌ Failed to update status for user %d in user-service: %v", userID, err)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("User service returned non-OK status %d for user %d status update", resp.StatusCode, userID)
+		log.Printf("⚠️ User service returned non-OK status %d for user %d status update", resp.StatusCode, userID)
 		return
 	}
 

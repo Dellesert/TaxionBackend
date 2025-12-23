@@ -41,9 +41,10 @@ func NewClient(conn *websocket.Conn, hub *Hub, userID uint) *Client {
 // ReadPump pumps messages from the websocket connection to the hub
 func (c *Client) ReadPump() {
 	defer func() {
+		log.Printf("🔌 WebSocket disconnecting for user %d", c.userID)
 		c.hub.UnregisterClient(c)
 		c.conn.Close()
-		log.Printf("ReadPump stopped for user %d", c.userID)
+		log.Printf("✅ ReadPump stopped and user %d unregistered", c.userID)
 	}()
 
 	// Set connection limits and handlers
