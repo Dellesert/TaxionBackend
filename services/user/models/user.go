@@ -173,19 +173,21 @@ type CreateUserRequest struct {
 }
 
 // UpdateUserRequest represents request for updating a user's profile information
-// Note: Status and IsActive are managed through dedicated endpoints and should not be included here
+// Note: Status can be updated via internal endpoints for presence tracking (online/offline)
+// IsActive is managed through dedicated admin endpoints and should not be included here
 type UpdateUserRequest struct {
-	Name            *string    `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
-	FirstName       *string    `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	LastName        *string    `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	MiddleName      *string    `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	BirthDate       *time.Time `json:"birth_date,omitempty"`
-	Avatar          *string    `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	AvatarThumbnail *string    `json:"avatar_thumbnail,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
-	Phone           *string    `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
-	Position        *string    `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
-	DepartmentID    *uint      `json:"department_id,omitempty"`
-	SubdepartmentID *uint      `json:"subdepartment_id,omitempty"`
+	Name            *string            `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	FirstName       *string            `json:"first_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	LastName        *string            `json:"last_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	MiddleName      *string            `json:"middle_name,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	BirthDate       *time.Time         `json:"birth_date,omitempty"`
+	Avatar          *string            `json:"avatar,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	AvatarThumbnail *string            `json:"avatar_thumbnail,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
+	Phone           *string            `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
+	Position        *string            `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	DepartmentID    *uint              `json:"department_id,omitempty"`
+	SubdepartmentID *uint              `json:"subdepartment_id,omitempty"`
+	Status          *models.UserStatus `json:"status,omitempty" binding:"omitempty,oneof=online offline away busy" validate:"omitempty,oneof=online offline away busy"` // Allow status updates for presence tracking
 }
 
 // DepartmentResponse represents department response

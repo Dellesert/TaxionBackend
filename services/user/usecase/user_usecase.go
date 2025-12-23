@@ -234,7 +234,8 @@ func (u *userUsecase) GetUsersWithFiltersAdvanced(limit, offset int, departmentI
 }
 
 // UpdateUser updates an existing user's profile information
-// Note: This method does NOT update Status, IsActive, or Role - those have dedicated secure endpoints
+// Note: Status can be updated via internal endpoints for presence tracking (online/offline)
+// IsActive and Role are managed through dedicated secure admin endpoints
 func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error) {
 	// Check if user exists first
 	existingUser, err := u.userRepo.GetByID(id)
@@ -288,6 +289,10 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 		} else {
 			updates["subdepartment_id"] = *req.SubdepartmentID
 		}
+	}
+	// Allow status updates for presence tracking (internal use only)
+	if req.Status != nil {
+		updates["status"] = *req.Status
 	}
 
 	// If no fields to update, return current user
