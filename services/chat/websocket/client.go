@@ -165,6 +165,9 @@ func (c *Client) handleWebSocketMessage(wsMsg *models.WSMessage) {
 	case models.WSMessageTypeNewMessage:
 		c.handleChatMessage(wsMsg)
 
+	case models.WSMessageTypeUserPresence:
+		c.handlePresenceMessage(wsMsg)
+
 	default:
 		log.Printf("Unknown message type %s from user %d", wsMsg.Type, c.userID)
 		c.sendErrorMessage("Unknown message type")
@@ -194,6 +197,28 @@ func (c *Client) handleLeaveMessage(wsMsg *models.WSMessage) {
 	// FIXED: Re-enabled leave handling now that frontend properly sends join/leave events
 	log.Printf("User %d leaving chat room %d", c.userID, wsMsg.ChatID)
 	c.leaveChatRoom(wsMsg.ChatID)
+}
+
+// handlePresenceMessage handles user presence status changes (online/away/offline)
+// This is called when client sends user_presence message (e.g., app goes to background)
+func (c *Client) handlePresenceMessage(wsMsg *models.WSMessage) {
+	if presenceData, ok := wsMsg.Data.(map[string]interface{}); ok {
+		if status, exists := presenceData["status"].(string); exists {
+			// Validate status
+			if status != "online" && status != "away" && status != "offline" {
+				log.Printf("Invalid presence status '%s' from user %d", status, c.userID)
+				return
+			}
+
+			log.Printf("User %d presence changed to: %s", c.userID, status)
+
+			// Update client status
+			c.SetStatus(status)
+
+			// Broadcast presence change to other users in the same chats
+			c.hub.broadcastUserPresence(c.userID, status)
+		}
+	}
 }
 
 // handleReadMessage handles message read notifications

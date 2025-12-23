@@ -490,6 +490,10 @@ func updateUserStatus(userID uint, status string) {
 	switch status {
 	case "online":
 		userStatus = sharedmodels.StatusOnline
+	case "away":
+		userStatus = sharedmodels.StatusAway
+	case "busy":
+		userStatus = sharedmodels.StatusBusy
 	case "offline":
 		userStatus = sharedmodels.StatusOffline
 	default:
