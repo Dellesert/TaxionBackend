@@ -170,39 +170,9 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
             Вы приглашены присоединиться к корпоративному мессенджеру <strong>Tachyon</strong>.
         </p>
 
-        <!-- Quick Action Button -->
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="{{.InviteURL}}" class="button" target="_blank" rel="noopener">Принять приглашение</a>
-            <p style="margin: 15px 0 0 0; font-size: 14px; color: #6c757d;">
-                Нажмите кнопку, чтобы автоматически открыть приложение
-            </p>
-        </div>
-
-        <!-- Fallback link for email clients that don't handle buttons properly -->
-        <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 20px 0;">
-            <p style="margin: 0 0 10px 0; font-size: 14px; color: #2c3e50; text-align: center;">
-                <strong>Или скопируйте ссылку:</strong>
-            </p>
-            <div style="background: white; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; word-break: break-all; text-align: center;">
-                <a href="{{.InviteURL}}" style="color: #E94444; text-decoration: none; font-size: 13px;">{{.InviteURL}}</a>
-            </div>
-            <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d; text-align: center;">
-                Скопируйте и вставьте в браузер
-            </p>
-        </div>
-
-        <div class="info-box">
-            <strong>📱 Как это работает:</strong>
-            <ul style="margin: 10px 0; padding-left: 20px;">
-                <li>Нажмите на кнопку "Принять приглашение"</li>
-                <li>Откроется страница, которая автоматически перенаправит вас в приложение</li>
-                <li>Если приложение не установлено, вы получите инструкции и код приглашения</li>
-            </ul>
-        </div>
-
-        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e9ecef;" />
-
-        <h3 style="text-align: center; color: #2c3e50; margin: 20px 0;">Или выполните шаги вручную:</h3>
+        <p style="text-align: center; font-size: 16px; color: #2c3e50; margin: 30px 0;">
+            Для начала работы выполните следующие шаги:
+        </p>
 
         <!-- Step 1: Install App -->
         <div class="step">
@@ -227,14 +197,14 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
             </div>
         </div>
 
-        <!-- Step 2: Copy Invitation Code -->
+        <!-- Step 2: Get Invitation Code -->
         <div class="step">
             <div class="step-title">
                 <span class="step-number">2</span>
-                Скопируйте код приглашения
+                Получите код приглашения
             </div>
             <p style="margin: 10px 0 15px 40px;">
-                Скопируйте код ниже - он понадобится для активации в приложении:
+                Ваш персональный код приглашения - сохраните его:
             </p>
             <div class="code-box">
                 <div class="code">{{.InviteToken}}</div>
@@ -252,9 +222,9 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
             </div>
             <div class="info-box">
                 <strong>💡 Инструкция:</strong><br>
-                1. Откройте приложение Tachyon Messenger<br>
+                1. Запустите установленное приложение Tachyon Messenger<br>
                 2. Нажмите "Есть приглашение?" или "У меня есть код"<br>
-                3. Вставьте скопированный код приглашения
+                3. Вставьте скопированный код приглашения из Шага 2
             </div>
         </div>
 
@@ -287,6 +257,35 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
                 <li>Используйте надежный пароль (минимум 8 символов)</li>
                 <li>Если у вас возникли проблемы, свяжитесь с администратором</li>
             </ul>
+        </div>
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #e9ecef;" />
+
+        <!-- Quick Activation Alternative -->
+        <div style="background-color: #f8f9fa; border-radius: 8px; padding: 25px; margin: 20px 0;">
+            <h3 style="text-align: center; color: #2c3e50; margin: 0 0 15px 0;">Быстрая активация</h3>
+            <p style="text-align: center; color: #6c757d; margin: 0 0 20px 0;">
+                Если у вас уже установлено приложение, вы можете активировать приглашение автоматически:
+            </p>
+            <div style="text-align: center;">
+                <a href="{{.InviteURL}}" class="button" target="_blank" rel="noopener">Открыть в приложении</a>
+                <p style="margin: 15px 0 0 0; font-size: 14px; color: #6c757d;">
+                    Нажмите кнопку - приложение откроется автоматически
+                </p>
+            </div>
+
+            <!-- Fallback link -->
+            <div style="background-color: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 20px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 14px; color: #2c3e50; text-align: center;">
+                    <strong>Или скопируйте ссылку:</strong>
+                </p>
+                <div style="background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; word-break: break-all; text-align: center;">
+                    <a href="{{.InviteURL}}" style="color: #E94444; text-decoration: none; font-size: 13px;">{{.InviteURL}}</a>
+                </div>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d; text-align: center;">
+                    Скопируйте и вставьте в браузер
+                </p>
+            </div>
         </div>
 
         <div class="footer">
