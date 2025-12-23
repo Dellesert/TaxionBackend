@@ -375,4 +375,5 @@ func DefaultHubOptions() *HubOptions {
 type ChatRepository interface {
 	GetChatMemberIDs(chatID uint) ([]uint, error)
 	IsMember(chatID uint, userID uint) (bool, error)
+	GetUserChatIDs(userID uint) ([]uint, error) // Get all chat IDs where user is a member
 }

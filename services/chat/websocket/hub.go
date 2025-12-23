@@ -152,23 +152,60 @@ func (h *Hub) unregisterClient(client *Client) {
 			LastActiveAt: now,
 		}
 
-		// Get user's chat rooms before removing
-		chatRoomIDs := make([]uint, 0, len(client.chatRooms))
-		for chatID := range client.chatRooms {
-			chatRoomIDs = append(chatRoomIDs, chatID)
+		// Get user's chat IDs from database (not just from in-memory chatRooms)
+		// This ensures we notify all chat members even if user didn't explicitly join rooms
+		var chatRoomIDs []uint
+		if h.chatRepo != nil {
+			dbChatIDs, err := h.chatRepo.GetUserChatIDs(userID)
+			if err != nil {
+				log.Printf("⚠️ Failed to get user chat IDs from DB: %v, falling back to in-memory", err)
+				// Fallback to in-memory chatRooms
+				for chatID := range client.chatRooms {
+					chatRoomIDs = append(chatRoomIDs, chatID)
+				}
+			} else {
+				chatRoomIDs = dbChatIDs
+			}
+		} else {
+			// No chatRepo available, use in-memory chatRooms
+			for chatID := range client.chatRooms {
+				chatRoomIDs = append(chatRoomIDs, chatID)
+			}
 		}
 		presence.ChatRooms = chatRoomIDs
 
 		log.Printf("📢 Broadcasting offline status for user %d to %d chat rooms", userID, len(chatRoomIDs))
 
-		// Collect all unique users across all chat rooms (like in broadcastUserPresence)
+		// Collect all unique users across all chat rooms
+		// Use database to get members for each chat (more reliable than in-memory)
 		uniqueUsers := make(map[uint]bool)
 		for _, chatID := range chatRoomIDs {
-			if users, exists := h.chatRooms[chatID]; exists {
-				for otherUserID := range users {
-					if otherUserID != userID {
-						uniqueUsers[otherUserID] = true
+			var memberIDs []uint
+			if h.chatRepo != nil {
+				dbMemberIDs, err := h.chatRepo.GetChatMemberIDs(chatID)
+				if err != nil {
+					log.Printf("⚠️ Failed to get chat %d members from DB: %v", chatID, err)
+					// Fallback to in-memory
+					if users, exists := h.chatRooms[chatID]; exists {
+						for otherUserID := range users {
+							memberIDs = append(memberIDs, otherUserID)
+						}
 					}
+				} else {
+					memberIDs = dbMemberIDs
+				}
+			} else {
+				// Fallback to in-memory chatRooms
+				if users, exists := h.chatRooms[chatID]; exists {
+					for otherUserID := range users {
+						memberIDs = append(memberIDs, otherUserID)
+					}
+				}
+			}
+
+			for _, otherUserID := range memberIDs {
+				if otherUserID != userID {
+					uniqueUsers[otherUserID] = true
 				}
 			}
 		}
@@ -186,12 +223,12 @@ func (h *Hub) unregisterClient(client *Client) {
 		if err != nil {
 			log.Printf("Error marshaling offline presence message: %v", err)
 		} else {
-			// Send to each unique user only once
+			// Send to each unique user only once (if they are connected)
 			sent := 0
 			for otherUserID := range uniqueUsers {
-				if client, exists := h.clients[otherUserID]; exists {
+				if otherClient, exists := h.clients[otherUserID]; exists {
 					select {
-					case client.send <- messageBytes:
+					case otherClient.send <- messageBytes:
 						sent++
 					default:
 						log.Printf("⚠️ Client %d send channel full, skipping offline presence", otherUserID)
@@ -199,14 +236,15 @@ func (h *Hub) unregisterClient(client *Client) {
 				}
 			}
 
-			log.Printf("✅ Sent offline presence for user %d to %d unique users (was in %d chats)", userID, sent, len(chatRoomIDs))
+			log.Printf("✅ Sent offline presence for user %d to %d unique users (was in %d chats, %d total members)",
+				userID, sent, len(chatRoomIDs), len(uniqueUsers))
 		}
 
 		// Now remove client
 		delete(h.clients, client.userID)
 		close(client.send)
 
-		// Remove user from all chat rooms
+		// Remove user from all in-memory chat rooms
 		for chatID := range client.chatRooms {
 			if users, exists := h.chatRooms[chatID]; exists {
 				delete(users, client.userID)
@@ -340,11 +378,28 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 	// Update status in user-service
 	go updateUserStatus(userID, status)
 
-	// Find all chat rooms where this user is a member
-	chatRoomIDs := make([]uint, 0)
-	for chatID, users := range h.chatRooms {
-		if _, exists := users[userID]; exists {
-			chatRoomIDs = append(chatRoomIDs, chatID)
+	// Get user's chat IDs from database (not just from in-memory chatRooms)
+	// This ensures we notify all chat members even if user didn't explicitly join rooms
+	var chatRoomIDs []uint
+	if h.chatRepo != nil {
+		dbChatIDs, err := h.chatRepo.GetUserChatIDs(userID)
+		if err != nil {
+			log.Printf("⚠️ Failed to get user chat IDs from DB: %v, falling back to in-memory", err)
+			// Fallback to in-memory chatRooms
+			for chatID, users := range h.chatRooms {
+				if _, exists := users[userID]; exists {
+					chatRoomIDs = append(chatRoomIDs, chatID)
+				}
+			}
+		} else {
+			chatRoomIDs = dbChatIDs
+		}
+	} else {
+		// No chatRepo available, use in-memory chatRooms
+		for chatID, users := range h.chatRooms {
+			if _, exists := users[userID]; exists {
+				chatRoomIDs = append(chatRoomIDs, chatID)
+			}
 		}
 	}
 	presence.ChatRooms = chatRoomIDs
@@ -352,13 +407,35 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 	log.Printf("Broadcasting user_presence for user %d (status: %s) to %d chats", userID, status, len(chatRoomIDs))
 
 	// Collect all unique users across all chat rooms (except the user themselves)
+	// Use database to get members for each chat (more reliable than in-memory)
 	uniqueUsers := make(map[uint]bool)
 	for _, chatID := range chatRoomIDs {
-		if users, exists := h.chatRooms[chatID]; exists {
-			for otherUserID := range users {
-				if otherUserID != userID {
-					uniqueUsers[otherUserID] = true
+		var memberIDs []uint
+		if h.chatRepo != nil {
+			dbMemberIDs, err := h.chatRepo.GetChatMemberIDs(chatID)
+			if err != nil {
+				log.Printf("⚠️ Failed to get chat %d members from DB: %v", chatID, err)
+				// Fallback to in-memory
+				if users, exists := h.chatRooms[chatID]; exists {
+					for otherUserID := range users {
+						memberIDs = append(memberIDs, otherUserID)
+					}
 				}
+			} else {
+				memberIDs = dbMemberIDs
+			}
+		} else {
+			// Fallback to in-memory chatRooms
+			if users, exists := h.chatRooms[chatID]; exists {
+				for otherUserID := range users {
+					memberIDs = append(memberIDs, otherUserID)
+				}
+			}
+		}
+
+		for _, otherUserID := range memberIDs {
+			if otherUserID != userID {
+				uniqueUsers[otherUserID] = true
 			}
 		}
 	}
@@ -378,7 +455,7 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 		return
 	}
 
-	// Send to each unique user only once
+	// Send to each unique user only once (if they are connected)
 	sent := 0
 	for otherUserID := range uniqueUsers {
 		if client, exists := h.clients[otherUserID]; exists {
@@ -391,7 +468,8 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 		}
 	}
 
-	log.Printf("Sent user_presence to %d unique users (was in %d chats)", sent, len(chatRoomIDs))
+	log.Printf("✅ Sent user_presence for user %d to %d unique users (was in %d chats, %d total members)",
+		userID, sent, len(chatRoomIDs), len(uniqueUsers))
 }
 
 // updateUserStatus updates user status in user-service via HTTP
