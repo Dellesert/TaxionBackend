@@ -29,11 +29,35 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// applyDataMigrations applies SQL data migrations
+// applyDataMigrations applies SQL data migrations (idempotent - runs only once)
 func applyDataMigrations(db *database.DB) error {
-	// Migration 001: Enable push notifications by default
-	logger.Info("Applying data migration: Enable push notifications by default")
+	// Create migrations tracking table if not exists
+	createTableSQL := `
+		CREATE TABLE IF NOT EXISTS notification_data_migrations (
+			id SERIAL PRIMARY KEY,
+			migration_name VARCHAR(255) UNIQUE NOT NULL,
+			applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+		)
+	`
+	if err := db.Exec(createTableSQL).Error; err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
 
+	// Migration 001: Enable push notifications by default
+	migrationName := "001_enable_push_notifications_by_default"
+
+	// Check if migration already applied
+	var count int64
+	db.Raw("SELECT COUNT(*) FROM notification_data_migrations WHERE migration_name = ?", migrationName).Scan(&count)
+
+	if count > 0 {
+		logger.WithField("migration", migrationName).Info("Migration already applied, skipping")
+		return nil
+	}
+
+	logger.WithField("migration", migrationName).Info("Applying data migration")
+
+	// Apply migration
 	result := db.Exec(`
 		UPDATE user_notification_preferences
 		SET push_enabled = true
@@ -41,14 +65,18 @@ func applyDataMigrations(db *database.DB) error {
 	`)
 
 	if result.Error != nil {
-		return fmt.Errorf("failed to apply migration 001: %w", result.Error)
+		return fmt.Errorf("failed to apply migration %s: %w", migrationName, result.Error)
 	}
 
-	if result.RowsAffected > 0 {
-		logger.WithField("updated_count", result.RowsAffected).Info("Migration 001: Enabled push notifications for existing preferences")
-	} else {
-		logger.Info("Migration 001: No preferences needed updating")
+	// Record migration as applied
+	if err := db.Exec("INSERT INTO notification_data_migrations (migration_name) VALUES (?)", migrationName).Error; err != nil {
+		return fmt.Errorf("failed to record migration %s: %w", migrationName, err)
 	}
+
+	logger.WithFields(map[string]interface{}{
+		"migration":     migrationName,
+		"updated_count": result.RowsAffected,
+	}).Info("Migration applied successfully")
 
 	return nil
 }
