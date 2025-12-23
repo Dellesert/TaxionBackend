@@ -506,26 +506,54 @@ func (r *messageRepository) GetUnreadCount(chatID, userID uint) (int64, error) {
 }
 
 // GetTotalUnreadCount returns the total number of unread messages for a user across all their chats
+// For private chats, counts all unread messages
+// For group/channel chats, counts as 1 if there are any unread messages
 func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 	var count int64
 
-	// Get all messages from chats where the user is a member,
-	// excluding messages sent by the user themselves,
-	// and excluding messages that have been read by the user
+	// Count unread messages in private chats
+	var privateUnreadCount int64
 	err := r.db.Model(&models.Message{}).
 		Joins("JOIN chat_members ON messages.chat_id = chat_members.chat_id").
+		Joins("JOIN chats ON chat_members.chat_id = chats.id").
 		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
+		Where("chats.type = ?", models.ChatTypePrivate).
 		Where("messages.sender_id != ? AND messages.is_deleted = ?", userID, false).
 		Where("messages.id NOT IN (?)",
 			r.db.Table("message_read_receipts").
 				Select("message_id").
 				Where("user_id = ?", userID),
 		).
-		Count(&count).Error
+		Count(&privateUnreadCount).Error
 
 	if err != nil {
-		return 0, fmt.Errorf("failed to count total unread messages: %w", err)
+		return 0, fmt.Errorf("failed to count private unread messages: %w", err)
 	}
+
+	// Count number of group/channel chats with unread messages
+	var groupChatsWithUnread int64
+	err = r.db.Table("chats").
+		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
+		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
+		Where("chats.type IN (?)", []models.ChatType{models.ChatTypeGroup, models.ChatTypeChannel}).
+		Where("EXISTS (?)",
+			r.db.Table("messages").
+				Select("1").
+				Where("messages.chat_id = chats.id").
+				Where("messages.sender_id != ? AND messages.is_deleted = ?", userID, false).
+				Where("messages.id NOT IN (?)",
+					r.db.Table("message_read_receipts").
+						Select("message_id").
+						Where("user_id = ?", userID),
+				),
+		).
+		Count(&groupChatsWithUnread).Error
+
+	if err != nil {
+		return 0, fmt.Errorf("failed to count group chats with unread messages: %w", err)
+	}
+
+	count = privateUnreadCount + groupChatsWithUnread
 	return count, nil
 }
 
