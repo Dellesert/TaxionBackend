@@ -48,10 +48,11 @@ type TypingIndicator struct {
 
 // UserPresence represents user online status
 type UserPresence struct {
-	UserID    uint      `json:"user_id"`
-	Status    string    `json:"status"` // online, away, busy, offline
-	LastSeen  time.Time `json:"last_seen"`
-	ChatRooms []uint    `json:"chat_rooms,omitempty"`
+	UserID       uint      `json:"user_id"`
+	Status       string    `json:"status"` // online, away, busy, offline
+	LastSeen     time.Time `json:"last_seen"`
+	LastActiveAt time.Time `json:"last_active_at"` // Alias for last_seen for frontend compatibility
+	ChatRooms    []uint    `json:"chat_rooms,omitempty"`
 }
 
 // NewHub creates a new WebSocket hub
@@ -143,10 +144,12 @@ func (h *Hub) unregisterClient(client *Client) {
 		updateUserStatus(userID, "offline")
 
 		// Broadcast offline presence to all chat rooms
+		now := time.Now()
 		presence := &UserPresence{
-			UserID:   userID,
-			Status:   "offline",
-			LastSeen: time.Now(),
+			UserID:       userID,
+			Status:       "offline",
+			LastSeen:     now,
+			LastActiveAt: now,
 		}
 
 		// Get user's chat rooms before removing
@@ -300,10 +303,12 @@ func (h *Hub) getChatMemberIDs(chatID uint) []uint {
 
 // broadcastUserPresence broadcasts user presence change
 func (h *Hub) broadcastUserPresence(userID uint, status string) {
+	now := time.Now()
 	presence := &UserPresence{
-		UserID:   userID,
-		Status:   status,
-		LastSeen: time.Now(),
+		UserID:       userID,
+		Status:       status,
+		LastSeen:     now,
+		LastActiveAt: now,
 	}
 
 	// Update status in user-service
@@ -665,17 +670,19 @@ func (h *Hub) GetUserPresence(userID uint) *UserPresence {
 		}
 
 		return &UserPresence{
-			UserID:    userID,
-			Status:    client.status,
-			LastSeen:  client.lastSeen,
-			ChatRooms: chatRooms,
+			UserID:       userID,
+			Status:       client.status,
+			LastSeen:     client.lastSeen,
+			LastActiveAt: client.lastSeen,
+			ChatRooms:    chatRooms,
 		}
 	}
 
 	return &UserPresence{
-		UserID:   userID,
-		Status:   "offline",
-		LastSeen: time.Time{},
+		UserID:       userID,
+		Status:       "offline",
+		LastSeen:     time.Time{},
+		LastActiveAt: time.Time{},
 	}
 }
 

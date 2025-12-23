@@ -293,6 +293,9 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 	// Allow status updates for presence tracking (internal use only)
 	if req.Status != nil {
 		updates["status"] = *req.Status
+		// Always update last_active_at when status changes
+		now := time.Now()
+		updates["last_active_at"] = &now
 	}
 
 	// If no fields to update, return current user
