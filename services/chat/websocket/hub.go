@@ -83,8 +83,14 @@ func (h *Hub) SetChatRepository(chatRepo ChatRepository) {
 func (h *Hub) Run() {
 	log.Println("WebSocket hub started")
 
+	// Reset all stuck online statuses on startup
+	go h.resetStuckOnlineStatuses()
+
 	// Start metrics updater
 	go h.updateMetrics()
+
+	// Start periodic status cleanup (every 5 minutes)
+	go h.periodicStatusCleanup()
 
 	for {
 		select {
@@ -929,4 +935,122 @@ func (h *Hub) refreshUserPresence(userID uint) {
 		h.setUserActiveInChat(userID, chatID)
 	}
 	client.mutex.RUnlock()
+}
+
+// resetStuckOnlineStatuses resets all online statuses to offline on startup
+// This ensures that users who were stuck in "online" status due to service crashes
+// or network issues are properly reset to offline
+func (h *Hub) resetStuckOnlineStatuses() {
+	log.Println("🔄 Resetting stuck online statuses on startup...")
+
+	userServiceURL := os.Getenv("USER_SERVICE_URL")
+	if userServiceURL == "" {
+		userServiceURL = "http://user-service:8081"
+	}
+
+	url := fmt.Sprintf("%s/internal/users/reset-online-statuses", userServiceURL)
+
+	// Create request with context for timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+	if err != nil {
+		log.Printf("❌ Failed to create reset online statuses request: %v", err)
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("❌ Failed to reset online statuses: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("⚠️ User service returned non-OK status %d when resetting online statuses", resp.StatusCode)
+		return
+	}
+
+	log.Println("✅ Successfully reset all stuck online statuses to offline")
+}
+
+// periodicStatusCleanup periodically checks for inactive users and resets their status to offline
+// This runs every 5 minutes and checks if any user in "online" status is not actually connected
+func (h *Hub) periodicStatusCleanup() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	log.Println("🔄 Started periodic status cleanup (every 5 minutes)")
+
+	for {
+		select {
+		case <-ticker.C:
+			h.cleanupInactiveStatuses()
+
+		case <-h.shutdown:
+			log.Println("⏹️ Stopped periodic status cleanup")
+			return
+		}
+	}
+}
+
+// cleanupInactiveStatuses checks for users marked as online but not connected to WebSocket
+func (h *Hub) cleanupInactiveStatuses() {
+	log.Println("🔍 Running inactive status cleanup...")
+
+	userServiceURL := os.Getenv("USER_SERVICE_URL")
+	if userServiceURL == "" {
+		userServiceURL = "http://user-service:8081"
+	}
+
+	// Get list of currently connected users
+	h.mutex.RLock()
+	connectedUserIDs := make([]uint, 0, len(h.clients))
+	for userID := range h.clients {
+		connectedUserIDs = append(connectedUserIDs, userID)
+	}
+	h.mutex.RUnlock()
+
+	// Send list of connected users to user-service
+	// User-service will mark all other "online" users as offline
+	payload := map[string]interface{}{
+		"connected_user_ids": connectedUserIDs,
+	}
+
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("❌ Failed to marshal connected users: %v", err)
+		return
+	}
+
+	url := fmt.Sprintf("%s/internal/users/cleanup-statuses", userServiceURL)
+
+	// Create request with context for timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("❌ Failed to create cleanup statuses request: %v", err)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("❌ Failed to cleanup statuses: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("⚠️ User service returned non-OK status %d when cleaning up statuses", resp.StatusCode)
+		return
+	}
+
+	log.Printf("✅ Status cleanup completed (%d users currently connected)", len(connectedUserIDs))
 }

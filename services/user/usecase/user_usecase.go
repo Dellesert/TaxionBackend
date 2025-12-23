@@ -24,6 +24,8 @@ type UserUsecase interface {
 	GetUsersByDepartment(departmentID uint) ([]*models.UserResponse, error)
 	UpdateUser(id uint, req *models.UpdateUserRequest) (*models.UserResponse, error)
 	DeleteUser(id uint) error
+	ResetAllOnlineStatuses() (int64, error)
+	CleanupDisconnectedStatuses(connectedUserIDs []uint) (int64, error)
 }
 
 // userUsecase implements UserUsecase interface
@@ -438,4 +440,23 @@ func (u *userUsecase) validatePassword(password string) error {
 	}
 
 	return nil
+}
+
+// ResetAllOnlineStatuses resets all users with "online" status to "offline"
+// This is useful for cleaning up stuck statuses after service restarts
+func (u *userUsecase) ResetAllOnlineStatuses() (int64, error) {
+	count, err := u.userRepo.ResetAllOnlineStatuses()
+	if err != nil {
+		return 0, fmt.Errorf("failed to reset online statuses: %w", err)
+	}
+	return count, nil
+}
+
+// CleanupDisconnectedStatuses sets users to offline if they are marked as online but not in the connected users list
+func (u *userUsecase) CleanupDisconnectedStatuses(connectedUserIDs []uint) (int64, error) {
+	count, err := u.userRepo.CleanupDisconnectedStatuses(connectedUserIDs)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cleanup disconnected statuses: %w", err)
+	}
+	return count, nil
 }

@@ -36,6 +36,8 @@ type UserRepository interface {
 	SuperAdminExists() (bool, error)
 	UpdateTwoFactorStatus(userID uint, enabled bool) error
 	UpdatePasskeyStatus(userID uint, enabled bool) error
+	ResetAllOnlineStatuses() (int64, error)
+	CleanupDisconnectedStatuses(connectedUserIDs []uint) (int64, error)
 }
 
 // DepartmentRepository defines the interface for department data operations
@@ -703,4 +705,41 @@ func (r *subdepartmentRepository) GetWithDepartment(id uint) (*models.Subdepartm
 		return nil, fmt.Errorf("failed to get subdepartment with department: %w", err)
 	}
 	return &subdepartment, nil
+}
+
+// ResetAllOnlineStatuses sets all users with "online" status to "offline"
+func (r *userRepository) ResetAllOnlineStatuses() (int64, error) {
+	result := r.db.Model(&models.User{}).
+		Where("status = ?", "online").
+		Updates(map[string]interface{}{
+			"status":         "offline",
+			"last_active_at": gorm.Expr("NOW()"),
+		})
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to reset online statuses: %w", result.Error)
+	}
+
+	return result.RowsAffected, nil
+}
+
+// CleanupDisconnectedStatuses sets users to offline if they are marked as online but not in the connected users list
+func (r *userRepository) CleanupDisconnectedStatuses(connectedUserIDs []uint) (int64, error) {
+	query := r.db.Model(&models.User{}).Where("status = ?", "online")
+
+	// If there are connected users, exclude them from the update
+	if len(connectedUserIDs) > 0 {
+		query = query.Where("id NOT IN ?", connectedUserIDs)
+	}
+
+	result := query.Updates(map[string]interface{}{
+		"status":         "offline",
+		"last_active_at": gorm.Expr("NOW()"),
+	})
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to cleanup disconnected statuses: %w", result.Error)
+	}
+
+	return result.RowsAffected, nil
 }

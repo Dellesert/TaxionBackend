@@ -376,6 +376,9 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		internal.GET("/users/department/:department_id", userHandler.GetUsersByDepartment)
 		// Session management (for admin/analytics service)
 		internal.DELETE("/sessions/:session_id", sessionHandler.TerminateSessionInternal)
+		// Status cleanup endpoints for chat-service
+		internal.POST("/users/reset-online-statuses", userHandler.ResetOnlineStatuses)
+		internal.POST("/users/cleanup-statuses", userHandler.CleanupStatuses)
 	}
 
 	// API v1 routes

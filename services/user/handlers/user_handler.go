@@ -691,3 +691,84 @@ func sortByDepartmentHeadFirst(users []*models.UserResponse) []*models.UserRespo
 
 	return result
 }
+
+// ResetOnlineStatuses resets all online user statuses to offline (internal endpoint)
+// POST /internal/users/reset-online-statuses
+func (h *UserHandler) ResetOnlineStatuses(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	count, err := h.userUsecase.ResetAllOnlineStatuses()
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to reset online statuses")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to reset online statuses",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"count":      count,
+	}).Info("Successfully reset all online statuses to offline")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Online statuses reset successfully",
+		"users_reset": count,
+		"request_id":  requestID,
+	})
+}
+
+// CleanupStatuses marks users as offline if they are not in the connected users list (internal endpoint)
+// POST /internal/users/cleanup-statuses
+func (h *UserHandler) CleanupStatuses(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	var req struct {
+		ConnectedUserIDs []uint `json:"connected_user_ids"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body for cleanup statuses")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	count, err := h.userUsecase.CleanupDisconnectedStatuses(req.ConnectedUserIDs)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":         requestID,
+			"connected_users":    len(req.ConnectedUserIDs),
+			"error":              err.Error(),
+		}).Error("Failed to cleanup statuses")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to cleanup statuses",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":         requestID,
+		"connected_users":    len(req.ConnectedUserIDs),
+		"users_set_offline":  count,
+	}).Info("Successfully cleaned up disconnected user statuses")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":           "Statuses cleaned up successfully",
+		"users_set_offline": count,
+		"request_id":        requestID,
+	})
+}
