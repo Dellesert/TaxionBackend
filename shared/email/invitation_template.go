@@ -217,7 +217,6 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
                     <span>Android</span>
                 </a>
                 <a href="{{.WindowsAppURL}}" class="app-link app-link-windows" target="_blank" rel="noopener">
-                    <span class="platform-icon">🪟</span>
                     <span>Windows</span>
                 </a>
             </div>
@@ -238,14 +237,6 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
                     Приложение автоматически активирует ваше приглашение
                 </p>
             </div>
-            <div style="background-color: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 40px;">
-                <p style="margin: 0 0 10px 0; font-size: 13px; color: #2c3e50; text-align: center;">
-                    <strong>Или скопируйте ссылку:</strong>
-                </p>
-                <div style="background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; word-break: break-all; text-align: center;">
-                    <a href="{{.InviteURL}}" style="color: #E94444; text-decoration: none; font-size: 12px;">{{.InviteURL}}</a>
-                </div>
-            </div>
         </div>
 
         <!-- Step 3: Create Password -->
@@ -263,10 +254,10 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
         <div class="step">
             <div class="step-title">
                 <span class="step-number">4</span>
-                Готово!
+                Войдите в систему
             </div>
             <p style="margin: 10px 0 0 40px;">
-                После создания пароля вы автоматически войдёте в систему и сможете начать общение в Tachyon Messenger.
+                После создания пароля авторизуйтесь в системе, используя вашу почту и созданный пароль.
             </p>
         </div>
 
@@ -292,10 +283,10 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
                 <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: bold; color: #2c3e50; text-align: center;">
                     Ваш код приглашения:
                 </p>
-                <div class="code-box">
+                <div class="code-box" style="cursor: pointer;" onclick="navigator.clipboard.writeText('{{.InviteToken}}'); this.style.background='#e7f3ff'; setTimeout(() => this.style.background='#fff', 1000);" title="Нажмите, чтобы скопировать">
                     <div class="code">{{.InviteToken}}</div>
                     <p style="margin: 10px 0 0 0; font-size: 13px; color: #6c757d;">
-                        Нажмите и удерживайте, чтобы скопировать код
+                        👆 Нажмите на код, чтобы скопировать
                     </p>
                 </div>
             </div>
@@ -303,7 +294,7 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
             <div class="info-box" style="margin: 15px 0;">
                 <strong>📝 Инструкция по ручной активации:</strong><br>
                 1. Откройте приложение Tachyon Messenger<br>
-                2. Нажмите "Есть приглашение?" или "У меня есть код"<br>
+                2. Нажмите "Есть приглашение?"<br>
                 3. Вставьте скопированный код приглашения<br>
                 4. Создайте пароль и войдите в систему
             </div>
