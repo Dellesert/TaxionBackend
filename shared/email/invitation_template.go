@@ -86,12 +86,36 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
             flex-wrap: wrap;
         }
         .app-link {
-            display: inline-block;
-            padding: 0;
-        }
-        .app-link img {
-            height: 50px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 14px 24px;
             border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            min-width: 140px;
+        }
+        .app-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .app-link-ios {
+            background: linear-gradient(135deg, #000000 0%, #434343 100%);
+            color: white;
+        }
+        .app-link-android {
+            background: linear-gradient(135deg, #3DDC84 0%, #07A75C 100%);
+            color: white;
+        }
+        .app-link-windows {
+            background: linear-gradient(135deg, #0078D4 0%, #0053A3 100%);
+            color: white;
+        }
+        .platform-icon {
+            font-size: 22px;
+            margin-right: 10px;
         }
         .button {
             display: inline-block;
@@ -181,72 +205,68 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
                 Установите приложение
             </div>
             <p style="margin: 10px 0 15px 40px;">
-                Скачайте приложение Tachyon Messenger для вашей платформы:
+                Выберите версию для вашего устройства:
             </p>
             <div class="app-links">
-                <a href="{{.WindowsAppURL}}" class="app-link" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; background: #0078D4; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 600;">
-                    <span style="font-size: 20px; margin-right: 8px;">🪟</span>
+                <a href="{{.AppStoreURL}}" class="app-link app-link-ios" target="_blank" rel="noopener">
+                    <span class="platform-icon"></span>
+                    <span>Apple iOS</span>
+                </a>
+                <a href="{{.GooglePlayURL}}" class="app-link app-link-android" target="_blank" rel="noopener">
+                    <span class="platform-icon"></span>
+                    <span>Android</span>
+                </a>
+                <a href="{{.WindowsAppURL}}" class="app-link app-link-windows" target="_blank" rel="noopener">
+                    <span class="platform-icon">🪟</span>
                     <span>Windows</span>
-                </a>
-                <a href="{{.GooglePlayURL}}" class="app-link" target="_blank" rel="noopener">
-                    <img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" style="height: 58px;" />
-                </a>
-                <a href="{{.AppStoreURL}}" class="app-link" target="_blank" rel="noopener">
-                    <img src="https://tools.applemediaservices.com/api/badges/download-on-the-app-store/black/en-us?size=250x83" alt="Download on App Store" />
                 </a>
             </div>
         </div>
 
-        <!-- Step 2: Get Invitation Code -->
+        <!-- Step 2: Quick Activation -->
         <div class="step">
             <div class="step-title">
                 <span class="step-number">2</span>
-                Получите код приглашения
+                Активируйте приглашение
             </div>
             <p style="margin: 10px 0 15px 40px;">
-                Ваш персональный код приглашения - сохраните его:
+                Нажмите кнопку ниже - приложение откроется автоматически с вашим приглашением:
             </p>
-            <div class="code-box">
-                <div class="code">{{.InviteToken}}</div>
-                <p style="margin: 10px 0 0 0; font-size: 13px; color: #6c757d;">
-                    Нажмите и удерживайте, чтобы скопировать код
+            <div style="text-align: center; margin: 20px 0;">
+                <a href="{{.InviteURL}}" class="button" target="_blank" rel="noopener">Открыть в приложении</a>
+                <p style="margin: 15px 0 0 0; font-size: 14px; color: #6c757d;">
+                    Приложение автоматически активирует ваше приглашение
                 </p>
+            </div>
+            <div style="background-color: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 40px;">
+                <p style="margin: 0 0 10px 0; font-size: 13px; color: #2c3e50; text-align: center;">
+                    <strong>Или скопируйте ссылку:</strong>
+                </p>
+                <div style="background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; word-break: break-all; text-align: center;">
+                    <a href="{{.InviteURL}}" style="color: #E94444; text-decoration: none; font-size: 12px;">{{.InviteURL}}</a>
+                </div>
             </div>
         </div>
 
-        <!-- Step 3: Open App and Enter Code -->
+        <!-- Step 3: Create Password -->
         <div class="step">
             <div class="step-title">
                 <span class="step-number">3</span>
-                Откройте приложение и введите код
-            </div>
-            <div class="info-box">
-                <strong>💡 Инструкция:</strong><br>
-                1. Запустите установленное приложение Tachyon Messenger<br>
-                2. Нажмите "Есть приглашение?" или "У меня есть код"<br>
-                3. Вставьте скопированный код приглашения из Шага 2
-            </div>
-        </div>
-
-        <!-- Step 4: Create Password -->
-        <div class="step">
-            <div class="step-title">
-                <span class="step-number">4</span>
                 Придумайте пароль
             </div>
             <p style="margin: 10px 0 0 40px;">
-                После ввода кода приглашения вам будет предложено создать надежный пароль для вашей учетной записи.
+                После активации приглашения создайте надежный пароль для вашей учетной записи (минимум 8 символов).
             </p>
         </div>
 
-        <!-- Step 5: Login -->
+        <!-- Step 4: Login -->
         <div class="step">
             <div class="step-title">
-                <span class="step-number">5</span>
-                Авторизуйтесь в системе
+                <span class="step-number">4</span>
+                Готово!
             </div>
             <p style="margin: 10px 0 0 40px;">
-                После создания пароля вы сможете авторизоваться используя вашу почту и новый пароль.
+                После создания пароля вы автоматически войдёте в систему и сможете начать общение в Tachyon Messenger.
             </p>
         </div>
 
@@ -261,30 +281,31 @@ func (s *EmailService) renderInvitationTemplate(userName, inviteToken, deepLink 
 
         <hr style="margin: 30px 0; border: none; border-top: 1px solid #e9ecef;" />
 
-        <!-- Quick Activation Alternative -->
-        <div style="background-color: #f8f9fa; border-radius: 8px; padding: 25px; margin: 20px 0;">
-            <h3 style="text-align: center; color: #2c3e50; margin: 0 0 15px 0;">Быстрая активация</h3>
-            <p style="text-align: center; color: #6c757d; margin: 0 0 20px 0;">
-                Если у вас уже установлено приложение, вы можете активировать приглашение автоматически:
+        <!-- Manual Activation Alternative -->
+        <div style="background-color: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 25px; margin: 20px 0;">
+            <h3 style="text-align: center; color: #856404; margin: 0 0 15px 0;">Если ссылка не сработала</h3>
+            <p style="text-align: center; color: #856404; margin: 0 0 20px 0; font-size: 15px;">
+                Если приложение не открылось автоматически, используйте ручную активацию:
             </p>
-            <div style="text-align: center;">
-                <a href="{{.InviteURL}}" class="button" target="_blank" rel="noopener">Открыть в приложении</a>
-                <p style="margin: 15px 0 0 0; font-size: 14px; color: #6c757d;">
-                    Нажмите кнопку - приложение откроется автоматически
+
+            <div style="background-color: white; border-radius: 8px; padding: 20px; margin: 15px 0;">
+                <p style="margin: 0 0 10px 0; font-size: 16px; font-weight: bold; color: #2c3e50; text-align: center;">
+                    Ваш код приглашения:
                 </p>
+                <div class="code-box">
+                    <div class="code">{{.InviteToken}}</div>
+                    <p style="margin: 10px 0 0 0; font-size: 13px; color: #6c757d;">
+                        Нажмите и удерживайте, чтобы скопировать код
+                    </p>
+                </div>
             </div>
 
-            <!-- Fallback link -->
-            <div style="background-color: white; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 20px 0;">
-                <p style="margin: 0 0 10px 0; font-size: 14px; color: #2c3e50; text-align: center;">
-                    <strong>Или скопируйте ссылку:</strong>
-                </p>
-                <div style="background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; border-radius: 4px; word-break: break-all; text-align: center;">
-                    <a href="{{.InviteURL}}" style="color: #E94444; text-decoration: none; font-size: 13px;">{{.InviteURL}}</a>
-                </div>
-                <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d; text-align: center;">
-                    Скопируйте и вставьте в браузер
-                </p>
+            <div class="info-box" style="margin: 15px 0;">
+                <strong>📝 Инструкция по ручной активации:</strong><br>
+                1. Откройте приложение Tachyon Messenger<br>
+                2. Нажмите "Есть приглашение?" или "У меня есть код"<br>
+                3. Вставьте скопированный код приглашения<br>
+                4. Создайте пароль и войдите в систему
             </div>
         </div>
 
