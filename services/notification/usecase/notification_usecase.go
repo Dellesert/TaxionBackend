@@ -648,6 +648,41 @@ func (u *notificationUsecase) GetUserPreferences(userID uint) ([]*models.UserNot
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user preferences: %w", err)
 	}
+
+	// If no preferences found, return defaults for all notification types
+	if len(preferences) == 0 {
+		allTypes := []models.NotificationType{
+			models.NotificationTypeMessage,
+			models.NotificationTypeTask,
+			models.NotificationTypeCalendar,
+			models.NotificationTypeSystem,
+			models.NotificationTypeMention,
+			models.NotificationTypePoll,
+			models.NotificationTypeReminder,
+			models.NotificationTypeAnnounce,
+		}
+
+		preferences = make([]*models.UserNotificationPreference, 0, len(allTypes))
+		for _, notifType := range allTypes {
+			preferences = append(preferences, &models.UserNotificationPreference{
+				UserID:           userID,
+				NotificationType: notifType,
+				InAppEnabled:     true,
+				EmailEnabled:     false,
+				PushEnabled:      true, // Push включен по умолчанию
+				SMSEnabled:       false,
+				MinPriority:      models.NotificationPriorityLow,
+				WeekendEnabled:   true,
+				DigestEnabled:    false,
+			})
+		}
+
+		logger.WithFields(map[string]interface{}{
+			"user_id":           userID,
+			"preferences_count": len(preferences),
+		}).Info("No preferences found, returning defaults with push enabled")
+	}
+
 	return preferences, nil
 }
 
