@@ -153,27 +153,53 @@ func (h *Hub) unregisterClient(client *Client) {
 		}
 
 		// Get user's chat rooms before removing
-		chatRooms := make([]uint, 0, len(client.chatRooms))
+		chatRoomIDs := make([]uint, 0, len(client.chatRooms))
 		for chatID := range client.chatRooms {
-			chatRooms = append(chatRooms, chatID)
+			chatRoomIDs = append(chatRoomIDs, chatID)
 		}
-		presence.ChatRooms = chatRooms
+		presence.ChatRooms = chatRoomIDs
 
-		// Broadcast to all chat rooms user was in
-		for _, chatID := range chatRooms {
-			broadcastMsg := &BroadcastMessage{
-				Type:        models.WSMessageType("user_presence"),
-				ChatID:      chatID,
-				UserID:      userID,
-				Data:        presence,
-				ExcludeUser: userID,
+		log.Printf("📢 Broadcasting offline status for user %d to %d chat rooms", userID, len(chatRoomIDs))
+
+		// Collect all unique users across all chat rooms (like in broadcastUserPresence)
+		uniqueUsers := make(map[uint]bool)
+		for _, chatID := range chatRoomIDs {
+			if users, exists := h.chatRooms[chatID]; exists {
+				for otherUserID := range users {
+					if otherUserID != userID {
+						uniqueUsers[otherUserID] = true
+					}
+				}
+			}
+		}
+
+		// Create the message once
+		message := &BroadcastMessage{
+			Type:      models.WSMessageType("user_presence"),
+			ChatID:    0, // Not specific to one chat
+			UserID:    userID,
+			Data:      presence,
+			Timestamp: time.Now(),
+		}
+
+		messageBytes, err := json.Marshal(message)
+		if err != nil {
+			log.Printf("Error marshaling offline presence message: %v", err)
+		} else {
+			// Send to each unique user only once
+			sent := 0
+			for otherUserID := range uniqueUsers {
+				if client, exists := h.clients[otherUserID]; exists {
+					select {
+					case client.send <- messageBytes:
+						sent++
+					default:
+						log.Printf("⚠️ Client %d send channel full, skipping offline presence", otherUserID)
+					}
+				}
 			}
 
-			select {
-			case h.broadcast <- broadcastMsg:
-			default:
-				log.Println("Broadcast channel full, dropping presence message")
-			}
+			log.Printf("✅ Sent offline presence for user %d to %d unique users (was in %d chats)", userID, sent, len(chatRoomIDs))
 		}
 
 		// Now remove client
