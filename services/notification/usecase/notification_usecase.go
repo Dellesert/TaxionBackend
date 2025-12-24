@@ -1543,6 +1543,18 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 		dataBuilder.SetAction(action)
 	}
 
+	// Determine image URL for push notification
+	// If notification has a sender, use their avatar as the image
+	// Otherwise, fall back to notification.ImageURL
+	imageURL := notification.ImageURL
+	if notification.SenderID != nil {
+		// Get sender info to use avatar in push notification
+		userInfo, err := u.userClient.GetUserInfo(*notification.SenderID)
+		if err == nil && userInfo.AvatarURL != "" {
+			imageURL = userInfo.AvatarURL
+		}
+	}
+
 	// Create push notifications for each device
 	pushNotifications := make([]*push.PushNotification, 0, len(devices))
 	for _, device := range devices {
@@ -1550,7 +1562,7 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 			Token:    device.Token,
 			Title:    notification.Title,
 			Body:     notification.Message,
-			ImageURL: notification.ImageURL,
+			ImageURL: imageURL, // Use sender avatar or notification image
 			Data:     dataBuilder.Build(),
 			Priority: notification.Priority,
 

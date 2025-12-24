@@ -335,6 +335,7 @@ func (f *FCMProvider) buildAndroidConfig(notification *PushNotification) *messag
 		Color:       notification.Color,
 		ClickAction: notification.ClickAction,
 		Sound:       notification.Sound,
+		ImageURL:    notification.ImageURL, // Large image (sender avatar or notification image)
 	}
 
 	// Set priority for notification
@@ -406,7 +407,8 @@ func (f *FCMProvider) buildWebpushConfig(notification *PushNotification) *messag
 		config.Notification = &messaging.WebpushNotification{
 			Title: notification.Title,
 			Body:  notification.Body,
-			Icon:  notification.ImageURL,
+			Icon:  notification.ImageURL,  // Sender avatar or notification image
+			Image: notification.ImageURL,  // Large image for web push
 		}
 	}
 
