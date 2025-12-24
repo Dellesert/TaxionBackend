@@ -580,11 +580,11 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 // applySortingAndPagination applies sorting and pagination to the query
 func (r *taskRepository) applySortingAndPagination(query *gorm.DB, filter *models.TaskFilterRequest) *gorm.DB {
 	if filter == nil {
-		return query.Order("created_at DESC").Limit(20)
+		return query.Order("updated_at DESC").Limit(20)
 	}
 
 	// Apply sorting
-	sortBy := "created_at"
+	sortBy := "updated_at"
 	sortOrder := "DESC"
 
 	if filter.SortBy != "" {
