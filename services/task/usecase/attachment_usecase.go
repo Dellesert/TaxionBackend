@@ -179,6 +179,11 @@ func (u *attachmentUsecase) UploadAttachment(taskID, userID uint, file *multipar
 		return nil, fmt.Errorf("failed to create attachment record: %w", err)
 	}
 
+	// Update task's updated_at timestamp to reflect the attachment addition
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after uploading attachment: %v\n", err)
+	}
+
 	return attachment, nil
 }
 
@@ -253,6 +258,11 @@ func (u *attachmentUsecase) AttachFileToTask(taskID, userID, fileID uint) (*mode
 		return nil, fmt.Errorf("failed to create attachment record: %w", err)
 	}
 
+	// Update task's updated_at timestamp to reflect the attachment addition
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after adding attachment: %v\n", err)
+	}
+
 	// Log activity
 	if u.activityUsecase != nil {
 		if err := u.activityUsecase.LogAttachmentAdded(taskID, userID, attachment.ID, attachment.FileName); err != nil {
@@ -315,6 +325,11 @@ func (u *attachmentUsecase) DeleteAttachment(id, userID uint) error {
 	// Delete from database
 	if err := u.attachmentRepo.Delete(id); err != nil {
 		return fmt.Errorf("failed to delete attachment: %w", err)
+	}
+
+	// Update task's updated_at timestamp to reflect the attachment deletion
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after deleting attachment: %v\n", err)
 	}
 
 	// Log activity

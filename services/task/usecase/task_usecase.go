@@ -824,6 +824,14 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 	// If task had a parent, recalculate parent progress after deletion
 	if parentTaskID != nil {
 		fmt.Printf("[DeleteTask] Task ID: %d had parent task ID: %d, recalculating parent progress after deletion\n", taskID, *parentTaskID)
+
+		// Update parent task's updated_at timestamp to reflect the subtask deletion
+		if parentTask, err := u.taskRepo.GetByID(*parentTaskID); err == nil {
+			if err := u.taskRepo.Update(parentTask); err != nil {
+				fmt.Printf("Warning: failed to update parent task timestamp after subtask deletion: %v\n", err)
+			}
+		}
+
 		u.RecalculateTaskProgress(*parentTaskID)
 	}
 
@@ -1092,6 +1100,13 @@ func (u *taskUsecase) UpdateTaskStatus(userID, taskID uint, req *models.UpdateTa
 
 	// If task has parent, recalculate parent progress and log activity
 	if task.ParentTaskID != nil {
+		// Update parent task's updated_at timestamp to reflect the subtask status change
+		if parentTask, err := u.taskRepo.GetByID(*task.ParentTaskID); err == nil {
+			if err := u.taskRepo.Update(parentTask); err != nil {
+				fmt.Printf("Warning: failed to update parent task timestamp after subtask status change: %v\n", err)
+			}
+		}
+
 		u.RecalculateTaskProgress(*task.ParentTaskID)
 
 		// Log activity in parent task about subtask status change
@@ -1560,6 +1575,11 @@ func (u *taskUsecase) CreateSubtask(userID uint, parentTaskID uint, req *models.
 		"assignee_ids":  assigneeIDs,
 	}
 	u.logActivity(parentTaskID, userID, "subtask_created", "", task.Title, details)
+
+	// Update parent task's updated_at timestamp to reflect the subtask creation
+	if err := u.taskRepo.Update(parentTask); err != nil {
+		fmt.Printf("Warning: failed to update parent task timestamp after creating subtask: %v\n", err)
+	}
 
 	// Recalculate parent progress
 	u.RecalculateTaskProgress(parentTaskID)

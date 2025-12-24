@@ -78,6 +78,11 @@ func (u *checklistUsecase) CreateChecklist(taskID, userID uint, title, descripti
 		return nil, fmt.Errorf("failed to create checklist: %w", err)
 	}
 
+	// Update task's updated_at timestamp to reflect the checklist addition
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after creating checklist: %v\n", err)
+	}
+
 	return checklist, nil
 }
 
@@ -144,6 +149,11 @@ func (u *checklistUsecase) UpdateChecklist(id, userID uint, title, description s
 		return nil, fmt.Errorf("failed to update checklist: %w", err)
 	}
 
+	// Update task's updated_at timestamp to reflect the checklist update
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after updating checklist: %v\n", err)
+	}
+
 	return checklist, nil
 }
 
@@ -169,6 +179,11 @@ func (u *checklistUsecase) DeleteChecklist(id, userID uint) error {
 
 	if err := u.checklistRepo.DeleteChecklist(id); err != nil {
 		return err
+	}
+
+	// Update task's updated_at timestamp to reflect the checklist deletion
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after deleting checklist: %v\n", err)
 	}
 
 	// Recalculate task progress
@@ -211,6 +226,11 @@ func (u *checklistUsecase) CreateChecklistItem(checklistID, userID uint, title s
 
 	if err := u.checklistRepo.CreateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to create checklist item: %w", err)
+	}
+
+	// Update task's updated_at timestamp to reflect the checklist item addition
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after creating checklist item: %v\n", err)
 	}
 
 	// Recalculate task progress
@@ -290,6 +310,11 @@ func (u *checklistUsecase) UpdateChecklistItem(id, userID uint, title string, is
 		return nil, fmt.Errorf("failed to update checklist item: %w", err)
 	}
 
+	// Update task's updated_at timestamp to reflect the checklist item update
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after updating checklist item: %v\n", err)
+	}
+
 	// If this is the first checklist item being completed and task is in 'new' or 'viewed' status,
 	// automatically move task to 'in_progress'
 	if isBeingCompleted && u.taskUsecase != nil {
@@ -335,6 +360,11 @@ func (u *checklistUsecase) DeleteChecklistItem(id, userID uint) error {
 
 	if err := u.checklistRepo.DeleteChecklistItem(id); err != nil {
 		return err
+	}
+
+	// Update task's updated_at timestamp to reflect the checklist item deletion
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after deleting checklist item: %v\n", err)
 	}
 
 	// Recalculate task progress
@@ -383,6 +413,11 @@ func (u *checklistUsecase) ToggleChecklistItem(id, userID uint) (*models.TaskChe
 
 	if err := u.checklistRepo.UpdateChecklistItem(item); err != nil {
 		return nil, fmt.Errorf("failed to toggle checklist item: %w", err)
+	}
+
+	// Update task's updated_at timestamp to reflect the checklist item toggle
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after toggling checklist item: %v\n", err)
 	}
 
 	// If this is the first checklist item being completed and task is in 'new' or 'viewed' status,

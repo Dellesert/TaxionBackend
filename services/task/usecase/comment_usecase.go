@@ -58,6 +58,11 @@ func (u *taskUsecase) AddComment(userID, taskID uint, req *models.CreateTaskComm
 		return nil, fmt.Errorf("failed to create comment: %w", err)
 	}
 
+	// Update task's updated_at timestamp to reflect the comment addition
+	if err := u.taskRepo.Update(task); err != nil {
+		fmt.Printf("Warning: failed to update task timestamp after adding comment: %v\n", err)
+	}
+
 	// Log activity
 	u.logActivity(taskID, userID, "comment_added", "", fmt.Sprintf("Comment %d added", comment.ID), map[string]interface{}{
 		"comment_id": comment.ID,
@@ -215,6 +220,15 @@ func (u *taskUsecase) UpdateComment(userID, commentID uint, req *models.UpdateTa
 		return nil, fmt.Errorf("failed to update comment: %w", err)
 	}
 
+	// Get task to update its timestamp
+	task, err := u.taskRepo.GetByID(comment.TaskID)
+	if err == nil && task != nil {
+		// Update task's updated_at timestamp to reflect the comment update
+		if err := u.taskRepo.Update(task); err != nil {
+			fmt.Printf("Warning: failed to update task timestamp after updating comment: %v\n", err)
+		}
+	}
+
 	return comment.ToResponse(), nil
 }
 
@@ -232,6 +246,15 @@ func (u *taskUsecase) DeleteComment(userID, commentID uint) error {
 	// Check permissions: only comment author can delete
 	if comment.UserID != userID {
 		return fmt.Errorf("access denied: only comment author can delete the comment")
+	}
+
+	// Get task to update its timestamp
+	task, err := u.taskRepo.GetByID(comment.TaskID)
+	if err == nil && task != nil {
+		// Update task's updated_at timestamp to reflect the comment deletion
+		if err := u.taskRepo.Update(task); err != nil {
+			fmt.Printf("Warning: failed to update task timestamp after deleting comment: %v\n", err)
+		}
 	}
 
 	// Delete comment
