@@ -1,5 +1,10 @@
- -- Migration: Add saved chat type support
+-- Migration: Add saved chat type support
 -- This migration adds support for "saved" chat type (personal favorites/bookmarks chat)
+
+-- Step 0: Update the CHECK constraint to allow 'saved' type
+ALTER TABLE chats DROP CONSTRAINT IF EXISTS chk_chats_type;
+ALTER TABLE chats ADD CONSTRAINT chk_chats_type CHECK (type IN ('private', 'group', 'channel', 'saved'));
+
 -- Add unique index for saved chats (one per user)
 -- This ensures each user can only have one saved chat
 CREATE UNIQUE INDEX IF NOT EXISTS idx_chats_saved_per_user
