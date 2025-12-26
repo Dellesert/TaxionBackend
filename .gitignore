@@ -68,6 +68,7 @@ NUL
 .github-credentials
 backups/
 *.sql
+!**/migrations/*.sql
 *.sql.gz
 *.rdb
 
