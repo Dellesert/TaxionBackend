@@ -478,8 +478,8 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int, chatType str
 	// Convert to response format and load last message + unread count + favorite status for each chat
 	chatResponses := make([]models.ChatResponse, len(chats))
 	for i, chat := range chats {
-		// Get last message for this chat
-		lastMessage, err := uc.messageRepo.GetLatestMessage(chat.ID)
+		// Get last message for this chat (excluding messages deleted by this user)
+		lastMessage, err := uc.messageRepo.GetLatestMessageForUser(chat.ID, userID)
 		if err == nil && lastMessage != nil {
 			// Add last message to chat's Messages slice so ToResponse can pick it up
 			chat.Messages = []models.Message{*lastMessage}
@@ -536,8 +536,8 @@ func (uc *chatUsecase) GetUserChatsWithSync(userID uint, limit, offset int, chat
 	// Convert to response format and load last message + unread count + favorite status for each chat
 	chatResponses := make([]models.ChatResponse, len(chats))
 	for i, chat := range chats {
-		// Get last message for this chat
-		lastMessage, err := uc.messageRepo.GetLatestMessage(chat.ID)
+		// Get last message for this chat (excluding messages deleted by this user)
+		lastMessage, err := uc.messageRepo.GetLatestMessageForUser(chat.ID, userID)
 		if err == nil && lastMessage != nil {
 			// Add last message to chat's Messages slice so ToResponse can pick it up
 			chat.Messages = []models.Message{*lastMessage}
@@ -592,8 +592,8 @@ func (uc *chatUsecase) GetPinnedChats(userID uint, chatType string) ([]models.Ch
 	// Convert to response format and load last message + unread count for each chat
 	chatResponses := make([]models.ChatResponse, len(chats))
 	for i, chat := range chats {
-		// Get last message for this chat
-		lastMessage, err := uc.messageRepo.GetLatestMessage(chat.ID)
+		// Get last message for this chat (excluding messages deleted by this user)
+		lastMessage, err := uc.messageRepo.GetLatestMessageForUser(chat.ID, userID)
 		if err == nil && lastMessage != nil {
 			// Add last message to chat's Messages slice so ToResponse can pick it up
 			chat.Messages = []models.Message{*lastMessage}
