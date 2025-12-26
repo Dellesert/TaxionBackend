@@ -15,6 +15,7 @@ const (
 	ChatTypePrivate ChatType = "private"
 	ChatTypeGroup   ChatType = "group"
 	ChatTypeChannel ChatType = "channel"
+	ChatTypeSaved   ChatType = "saved" // Personal "Saved Messages" chat for each user
 )
 
 // Chat represents a chat conversation
@@ -22,7 +23,7 @@ type Chat struct {
 	models.BaseModel
 	Name          string     `gorm:"size:255" json:"name" validate:"omitempty,max=255"`
 	Description   string     `gorm:"size:500" json:"description,omitempty" validate:"omitempty,max=500"`
-	Type          ChatType   `gorm:"not null;default:'private';size:20" json:"type" validate:"required,oneof=private group channel"`
+	Type          ChatType   `gorm:"not null;default:'private';size:20" json:"type" validate:"required,oneof=private group channel saved"`
 	CreatorID     uint       `gorm:"not null;index" json:"creator_id" validate:"required"`
 	Avatar        string     `gorm:"size:500" json:"avatar,omitempty" validate:"omitempty,url,max=500"`
 	IsActive      bool       `gorm:"not null;default:true" json:"is_active"`
@@ -199,6 +200,12 @@ func (c *Chat) ToResponse(params ...interface{}) *ChatResponse {
 				break
 			}
 		}
+	}
+
+	// For saved chats, set default name
+	if c.Type == ChatTypeSaved {
+		response.Name = "Избранное"
+		response.IsPinned = true // Saved chat is always pinned
 	}
 
 	// Include members if loaded

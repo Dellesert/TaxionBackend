@@ -26,6 +26,7 @@ type ChatRepository interface {
 	GetPinnedChats(userID uint, chatType string) ([]*models.Chat, error)
 	GetDirectChatBetweenUsers(user1ID, user2ID uint) (*models.Chat, error)
 	GetChatByTaskID(taskID uint) (*models.Chat, error)
+	GetSavedChat(userID uint) (*models.Chat, error)
 
 	// Chat member operations
 	AddMember(member *models.ChatMember) error
@@ -205,13 +206,15 @@ func (r *chatRepository) GetUserChats(userID uint, limit, offset int, chatType s
 		query = query.Where("chat_members.is_pinned = ?", *isPinned)
 	}
 
-	// Get chats with members, sorted by pinned status first, then by last activity (exclude hidden chats)
-	// Pinned chats always come first, then sorted by last message time
+	// Get chats with members, sorted by:
+	// 1. Saved chat always first (type = 'saved')
+	// 2. Then pinned chats
+	// 3. Then by last message time
 	// Add secondary sort by id to ensure deterministic ordering for pagination
 	err = query.
 		Limit(limit).
 		Offset(offset).
-		Order("chat_members.is_pinned DESC, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
+		Order("CASE WHEN chats.type = 'saved' THEN 0 ELSE 1 END, chat_members.is_pinned DESC, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
 		Find(&chats).Error
 
 	if err != nil {
@@ -278,11 +281,14 @@ func (r *chatRepository) GetUserChatsWithSync(userID uint, limit, offset int, ch
 		query = query.Where("chats.updated_at > ?", *updatedSince)
 	}
 
-	// Get chats with members, sorted by pinned status first, then by last activity
+	// Get chats with members, sorted by:
+	// 1. Saved chat always first (type = 'saved')
+	// 2. Then pinned chats
+	// 3. Then by last message time
 	err = query.
 		Limit(limit).
 		Offset(offset).
-		Order("chat_members.is_pinned DESC, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
+		Order("CASE WHEN chats.type = 'saved' THEN 0 ELSE 1 END, chat_members.is_pinned DESC, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
 		Find(&chats).Error
 
 	if err != nil {
@@ -342,9 +348,11 @@ func (r *chatRepository) GetPinnedChats(userID uint, chatType string) ([]*models
 		query = query.Where("chats.type = ?", chatType)
 	}
 
-	// Get all pinned chats sorted by last activity
+	// Get all pinned chats sorted by:
+	// 1. Saved chat always first
+	// 2. Then by last message time
 	err := query.
-		Order("chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
+		Order("CASE WHEN chats.type = 'saved' THEN 0 ELSE 1 END, chats.last_message_at DESC NULLS LAST, chats.updated_at DESC, chats.id DESC").
 		Find(&chats).Error
 
 	if err != nil {
@@ -695,4 +703,26 @@ func (r *chatRepository) GetChatByTaskID(taskID uint) (*models.Chat, error) {
 	}
 
 	return chat, nil
+}
+
+// GetSavedChat finds a user's saved messages chat
+func (r *chatRepository) GetSavedChat(userID uint) (*models.Chat, error) {
+	var chat models.Chat
+
+	err := r.db.
+		Where("creator_id = ? AND type = ? AND is_active = ?", userID, models.ChatTypeSaved, true).
+		Preload("Members.User").
+		Preload("Members", func(db *gorm.DB) *gorm.DB {
+			return db.Where("is_active = ?", true)
+		}).
+		First(&chat).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // No saved chat found
+		}
+		return nil, fmt.Errorf("failed to find saved chat: %w", err)
+	}
+
+	return &chat, nil
 }

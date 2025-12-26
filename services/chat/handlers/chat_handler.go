@@ -149,6 +149,52 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 	})
 }
 
+// GetSavedChat handles getting or creating the user's "Saved Messages" chat
+func (h *ChatHandler) GetSavedChat(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	chat, err := h.chatUsecase.GetOrCreateSavedChat(userID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get or create saved chat")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get saved chat",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chat.ID,
+	}).Info("Saved chat retrieved successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"chat":       chat,
+		"request_id": requestID,
+	})
+}
+
 // GetPinnedChats handles getting all pinned chats for a user
 func (h *ChatHandler) GetPinnedChats(c *gin.Context) {
 	requestID := requestid.Get(c)

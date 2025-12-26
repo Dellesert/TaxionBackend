@@ -220,6 +220,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		chats := v1.Group("/chats")
 		{
 			chats.GET("", chatHandler.GetChats)                      // GET /api/v1/chats
+			chats.GET("/saved", chatHandler.GetSavedChat)            // GET /api/v1/chats/saved
 			chats.GET("/pinned", chatHandler.GetPinnedChats)         // GET /api/v1/chats/pinned
 			chats.GET("/unread-count", chatHandler.GetTotalUnreadCount) // GET /api/v1/chats/unread-count
 			chats.POST("", chatHandler.CreateChat)                   // POST /api/v1/chats

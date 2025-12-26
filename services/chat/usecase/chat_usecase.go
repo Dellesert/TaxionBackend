@@ -39,6 +39,7 @@ type ChatUsecase interface {
 	TogglePinned(userID, chatID uint, isPinned bool) error
 	GetOrCreateDirectChat(userID, targetUserID uint) (*models.ChatResponse, error)
 	GetOrCreateTaskChat(userID, taskID uint) (*models.ChatResponse, error)
+	GetOrCreateSavedChat(userID uint) (*models.ChatResponse, error)
 	GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	SetWebSocketHub(hub ChatWebSocketHub)
@@ -240,16 +241,21 @@ func (uc *chatUsecase) LeaveChat(userID, chatID uint) error {
 		return fmt.Errorf("user is not a member of this chat")
 	}
 
+	// Get chat to check type
+	chat, err := uc.chatRepo.GetByID(chatID)
+	if err != nil {
+		return fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	// Cannot leave saved chat
+	if chat.Type == models.ChatTypeSaved {
+		return fmt.Errorf("cannot leave saved chat")
+	}
+
 	// Get user role
 	role, err := uc.chatRepo.GetMemberRole(chatID, userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user role: %w", err)
-	}
-
-	// Get chat info
-	chat, err := uc.chatRepo.GetByID(chatID)
-	if err != nil {
-		return fmt.Errorf("failed to get chat: %w", err)
 	}
 
 	// Special handling for private chats
@@ -694,6 +700,7 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 }
 
 // DeleteChat deletes/hides a chat depending on chat type and user role
+// - For saved chats: not allowed (cannot delete saved chat)
 // - For private chats: hides the chat for the user (doesn't delete it)
 // - For group/channel chats:
 //   - Owner can delete the entire chat
@@ -704,6 +711,11 @@ func (uc *chatUsecase) DeleteChat(userID, chatID uint, clearHistory bool) error 
 	chat, err := uc.chatRepo.GetByID(chatID)
 	if err != nil {
 		return fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	// Saved chat cannot be deleted
+	if chat.Type == models.ChatTypeSaved {
+		return fmt.Errorf("cannot delete saved chat")
 	}
 
 	// Check user's role
@@ -941,6 +953,17 @@ func (uc *chatUsecase) TogglePinned(userID, chatID uint, isPinned bool) error {
 		return fmt.Errorf("user is not a member of this chat")
 	}
 
+	// Saved chat cannot be unpinned
+	if !isPinned {
+		chat, err := uc.chatRepo.GetByID(chatID)
+		if err != nil {
+			return fmt.Errorf("failed to get chat: %w", err)
+		}
+		if chat.Type == models.ChatTypeSaved {
+			return fmt.Errorf("cannot unpin saved chat")
+		}
+	}
+
 	// Update pinned status
 	if err := uc.chatRepo.UpdatePinnedStatus(chatID, userID, isPinned); err != nil {
 		return fmt.Errorf("failed to update pinned status: %w", err)
@@ -1014,4 +1037,62 @@ func (uc *chatUsecase) GetTotalUnreadCount(userID uint) (int64, error) {
 		return 0, fmt.Errorf("failed to get total unread count: %w", err)
 	}
 	return count, nil
+}
+
+// GetOrCreateSavedChat gets or creates a "Saved Messages" chat for the user
+// This is a personal chat where user can save messages, similar to Telegram's "Saved Messages"
+func (uc *chatUsecase) GetOrCreateSavedChat(userID uint) (*models.ChatResponse, error) {
+	// Try to find existing saved chat
+	existingChat, err := uc.chatRepo.GetSavedChat(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check existing saved chat: %w", err)
+	}
+
+	if existingChat != nil {
+		// Return existing chat
+		response := existingChat.ToResponse(uc.baseURL, userID)
+
+		// Get unread count
+		unreadCount, err := uc.messageRepo.GetUnreadCount(existingChat.ID, userID)
+		if err == nil {
+			response.UnreadCount = unreadCount
+		}
+
+		// Saved chat is always pinned
+		response.IsPinned = true
+
+		return response, nil
+	}
+
+	// Create new saved chat
+	chat := &models.Chat{
+		Name:        "Избранное",
+		Description: "Сохраненные сообщения",
+		Type:        models.ChatTypeSaved,
+		CreatorID:   userID,
+		IsActive:    true,
+	}
+
+	if err := uc.chatRepo.Create(chat); err != nil {
+		return nil, fmt.Errorf("failed to create saved chat: %w", err)
+	}
+
+	// Set pinned status for the member (creator was already added by AfterCreate hook)
+	if err := uc.chatRepo.UpdatePinnedStatus(chat.ID, userID, true); err != nil {
+		// Log but don't fail - chat is still created
+		fmt.Printf("Warning: failed to set pinned status for saved chat: %v\n", err)
+	}
+
+	// Get chat with members for response
+	chatWithMembers, err := uc.chatRepo.GetWithMembers(chat.ID)
+	if err != nil {
+		response := chat.ToResponse(uc.baseURL, userID)
+		response.IsPinned = true
+		return response, nil
+	}
+
+	response := chatWithMembers.ToResponse(uc.baseURL, userID)
+	response.IsPinned = true
+
+	return response, nil
 }
