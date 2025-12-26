@@ -650,6 +650,12 @@ func (uc *messageUsecase) ClearChatHistory(userID, chatID uint) error {
 		return fmt.Errorf("failed to clear chat history: %w", err)
 	}
 
+	// Clear last_message_at in the chat so it doesn't show stale data
+	if err := uc.chatRepo.ClearLastMessage(chatID); err != nil {
+		fmt.Printf("⚠️ Failed to clear last message for chat %d: %v\n", chatID, err)
+		// Don't fail the operation if this fails
+	}
+
 	return nil
 }
 

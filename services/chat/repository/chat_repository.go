@@ -50,6 +50,9 @@ type ChatRepository interface {
 	// Sync methods
 	GetDeletedChatIDsSince(since time.Time) ([]uint, error)
 	RecordDeletion(chatID uint, deletedBy *uint) error
+
+	// Clear last message (for clearing chat history)
+	ClearLastMessage(chatID uint) error
 }
 
 // chatRepository implements ChatRepository interface
@@ -725,4 +728,17 @@ func (r *chatRepository) GetSavedChat(userID uint) (*models.Chat, error) {
 	}
 
 	return &chat, nil
+}
+
+// ClearLastMessage clears the last_message_at field for a chat (used when clearing chat history)
+func (r *chatRepository) ClearLastMessage(chatID uint) error {
+	result := r.db.Model(&models.Chat{}).
+		Where("id = ?", chatID).
+		Update("last_message_at", nil)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to clear last message: %w", result.Error)
+	}
+
+	return nil
 }
