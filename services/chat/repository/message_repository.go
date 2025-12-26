@@ -29,6 +29,7 @@ type MessageRepository interface {
 	GetMessagesBefore(chatID, userID, before uint, limit int) ([]*models.Message, error)
 	GetMessagesByTimeRange(chatID uint, startTime, endTime time.Time, limit, offset int) ([]*models.Message, error)
 	GetLatestMessage(chatID uint) (*models.Message, error)
+	GetLatestMessageForUser(chatID, userID uint) (*models.Message, error)
 
 	// Message reaction operations
 	AddReaction(reaction *models.MessageReaction) error
@@ -674,6 +675,36 @@ func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, erro
 			return nil, nil // No messages found, not an error
 		}
 		return nil, fmt.Errorf("failed to get latest message: %w", err)
+	}
+	return &message, nil
+}
+
+// GetLatestMessageForUser retrieves the most recent message in a chat, excluding messages deleted by the user
+func (r *messageRepository) GetLatestMessageForUser(chatID, userID uint) (*models.Message, error) {
+	var message models.Message
+
+	// Subquery to get message IDs deleted by this user
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.
+		Preload("Sender").
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND is_deleted = ?", chatID, false).
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("created_at DESC").
+		First(&message).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // No messages found, not an error
+		}
+		return nil, fmt.Errorf("failed to get latest message for user: %w", err)
 	}
 	return &message, nil
 }
