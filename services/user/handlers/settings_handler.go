@@ -315,6 +315,52 @@ func (h *SettingsHandler) GetUserSettings(c *gin.Context) {
 	c.JSON(http.StatusOK, settings)
 }
 
+// GetPasswordPolicy returns public password policy for frontend validation
+// GET /api/v1/password-policy (public, no auth required)
+func (h *SettingsHandler) GetPasswordPolicy(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	settings, err := h.settingsUsecase.GetSettings()
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get password policy")
+
+		// Return default policy on error
+		c.JSON(http.StatusOK, gin.H{
+			"policy": &models.PublicPasswordPolicy{
+				MinLength:         8,
+				RequireComplexity: true,
+				ComplexityRules: []string{
+					"Минимум одна буква (a-z, A-Z)",
+					"Минимум одна цифра или спецсимвол (!@#$%^&*)",
+				},
+			},
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Convert to public policy (only password-related fields)
+	policy := &models.PublicPasswordPolicy{
+		MinLength:         settings.MinPasswordLength,
+		RequireComplexity: settings.RequirePasswordComplexity,
+	}
+
+	if settings.RequirePasswordComplexity {
+		policy.ComplexityRules = []string{
+			"Минимум одна буква (a-z, A-Z)",
+			"Минимум одна цифра или спецсимвол (!@#$%^&*)",
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"policy":     policy,
+		"request_id": requestID,
+	})
+}
+
 // UpdateUserSettings updates user-specific settings
 // PUT /user/settings
 func (h *SettingsHandler) UpdateUserSettings(c *gin.Context) {

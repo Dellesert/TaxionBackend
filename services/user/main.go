@@ -410,6 +410,10 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			appVersions.GET("/latest/:platform", appVersionHandler.GetLatestByPlatform)
 		}
 
+		// Public password policy route (no auth required)
+		// Used by frontend to show password requirements in registration/password change forms
+		v1.GET("/password-policy", settingsHandler.GetPasswordPolicy)
+
 		// Authenticated routes
 		v1Auth := v1.Group("/auth")
 		{

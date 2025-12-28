@@ -86,6 +86,34 @@ type SystemAuthSettings struct {
 	UpdatedBy                 uint             `json:"updated_by"`
 }
 
+// PublicPasswordPolicy represents password requirements for frontend validation
+// This is a public endpoint that doesn't require authentication
+type PublicPasswordPolicy struct {
+	MinLength         int  `json:"min_length"`
+	RequireComplexity bool `json:"require_complexity"`
+	// Complexity requirements (when RequireComplexity is true):
+	// - At least one letter (a-zA-Z)
+	// - At least one number or symbol (0-9 or !@#$%^&*()_+-=[]{}|;':",./<>?)
+	ComplexityRules []string `json:"complexity_rules,omitempty"`
+}
+
+// ToPublicPasswordPolicy converts SystemSettings to public password policy
+func (s *SystemSettings) ToPublicPasswordPolicy() *PublicPasswordPolicy {
+	policy := &PublicPasswordPolicy{
+		MinLength:         s.MinPasswordLength,
+		RequireComplexity: s.RequirePasswordComplexity,
+	}
+
+	if s.RequirePasswordComplexity {
+		policy.ComplexityRules = []string{
+			"Минимум одна буква (a-z, A-Z)",
+			"Минимум одна цифра или спецсимвол (!@#$%^&*)",
+		}
+	}
+
+	return policy
+}
+
 // ToResponse converts SystemSettings to SystemAuthSettings
 func (s *SystemSettings) ToResponse() *SystemAuthSettings {
 	return &SystemAuthSettings{
