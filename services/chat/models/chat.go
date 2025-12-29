@@ -144,17 +144,31 @@ type ChatResponse struct {
 	UpdatedAt     time.Time            `json:"updated_at"`
 }
 
+// MemberUserResponse represents user info embedded in chat member response
+type MemberUserResponse struct {
+	ID              uint               `json:"id"`
+	Name            string             `json:"name"`
+	Email           string             `json:"email"`
+	Avatar          string             `json:"avatar,omitempty"`
+	AvatarThumbnail string             `json:"avatar_thumbnail,omitempty"`
+	Status          models.UserStatus  `json:"status"`
+	Department      string             `json:"department,omitempty"`
+	Position        string             `json:"position,omitempty"`
+	LastActiveAt    *time.Time         `json:"last_active_at,omitempty"`
+}
+
 // ChatMemberResponse represents chat member response
 type ChatMemberResponse struct {
-	ID         uint           `json:"id"`
-	ChatID     uint           `json:"chat_id"`
-	UserID     uint           `json:"user_id"`
-	Role       ChatMemberRole `json:"role"`
-	JoinedAt   time.Time      `json:"joined_at"`
-	LeftAt     *time.Time     `json:"left_at,omitempty"`
-	IsActive   bool           `json:"is_active"`
-	IsFavorite bool           `json:"is_favorite"`
-	IsPinned   bool           `json:"is_pinned"`
+	ID         uint                `json:"id"`
+	ChatID     uint                `json:"chat_id"`
+	UserID     uint                `json:"user_id"`
+	User       *MemberUserResponse `json:"user,omitempty"`
+	Role       ChatMemberRole      `json:"role"`
+	JoinedAt   time.Time           `json:"joined_at"`
+	LeftAt     *time.Time          `json:"left_at,omitempty"`
+	IsActive   bool                `json:"is_active"`
+	IsFavorite bool                `json:"is_favorite"`
+	IsPinned   bool                `json:"is_pinned"`
 }
 
 // ToResponse converts Chat to ChatResponse
@@ -212,7 +226,7 @@ func (c *Chat) ToResponse(params ...interface{}) *ChatResponse {
 	if len(c.Members) > 0 {
 		response.Members = make([]ChatMemberResponse, len(c.Members))
 		for i, member := range c.Members {
-			response.Members[i] = ChatMemberResponse{
+			memberResp := ChatMemberResponse{
 				ID:       member.ID,
 				ChatID:   member.ChatID,
 				UserID:   member.UserID,
@@ -221,6 +235,21 @@ func (c *Chat) ToResponse(params ...interface{}) *ChatResponse {
 				LeftAt:   member.LeftAt,
 				IsActive: member.IsActive,
 			}
+			// Include user info if loaded (via Preload)
+			if member.User != nil {
+				memberResp.User = &MemberUserResponse{
+					ID:              member.User.ID,
+					Name:            member.User.Name,
+					Email:           member.User.Email,
+					Avatar:          member.User.Avatar,
+					AvatarThumbnail: member.User.AvatarThumbnail,
+					Status:          member.User.Status,
+					Department:      member.User.Department,
+					Position:        member.User.Position,
+					LastActiveAt:    member.User.LastActiveAt,
+				}
+			}
+			response.Members[i] = memberResp
 		}
 	}
 
@@ -239,7 +268,7 @@ func (c *Chat) ToResponse(params ...interface{}) *ChatResponse {
 
 // ToResponse converts ChatMember to ChatMemberResponse
 func (cm *ChatMember) ToResponse() *ChatMemberResponse {
-	return &ChatMemberResponse{
+	resp := &ChatMemberResponse{
 		ID:         cm.ID,
 		ChatID:     cm.ChatID,
 		UserID:     cm.UserID,
@@ -250,6 +279,21 @@ func (cm *ChatMember) ToResponse() *ChatMemberResponse {
 		IsFavorite: cm.IsFavorite,
 		IsPinned:   cm.IsPinned,
 	}
+	// Include user info if loaded
+	if cm.User != nil {
+		resp.User = &MemberUserResponse{
+			ID:              cm.User.ID,
+			Name:            cm.User.Name,
+			Email:           cm.User.Email,
+			Avatar:          cm.User.Avatar,
+			AvatarThumbnail: cm.User.AvatarThumbnail,
+			Status:          cm.User.Status,
+			Department:      cm.User.Department,
+			Position:        cm.User.Position,
+			LastActiveAt:    cm.User.LastActiveAt,
+		}
+	}
+	return resp
 }
 
 // ChatListResponse represents paginated chat list response
