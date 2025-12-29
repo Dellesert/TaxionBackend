@@ -277,7 +277,13 @@ func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequ
 	query = r.applySortingAndPagination(query, filter)
 
 	var tasks []*models.Task
-	if err := query.Preload("Assignees").Find(&tasks).Error; err != nil {
+	if err := query.
+		Preload("Assignees").
+		Preload("Subtasks", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Subtasks.Assignees").
+		Find(&tasks).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to get user tasks: %w", err)
 	}
 
@@ -285,6 +291,9 @@ func (r *taskRepository) GetUserTasks(userID uint, filter *models.TaskFilterRequ
 	r.loadCommentCounts(tasks)
 	r.loadSubtaskCounts(tasks)
 	r.loadAttachmentCounts(tasks)
+
+	// Also load counts for subtasks
+	r.loadSubtaskCountsForSubtasks(tasks)
 
 	return tasks, total, nil
 }
@@ -683,6 +692,25 @@ func (r *taskRepository) loadSubtaskCounts(tasks []*models.Task) {
 	for _, task := range tasks {
 		task.SubtaskCount = countMap[task.ID]
 	}
+}
+
+// loadSubtaskCountsForSubtasks loads comment/attachment counts for subtasks of parent tasks
+func (r *taskRepository) loadSubtaskCountsForSubtasks(tasks []*models.Task) {
+	// Collect all subtasks from all tasks
+	var allSubtasks []*models.Task
+	for _, task := range tasks {
+		for i := range task.Subtasks {
+			allSubtasks = append(allSubtasks, &task.Subtasks[i])
+		}
+	}
+
+	if len(allSubtasks) == 0 {
+		return
+	}
+
+	// Load counts for all subtasks in batch
+	r.loadCommentCounts(allSubtasks)
+	r.loadAttachmentCounts(allSubtasks)
 }
 
 // loadAttachmentCounts loads attachment counts for a batch of tasks

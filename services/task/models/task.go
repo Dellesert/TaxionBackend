@@ -307,6 +307,9 @@ type TaskResponse struct {
 	SubtaskCount         int          `json:"subtask_count"`
 	AttachmentCount      int          `json:"attachment_count"`
 
+	// Subtasks (loaded when requested to avoid N+1)
+	Subtasks             []*TaskResponse `json:"subtasks,omitempty"`
+
 	// Delegation chain (list of users from top to current assignee)
 	DelegationChain      []UserInfo   `json:"delegation_chain,omitempty"`
 
@@ -332,7 +335,7 @@ func (t *Task) ToResponse() *TaskResponse {
 		assigneeIDs = append(assigneeIDs, assignee.UserID)
 	}
 
-	return &TaskResponse{
+	response := &TaskResponse{
 		ID:                        t.ID,
 		Title:                     t.Title,
 		Description:               t.Description,
@@ -361,6 +364,16 @@ func (t *Task) ToResponse() *TaskResponse {
 		CreatedBy:           t.CreatedByUserID,
 		LastStatusChangedBy: t.LastStatusChangedByUserID,
 	}
+
+	// Include subtasks if loaded (via Preload)
+	if len(t.Subtasks) > 0 {
+		response.Subtasks = make([]*TaskResponse, len(t.Subtasks))
+		for i := range t.Subtasks {
+			response.Subtasks[i] = t.Subtasks[i].ToResponse()
+		}
+	}
+
+	return response
 }
 
 // TaskStatsResponse represents task statistics
