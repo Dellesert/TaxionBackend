@@ -118,21 +118,74 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		}
 	}
 
+	// Handle forward message
+	var forwardedFromMessageID *uint
+	var originalSenderID *uint
+	var isForwarded bool
+
+	if req.ForwardFromMessageID != nil {
+		// Get the original message being forwarded
+		originalMsg, err := uc.messageRepo.GetByID(*req.ForwardFromMessageID)
+		if err != nil {
+			return nil, fmt.Errorf("forwarded message not found")
+		}
+
+		forwardedFromMessageID = req.ForwardFromMessageID
+		originalSenderID = &originalMsg.SenderID
+		isForwarded = true
+
+		// If content is not provided, copy from original message
+		if strings.TrimSpace(req.Content) == "" {
+			req.Content = originalMsg.Content
+		}
+
+		// Copy message type from original if not specified
+		if req.Type == "" {
+			req.Type = originalMsg.Type
+		}
+
+		// Copy file-related fields from original message if not provided
+		if req.FileName == "" {
+			req.FileName = originalMsg.FileName
+		}
+		if req.FileSize == 0 {
+			req.FileSize = originalMsg.FileSize
+		}
+		if req.FileURL == "" {
+			req.FileURL = originalMsg.FileURL
+		}
+		if req.ThumbnailURL == "" {
+			req.ThumbnailURL = originalMsg.ThumbnailURL
+		}
+		if req.MimeType == "" {
+			req.MimeType = originalMsg.MimeType
+		}
+		if req.Latitude == nil {
+			req.Latitude = originalMsg.Latitude
+		}
+		if req.Longitude == nil {
+			req.Longitude = originalMsg.Longitude
+		}
+	}
+
 	// Create message
 	message := &models.Message{
-		ChatID:       req.ChatID,
-		SenderID:     userID,
-		Content:      strings.TrimSpace(req.Content),
-		Type:         req.Type,
-		Status:       models.MessageStatusSent,
-		ReplyToID:    req.ReplyToID,
-		FileName:     req.FileName,
-		FileSize:     req.FileSize,
-		FileURL:      req.FileURL,
-		ThumbnailURL: req.ThumbnailURL,
-		MimeType:     req.MimeType,
-		Latitude:     req.Latitude,
-		Longitude:    req.Longitude,
+		ChatID:                 req.ChatID,
+		SenderID:               userID,
+		Content:                strings.TrimSpace(req.Content),
+		Type:                   req.Type,
+		Status:                 models.MessageStatusSent,
+		ReplyToID:              req.ReplyToID,
+		FileName:               req.FileName,
+		FileSize:               req.FileSize,
+		FileURL:                req.FileURL,
+		ThumbnailURL:           req.ThumbnailURL,
+		MimeType:               req.MimeType,
+		Latitude:               req.Latitude,
+		Longitude:              req.Longitude,
+		ForwardedFromMessageID: forwardedFromMessageID,
+		OriginalSenderID:       originalSenderID,
+		IsForwarded:            isForwarded,
 	}
 
 	// Set default type if not provided
@@ -371,8 +424,8 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 		return nil, fmt.Errorf("cannot edit deleted message")
 	}
 
-	// Check if message is forwarded (starts with forwarding prefix)
-	if strings.HasPrefix(message.Content, "📩 Переслано от ") {
+	// Check if message is forwarded
+	if message.IsForwarded {
 		return nil, fmt.Errorf("cannot edit forwarded message")
 	}
 

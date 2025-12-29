@@ -63,10 +63,16 @@ type Message struct {
 	// Poll-related field - stored as JSON
 	PollData string `gorm:"type:text" json:"poll_data,omitempty"`
 
+	// Forward-related fields
+	ForwardedFromMessageID *uint  `gorm:"index" json:"forwarded_from_message_id,omitempty"`
+	OriginalSenderID       *uint  `gorm:"index" json:"original_sender_id,omitempty"`
+	IsForwarded            bool   `gorm:"not null;default:false" json:"is_forwarded"`
+
 	// Associations
-	Chat    *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
-	Sender  *models.User `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
-	ReplyTo *Message     `gorm:"foreignKey:ReplyToID" json:"reply_to,omitempty"`
+	Chat           *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
+	Sender         *models.User `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
+	ReplyTo        *Message     `gorm:"foreignKey:ReplyToID" json:"reply_to,omitempty"`
+	OriginalSender *models.User `gorm:"foreignKey:OriginalSenderID" json:"original_sender,omitempty"`
 
 	// Message reactions and read receipts
 	Reactions    []MessageReaction    `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
@@ -173,6 +179,9 @@ type SendMessageRequest struct {
 
 	// Poll-related field - JSON object with poll metadata
 	PollData map[string]interface{} `json:"poll_data,omitempty"`
+
+	// Forward-related field - ID of the original message being forwarded
+	ForwardFromMessageID *uint `json:"forward_from_message_id,omitempty" validate:"omitempty,min=1"`
 }
 
 // UpdateMessageRequest represents request for updating a message
@@ -307,6 +316,11 @@ type MessageResponse struct {
 	ReplyTo      *MessageResponse               `json:"reply_to,omitempty"`
 	CreatedAt    time.Time                      `json:"created_at"`
 	UpdatedAt    time.Time                      `json:"updated_at"`
+	// Forward-related fields
+	ForwardedFromMessageID *uint        `json:"forwarded_from_message_id,omitempty"`
+	OriginalSenderID       *uint        `json:"original_sender_id,omitempty"`
+	OriginalSender         *models.User `json:"original_sender,omitempty"`
+	IsForwarded            bool         `json:"is_forwarded"`
 }
 
 // MessageReactionResponse represents message reaction response
@@ -376,6 +390,11 @@ func (m *Message) toResponse(viewerUserID uint, baseURL ...string) *MessageRespo
 		PollData:     m.PollData,
 		CreatedAt:    m.CreatedAt,
 		UpdatedAt:    m.UpdatedAt,
+		// Forward-related fields
+		ForwardedFromMessageID: m.ForwardedFromMessageID,
+		OriginalSenderID:       m.OriginalSenderID,
+		OriginalSender:         m.OriginalSender,
+		IsForwarded:            m.IsForwarded,
 		// Initialize arrays to prevent undefined in JSON
 		Reactions:    []MessageReactionResponse{},
 		ReadReceipts: []MessageReadReceiptResponse{},

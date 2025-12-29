@@ -96,6 +96,7 @@ func (r *messageRepository) GetByID(id uint) (*models.Message, error) {
 	var message models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		First(&message, id).Error
@@ -113,6 +114,7 @@ func (r *messageRepository) GetByChatID(chatID uint, limit, offset int) ([]*mode
 	var messages []*models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -151,6 +153,7 @@ func (r *messageRepository) GetByChatIDWithPagination(chatID uint, limit, offset
 	// Get messages with preloaded data, sorted by time (newest first)
 	err = r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -200,6 +203,7 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 	// ВАЖНО: НЕ фильтруем is_deleted, чтобы админы могли видеть удалённые сообщения
 	err = r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -282,6 +286,7 @@ func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 	var message models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -315,6 +320,7 @@ func (r *messageRepository) GetMessagesAfter(chatID, userID, after uint, limit i
 
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -349,6 +355,7 @@ func (r *messageRepository) GetMessagesBefore(chatID, userID, before uint, limit
 
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -375,6 +382,7 @@ func (r *messageRepository) GetMessagesByTimeRange(chatID uint, startTime, endTi
 	var messages []*models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -595,6 +603,7 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 	// Search for messages matching in content, file_name, or attachments
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -634,6 +643,7 @@ func (r *messageRepository) GetMessagesByType(chatID uint, messageType models.Me
 	var messages []*models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -662,6 +672,7 @@ func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, erro
 	var message models.Message
 	err := r.db.
 		Preload("Sender"). // Load sender information
+		Preload("OriginalSender").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -691,6 +702,7 @@ func (r *messageRepository) GetLatestMessageForUser(chatID, userID uint) (*model
 
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -716,6 +728,7 @@ func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offse
 	var messages []*models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -746,6 +759,7 @@ func (r *messageRepository) GetMessagesSince(chatID uint, since time.Time, limit
 	var messages []*models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -812,6 +826,7 @@ func (r *messageRepository) GetThreadMessages(replyToID uint, limit, offset int)
 	var messages []*models.Message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -1086,6 +1101,7 @@ func (r *messageRepository) GetLatestMessages(chatID, userID uint, limit int) ([
 	// Get latest messages (ORDER BY id DESC, then reverse in code for chronological order)
 	err = r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -1125,6 +1141,7 @@ func (r *messageRepository) GetMessagesBeforeID(chatID, userID, beforeID uint, l
 
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -1167,6 +1184,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 	// Get target message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -1268,6 +1286,7 @@ func (r *messageRepository) GetFirstUnreadMessage(chatID, userID uint) (*models.
 	// Get first unread message
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -1362,6 +1381,7 @@ func (r *messageRepository) GetMessagesAfterID(chatID, userID, afterID uint, lim
 
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
@@ -1396,6 +1416,7 @@ func (r *messageRepository) GetPinnedMessages(chatID, userID uint) ([]*models.Me
 
 	err := r.db.
 		Preload("Sender").
+		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
