@@ -1198,7 +1198,7 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 		return nil
 	}
 
-	// Collect all unique user IDs from all tasks
+	// Collect all unique user IDs from all tasks (including delegation chain IDs)
 	uniqueIDs := make(map[uint]bool)
 	for _, response := range responses {
 		uniqueIDs[response.CreatedBy] = true
@@ -1207,6 +1207,16 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 		}
 		if response.LastStatusChangedBy != nil {
 			uniqueIDs[*response.LastStatusChangedBy] = true
+		}
+		// Collect delegation chain IDs
+		if response.DelegatedFromUserID != nil {
+			uniqueIDs[*response.DelegatedFromUserID] = true
+		}
+		if response.OriginalAssigneeID != nil {
+			uniqueIDs[*response.OriginalAssigneeID] = true
+		}
+		if response.AssignedToUserID != nil {
+			uniqueIDs[*response.AssignedToUserID] = true
 		}
 	}
 
@@ -1265,9 +1275,96 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 				}
 			}
 		}
+
+		// Set delegated from user info
+		if response.DelegatedFromUserID != nil {
+			if delegatedFrom, exists := users[*response.DelegatedFromUserID]; exists {
+				response.DelegatedFromUser = &models.UserInfo{
+					ID:       delegatedFrom.ID,
+					Name:     delegatedFrom.Name,
+					Email:    delegatedFrom.Email,
+					Avatar:   delegatedFrom.Avatar,
+					Position: delegatedFrom.Position,
+				}
+			}
+		}
+
+		// Set original assignee info
+		if response.OriginalAssigneeID != nil {
+			if originalAssignee, exists := users[*response.OriginalAssigneeID]; exists {
+				response.OriginalAssignee = &models.UserInfo{
+					ID:       originalAssignee.ID,
+					Name:     originalAssignee.Name,
+					Email:    originalAssignee.Email,
+					Avatar:   originalAssignee.Avatar,
+					Position: originalAssignee.Position,
+				}
+			}
+		}
+
+		// Set assigned to user info
+		if response.AssignedToUserID != nil {
+			if assignedTo, exists := users[*response.AssignedToUserID]; exists {
+				response.AssignedToUser = &models.UserInfo{
+					ID:       assignedTo.ID,
+					Name:     assignedTo.Name,
+					Email:    assignedTo.Email,
+					Avatar:   assignedTo.Avatar,
+					Position: assignedTo.Position,
+				}
+			}
+		}
+
+		// Build delegation chain for delegated tasks
+		if response.DelegatedFromUserID != nil || response.OriginalAssigneeID != nil {
+			response.DelegationChain = u.buildDelegationChain(response, users)
+		}
 	}
 
 	return nil
+}
+
+// buildDelegationChain builds the delegation chain from collected user data
+func (u *taskUsecase) buildDelegationChain(response *models.TaskResponse, users map[uint]*clients.UserInfo) []models.UserInfo {
+	chain := make([]models.UserInfo, 0)
+	addedIDs := make(map[uint]bool)
+
+	// Helper to add user to chain if exists and not already added
+	addToChain := func(userID uint) {
+		if addedIDs[userID] {
+			return
+		}
+		if user, exists := users[userID]; exists && user != nil {
+			chain = append(chain, models.UserInfo{
+				ID:       user.ID,
+				Name:     user.Name,
+				Email:    user.Email,
+				Avatar:   user.Avatar,
+				Position: user.Position,
+			})
+			addedIDs[userID] = true
+		}
+	}
+
+	// Add creator first
+	addToChain(response.CreatedByUserID)
+
+	// Add original assignee if different from creator
+	if response.OriginalAssigneeID != nil && *response.OriginalAssigneeID != response.CreatedByUserID {
+		addToChain(*response.OriginalAssigneeID)
+	}
+
+	// Add delegated from user
+	if response.DelegatedFromUserID != nil {
+		addToChain(*response.DelegatedFromUserID)
+	}
+
+	// Add current assignee
+	if response.AssignedToUserID != nil {
+		addToChain(*response.AssignedToUserID)
+	}
+
+	return chain
 }
 
 // GetTaskStats retrieves task statistics for a user
