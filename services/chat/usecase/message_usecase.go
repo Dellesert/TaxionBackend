@@ -1061,8 +1061,8 @@ func (uc *messageUsecase) validateSendMessageRequest(req *models.SendMessageRequ
 		return fmt.Errorf("chat_id is required")
 	}
 
-	// Content is required unless files are attached
-	if strings.TrimSpace(req.Content) == "" && len(req.FileIDs) == 0 {
+	// Content is required unless files are attached or forwarding a message
+	if strings.TrimSpace(req.Content) == "" && len(req.FileIDs) == 0 && req.ForwardFromMessageID == nil {
 		return fmt.Errorf("content or file attachments are required")
 	}
 
