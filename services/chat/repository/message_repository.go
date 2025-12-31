@@ -581,25 +581,26 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 
 	// Build search condition for content and file names (case-insensitive)
 	// PostgreSQL LOWER() doesn't work with Cyrillic when locale is 'C'
-	// So we search for multiple case variants
+	// So we search for multiple case variants (same approach as in task search)
 	searchTerm := strings.TrimSpace(query)
+	originalPattern := "%" + searchTerm + "%"
 	lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
 	upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
 
-	fmt.Printf("🔍 SearchMessages: term='%s', lower='%s', upper='%s', chatID=%d\n",
-		searchTerm, lowerPattern, upperPattern, chatID)
+	fmt.Printf("🔍 SearchMessages: term='%s', original='%s', lower='%s', upper='%s', chatID=%d\n",
+		searchTerm, originalPattern, lowerPattern, upperPattern, chatID)
 
 	// Count total matching messages - search all case variants for Cyrillic support
 	countQuery := r.db.Model(&models.Message{}).
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			"content LIKE ? OR content LIKE ? OR "+
-				"file_name LIKE ? OR file_name LIKE ? OR "+
-				"id IN (SELECT message_id FROM message_attachments WHERE file_name LIKE ? OR file_name LIKE ?)",
-			lowerPattern, upperPattern,
-			lowerPattern, upperPattern,
-			lowerPattern, upperPattern,
+			"content LIKE ? OR content LIKE ? OR content LIKE ? OR "+
+				"file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ? OR "+
+				"id IN (SELECT message_id FROM message_attachments WHERE file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?)",
+			originalPattern, lowerPattern, upperPattern,
+			originalPattern, lowerPattern, upperPattern,
+			originalPattern, lowerPattern, upperPattern,
 		)
 
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -623,12 +624,12 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			"content LIKE ? OR content LIKE ? OR "+
-				"file_name LIKE ? OR file_name LIKE ? OR "+
-				"id IN (SELECT message_id FROM message_attachments WHERE file_name LIKE ? OR file_name LIKE ?)",
-			lowerPattern, upperPattern,
-			lowerPattern, upperPattern,
-			lowerPattern, upperPattern,
+			"content LIKE ? OR content LIKE ? OR content LIKE ? OR "+
+				"file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ? OR "+
+				"id IN (SELECT message_id FROM message_attachments WHERE file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?)",
+			originalPattern, lowerPattern, upperPattern,
+			originalPattern, lowerPattern, upperPattern,
+			originalPattern, lowerPattern, upperPattern,
 		).
 		Limit(limit).
 		Offset(offset).
