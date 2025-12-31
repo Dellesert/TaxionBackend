@@ -580,25 +580,16 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Where("user_id = ?", userID)
 
 	// Build search condition for content and file names (case-insensitive)
-	// For Unicode (Cyrillic) support, we need to search both lowercase and original case
-	// because LOWER() doesn't work with locale 'C' in PostgreSQL
 	searchTerm := strings.TrimSpace(query)
-	lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
-	upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
-	originalPattern := "%" + searchTerm + "%"
 
-	// Count total matching messages
+	// Count total matching messages using raw SQL with ~* for case-insensitive regex
+	// PostgreSQL ~* operator performs case-insensitive regex matching for all Unicode characters
 	countQuery := r.db.Model(&models.Message{}).
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			r.db.Where("content LIKE ? OR content LIKE ? OR content LIKE ?", lowerPattern, upperPattern, originalPattern).
-			Or("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern).
-			Or("id IN (?)",
-				r.db.Table("message_attachments").
-					Select("message_id").
-					Where("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern),
-			),
+			"content ~* ? OR file_name ~* ? OR id IN (SELECT message_id FROM message_attachments WHERE file_name ~* ?)",
+			searchTerm, searchTerm, searchTerm,
 		)
 
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -606,6 +597,7 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 	}
 
 	// Search for messages matching in content, file_name, or attachments (case-insensitive)
+	// PostgreSQL ~* operator performs case-insensitive regex matching for all Unicode characters
 	err := r.db.
 		Preload("Sender").
 		Preload("OriginalSender").
@@ -621,13 +613,8 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			r.db.Where("content LIKE ? OR content LIKE ? OR content LIKE ?", lowerPattern, upperPattern, originalPattern).
-			Or("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern).
-			Or("id IN (?)",
-				r.db.Table("message_attachments").
-					Select("message_id").
-					Where("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern),
-			),
+			"content ~* ? OR file_name ~* ? OR id IN (SELECT message_id FROM message_attachments WHERE file_name ~* ?)",
+			searchTerm, searchTerm, searchTerm,
 		).
 		Limit(limit).
 		Offset(offset).
