@@ -579,20 +579,25 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Select("message_id").
 		Where("user_id = ?", userID)
 
-	// Build search condition for content and file names
-	searchPattern := "%" + query + "%"
+	// Build search condition for content and file names (case-insensitive)
+	// For Unicode (Cyrillic) support, we need to search both lowercase and original case
+	// because LOWER() doesn't work with locale 'C' in PostgreSQL
+	searchTerm := strings.TrimSpace(query)
+	lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
+	upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
+	originalPattern := "%" + searchTerm + "%"
 
 	// Count total matching messages
 	countQuery := r.db.Model(&models.Message{}).
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			r.db.Where("content ILIKE ?", searchPattern).
-			Or("file_name ILIKE ?", searchPattern).
+			r.db.Where("content LIKE ? OR content LIKE ? OR content LIKE ?", lowerPattern, upperPattern, originalPattern).
+			Or("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern).
 			Or("id IN (?)",
 				r.db.Table("message_attachments").
 					Select("message_id").
-					Where("file_name ILIKE ?", searchPattern),
+					Where("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern),
 			),
 		)
 
@@ -600,7 +605,7 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
 	}
 
-	// Search for messages matching in content, file_name, or attachments
+	// Search for messages matching in content, file_name, or attachments (case-insensitive)
 	err := r.db.
 		Preload("Sender").
 		Preload("OriginalSender").
@@ -616,12 +621,12 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			r.db.Where("content ILIKE ?", searchPattern).
-			Or("file_name ILIKE ?", searchPattern).
+			r.db.Where("content LIKE ? OR content LIKE ? OR content LIKE ?", lowerPattern, upperPattern, originalPattern).
+			Or("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern).
 			Or("id IN (?)",
 				r.db.Table("message_attachments").
 					Select("message_id").
-					Where("file_name ILIKE ?", searchPattern),
+					Where("file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?", lowerPattern, upperPattern, originalPattern),
 			),
 		).
 		Limit(limit).
