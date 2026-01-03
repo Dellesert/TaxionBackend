@@ -416,6 +416,7 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 			Signature         string  `json:"signature"`
 			UserHandle        *string `json:"userHandle"`
 		} `json:"response"`
+		DeviceInfo string `json:"device_info"` // iOS workaround: device info from request body
 	}
 	if err := json.Unmarshal(bodyBytes, &credData); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to parse credential JSON")
@@ -513,6 +514,11 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 
 	// Create session for the user
 	ipAddress, userAgent := middleware.ExtractClientInfo(c)
+
+	// If device_info is provided in request body (iOS workaround), use it instead of User-Agent header
+	if credData.DeviceInfo != "" {
+		userAgent = credData.DeviceInfo
+	}
 
 	authConfig := middleware.GetAuthConfig()
 	if authConfig != nil && authConfig.SessionStore != nil {
