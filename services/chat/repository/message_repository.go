@@ -580,35 +580,25 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Where("user_id = ?", userID)
 
 	// Build search condition for content and file names (case-insensitive)
-	// PostgreSQL LOWER() doesn't work with Cyrillic when locale is 'C'
-	// So we search for multiple case variants (same approach as in task search)
+	// Use ILIKE for PostgreSQL case-insensitive search (works with Cyrillic)
 	searchTerm := strings.TrimSpace(query)
-	originalPattern := "%" + searchTerm + "%"
-	lowerPattern := "%" + strings.ToLower(searchTerm) + "%"
-	upperPattern := "%" + strings.ToUpper(searchTerm) + "%"
+	searchPattern := "%" + searchTerm + "%"
 
-	fmt.Printf("🔍 SearchMessages: term='%s', original='%s', lower='%s', upper='%s', chatID=%d\n",
-		searchTerm, originalPattern, lowerPattern, upperPattern, chatID)
-
-	// Count total matching messages - search all case variants for Cyrillic support
+	// Count total matching messages using ILIKE for case-insensitive search
 	countQuery := r.db.Model(&models.Message{}).
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			"content LIKE ? OR content LIKE ? OR content LIKE ? OR "+
-				"file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ? OR "+
-				"id IN (SELECT message_id FROM message_attachments WHERE file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?)",
-			originalPattern, lowerPattern, upperPattern,
-			originalPattern, lowerPattern, upperPattern,
-			originalPattern, lowerPattern, upperPattern,
+			"content ILIKE ? OR file_name ILIKE ? OR "+
+				"id IN (SELECT message_id FROM message_attachments WHERE file_name ILIKE ?)",
+			searchPattern, searchPattern, searchPattern,
 		)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
 	}
 
-	// Search for messages matching in content, file_name, or attachments (case-insensitive)
-	// Search all case variants for Cyrillic support
+	// Search for messages matching in content, file_name, or attachments using ILIKE
 	err := r.db.
 		Preload("Sender").
 		Preload("OriginalSender").
@@ -624,12 +614,9 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Where("chat_id = ?", chatID).
 		Where("id NOT IN (?)", deletedSubquery).
 		Where(
-			"content LIKE ? OR content LIKE ? OR content LIKE ? OR "+
-				"file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ? OR "+
-				"id IN (SELECT message_id FROM message_attachments WHERE file_name LIKE ? OR file_name LIKE ? OR file_name LIKE ?)",
-			originalPattern, lowerPattern, upperPattern,
-			originalPattern, lowerPattern, upperPattern,
-			originalPattern, lowerPattern, upperPattern,
+			"content ILIKE ? OR file_name ILIKE ? OR "+
+				"id IN (SELECT message_id FROM message_attachments WHERE file_name ILIKE ?)",
+			searchPattern, searchPattern, searchPattern,
 		).
 		Limit(limit).
 		Offset(offset).
