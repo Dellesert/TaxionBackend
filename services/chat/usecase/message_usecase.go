@@ -716,8 +716,8 @@ func (uc *messageUsecase) BulkForwardMessages(userID uint, req *models.BulkForwa
 
 	// Forward each message in order
 	for _, messageID := range req.MessageIDs {
-		// Get the original message
-		originalMsg, err := uc.messageRepo.GetByID(messageID)
+		// Get the original message with attachments
+		originalMsg, err := uc.messageRepo.GetWithReactions(messageID)
 		if err != nil {
 			fmt.Printf("⚠️ Message %d not found: %v\n", messageID, err)
 			response.FailedMessageIDs = append(response.FailedMessageIDs, messageID)
@@ -734,10 +734,21 @@ func (uc *messageUsecase) BulkForwardMessages(userID uint, req *models.BulkForwa
 			continue
 		}
 
+		// Extract FileIDs from attachments
+		var fileIDs []uint
+		if len(originalMsg.Attachments) > 0 {
+			fileIDs = make([]uint, len(originalMsg.Attachments))
+			for i, att := range originalMsg.Attachments {
+				fileIDs[i] = att.FileID
+			}
+			fmt.Printf("📎 Message %d has %d attachments with FileIDs: %v\n", messageID, len(fileIDs), fileIDs)
+		}
+
 		// Create forward request for SendMessage
 		forwardReq := &models.SendMessageRequest{
 			ChatID:               req.TargetChatID,
 			ForwardFromMessageID: &messageID,
+			FileIDs:              fileIDs,
 		}
 
 		// Send the forwarded message
