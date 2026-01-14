@@ -215,8 +215,23 @@ func (u *FileUsecase) createThumbnail(originalPath string, mimeType string) (str
 	return thumbnailPath, fileInfo.Size(), nil
 }
 
+// fixImageOrientation applies EXIF orientation to an image file using ImageMagick
+// This physically rotates the pixels according to EXIF Orientation tag
+// and then removes the tag (so the image displays correctly everywhere)
+// This fixes rotation issues with photos from iPhones and other cameras
+func (u *FileUsecase) fixImageOrientation(imagePath string) error {
+	cmdOrient := exec.Command("magick", "mogrify", "-auto-orient", imagePath)
+	var stderrOrient bytes.Buffer
+	cmdOrient.Stderr = &stderrOrient
+
+	if err := cmdOrient.Run(); err != nil {
+		return fmt.Errorf("failed to apply EXIF orientation: %v, stderr: %s", err, stderrOrient.String())
+	}
+
+	return nil
+}
+
 // convertHEICtoJPEG converts a HEIC file to JPEG using heif-convert
-// and applies EXIF orientation to fix rotation issues (especially from iPhone photos)
 func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
 	// Generate output path with .jpg extension
 	jpegPath := strings.TrimSuffix(heicPath, filepath.Ext(heicPath)) + ".jpg"
@@ -228,18 +243,6 @@ func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("heif-convert failed: %v, stderr: %s", err, stderr.String())
-	}
-
-	// Apply EXIF orientation using ImageMagick to fix rotation issues
-	// This physically rotates the pixels according to EXIF Orientation tag
-	// and then removes the tag (so the image displays correctly everywhere)
-	cmdOrient := exec.Command("magick", "mogrify", "-auto-orient", jpegPath)
-	var stderrOrient bytes.Buffer
-	cmdOrient.Stderr = &stderrOrient
-
-	if err := cmdOrient.Run(); err != nil {
-		// Log warning but don't fail - image is still usable, just might be rotated
-		fmt.Printf("Warning: failed to apply EXIF orientation: %v, stderr: %s\n", err, stderrOrient.String())
 	}
 
 	// Remove original HEIC file
@@ -331,6 +334,21 @@ func (u *FileUsecase) UploadFile(
 			return nil, fmt.Errorf("failed to get converted file info: %w", err)
 		}
 		written = fileInfo.Size()
+	}
+
+	// Fix EXIF orientation for all JPEG/PNG images (fixes rotation issues from iPhone/cameras)
+	// This applies the EXIF Orientation tag to the actual pixels and removes the tag
+	if u.isImage(finalMimeType) {
+		if err := u.fixImageOrientation(filePath); err != nil {
+			// Log warning but don't fail - image is still usable, just might be rotated
+			fmt.Printf("Warning: failed to fix image orientation: %v\n", err)
+		} else {
+			// Update file size after orientation fix (image might have been rotated)
+			fileInfo, err := os.Stat(filePath)
+			if err == nil {
+				written = fileInfo.Size()
+			}
+		}
 	}
 
 	// Create thumbnail for images
