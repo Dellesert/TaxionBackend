@@ -556,6 +556,92 @@ func (h *MessageHandler) BulkDeleteMessages(c *gin.Context) {
 	})
 }
 
+// BulkForwardMessages handles forwarding multiple messages to another chat
+func (h *MessageHandler) BulkForwardMessages(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse request body
+	var req models.BulkForwardMessagesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Warn("Invalid request body")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Forward messages
+	response, err := h.messageUsecase.BulkForwardMessages(userID, &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":     requestID,
+			"user_id":        userID,
+			"message_ids":    req.MessageIDs,
+			"target_chat_id": req.TargetChatID,
+			"error":          err.Error(),
+		}).Error("Failed to bulk forward messages")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to forward messages"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		} else if strings.Contains(err.Error(), "cannot be empty") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		} else if strings.Contains(err.Error(), "cannot forward more than") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":      requestID,
+		"user_id":         userID,
+		"message_ids":     req.MessageIDs,
+		"target_chat_id":  req.TargetChatID,
+		"total_forwarded": response.TotalForwarded,
+		"total_failed":    response.TotalFailed,
+	}).Info("Messages forwarded successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"forwarded_messages": response.ForwardedMessages,
+		"failed_message_ids": response.FailedMessageIDs,
+		"total_forwarded":    response.TotalForwarded,
+		"total_failed":       response.TotalFailed,
+		"request_id":         requestID,
+	})
+}
+
 // GetMessagesByChat handles getting messages for a specific chat
 func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 	requestID := requestid.Get(c)

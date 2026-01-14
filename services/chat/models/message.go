@@ -195,6 +195,20 @@ type BulkDeleteMessagesRequest struct {
 	DeleteFor  string `json:"delete_for" binding:"omitempty,oneof=everyone me" validate:"omitempty,oneof=everyone me"` // "everyone" or "me"
 }
 
+// BulkForwardMessagesRequest represents request for forwarding multiple messages to another chat
+type BulkForwardMessagesRequest struct {
+	MessageIDs   []uint `json:"message_ids" binding:"required,min=1,max=100" validate:"required,min=1,max=100"`
+	TargetChatID uint   `json:"target_chat_id" binding:"required,min=1" validate:"required,min=1"`
+}
+
+// BulkForwardMessagesResponse represents response for bulk forward operation
+type BulkForwardMessagesResponse struct {
+	ForwardedMessages []MessageResponse `json:"forwarded_messages"`
+	FailedMessageIDs  []uint            `json:"failed_message_ids,omitempty"`
+	TotalForwarded    int               `json:"total_forwarded"`
+	TotalFailed       int               `json:"total_failed"`
+}
+
 // AddReactionRequest represents request for adding a reaction
 type AddReactionRequest struct {
 	Emoji string `json:"emoji" binding:"required,max=10" validate:"required,max=10"`

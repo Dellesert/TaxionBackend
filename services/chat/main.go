@@ -248,7 +248,8 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		{
 			messages.GET("", messageHandler.GetMessages)          // GET /api/v1/messages (DEPRECATED - use /chats/:id/messages/latest)
 			messages.POST("", messageHandler.SendMessage)         // POST /api/v1/messages
-			messages.POST("/bulk-delete", messageHandler.BulkDeleteMessages) // POST /api/v1/messages/bulk-delete
+			messages.POST("/bulk-delete", messageHandler.BulkDeleteMessages)   // POST /api/v1/messages/bulk-delete
+			messages.POST("/bulk-forward", messageHandler.BulkForwardMessages) // POST /api/v1/messages/bulk-forward
 			messages.GET("/:id", messageHandler.GetMessage)       // GET /api/v1/messages/:id
 			messages.PUT("/:id", messageHandler.UpdateMessage)    // PUT /api/v1/messages/:id
 			messages.DELETE("/:id", messageHandler.DeleteMessage) // DELETE /api/v1/messages/:id

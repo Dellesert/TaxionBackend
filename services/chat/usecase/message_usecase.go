@@ -30,6 +30,7 @@ type MessageUsecase interface {
 	DeleteMessage(userID, messageID uint) error
 	DeleteMessageForUser(userID, messageID uint, deleteFor string) error
 	BulkDeleteMessages(userID uint, req *models.BulkDeleteMessagesRequest) error
+	BulkForwardMessages(userID uint, req *models.BulkForwardMessagesRequest) (*models.BulkForwardMessagesResponse, error)
 	ClearChatHistory(userID, chatID uint) error
 	RestoreMessage(userID, messageID uint) error
 	PinMessage(userID, messageID uint) (*models.MessageResponse, error)
@@ -685,6 +686,81 @@ func (uc *messageUsecase) BulkDeleteMessages(userID uint, req *models.BulkDelete
 	}
 
 	return nil
+}
+
+// BulkForwardMessages forwards multiple messages to another chat
+func (uc *messageUsecase) BulkForwardMessages(userID uint, req *models.BulkForwardMessagesRequest) (*models.BulkForwardMessagesResponse, error) {
+	if len(req.MessageIDs) == 0 {
+		return nil, fmt.Errorf("message_ids cannot be empty")
+	}
+
+	if len(req.MessageIDs) > 100 {
+		return nil, fmt.Errorf("cannot forward more than 100 messages at once")
+	}
+
+	// Check if user is a member of the target chat
+	isMember, err := uc.chatRepo.IsMember(req.TargetChatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership in target chat: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of the target chat")
+	}
+
+	fmt.Printf("📤 Bulk forwarding %d messages to chat %d by user %d\n", len(req.MessageIDs), req.TargetChatID, userID)
+
+	response := &models.BulkForwardMessagesResponse{
+		ForwardedMessages: make([]models.MessageResponse, 0),
+		FailedMessageIDs:  make([]uint, 0),
+	}
+
+	// Forward each message in order
+	for _, messageID := range req.MessageIDs {
+		// Get the original message
+		originalMsg, err := uc.messageRepo.GetByID(messageID)
+		if err != nil {
+			fmt.Printf("⚠️ Message %d not found: %v\n", messageID, err)
+			response.FailedMessageIDs = append(response.FailedMessageIDs, messageID)
+			response.TotalFailed++
+			continue
+		}
+
+		// Check if user has access to the original message (is member of the source chat)
+		isMemberSource, err := uc.chatRepo.IsMember(originalMsg.ChatID, userID)
+		if err != nil || !isMemberSource {
+			fmt.Printf("⚠️ User %d is not a member of source chat %d (message %d)\n", userID, originalMsg.ChatID, messageID)
+			response.FailedMessageIDs = append(response.FailedMessageIDs, messageID)
+			response.TotalFailed++
+			continue
+		}
+
+		// Create forward request for SendMessage
+		forwardReq := &models.SendMessageRequest{
+			ChatID:               req.TargetChatID,
+			ForwardFromMessageID: &messageID,
+		}
+
+		// Send the forwarded message
+		forwardedMsg, err := uc.SendMessage(userID, forwardReq)
+		if err != nil {
+			fmt.Printf("⚠️ Failed to forward message %d: %v\n", messageID, err)
+			response.FailedMessageIDs = append(response.FailedMessageIDs, messageID)
+			response.TotalFailed++
+			continue
+		}
+
+		response.ForwardedMessages = append(response.ForwardedMessages, *forwardedMsg)
+		response.TotalForwarded++
+	}
+
+	fmt.Printf("✅ Bulk forward completed: %d forwarded, %d failed\n", response.TotalForwarded, response.TotalFailed)
+
+	// Return error only if all forwards failed
+	if response.TotalForwarded == 0 && response.TotalFailed > 0 {
+		return response, fmt.Errorf("all message forwards failed")
+	}
+
+	return response, nil
 }
 
 // ClearChatHistory deletes all messages in a chat for the current user
