@@ -220,12 +220,23 @@ func (u *FileUsecase) createThumbnail(originalPath string, mimeType string) (str
 // and then removes the tag (so the image displays correctly everywhere)
 // This fixes rotation issues with photos from iPhones and other cameras
 func (u *FileUsecase) fixImageOrientation(imagePath string) error {
-	cmdOrient := exec.Command("magick", "mogrify", "-auto-orient", imagePath)
-	var stderrOrient bytes.Buffer
-	cmdOrient.Stderr = &stderrOrient
+	// Try "magick mogrify" first (ImageMagick 7), fallback to "mogrify" (older versions or Alpine)
+	var cmd *exec.Cmd
+	var stderr bytes.Buffer
 
-	if err := cmdOrient.Run(); err != nil {
-		return fmt.Errorf("failed to apply EXIF orientation: %v, stderr: %s", err, stderrOrient.String())
+	// First try: magick mogrify (ImageMagick 7 style)
+	cmd = exec.Command("magick", "mogrify", "-auto-orient", imagePath)
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		// Fallback: try mogrify directly (works on some Alpine installations)
+		stderr.Reset()
+		cmd = exec.Command("mogrify", "-auto-orient", imagePath)
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to apply EXIF orientation: %v, stderr: %s", err, stderr.String())
+		}
 	}
 
 	return nil

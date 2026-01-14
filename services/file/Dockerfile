@@ -45,8 +45,10 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 FROM alpine:3.19
 
 # Install ca-certificates, timezone data, libheif for HEIC conversion,
-# and ImageMagick for EXIF orientation fix (auto-orient)
-RUN apk --no-cache add ca-certificates tzdata libheif-tools imagemagick
+# and ImageMagick with format support for EXIF orientation fix (auto-orient)
+# Note: Alpine 3.19+ requires separate packages for each image format
+RUN apk --no-cache add ca-certificates tzdata libheif-tools \
+    imagemagick imagemagick-jpeg imagemagick-png imagemagick-webp imagemagick-heic
 
 # Create a non-root user
 RUN addgroup -g 1001 appgroup && \
