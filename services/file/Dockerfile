@@ -44,8 +44,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Runtime stage
 FROM alpine:3.19
 
-# Install ca-certificates, timezone data, and libheif for HEIC conversion
-RUN apk --no-cache add ca-certificates tzdata libheif-tools
+# Install ca-certificates, timezone data, libheif for HEIC conversion,
+# and ImageMagick for EXIF orientation fix (auto-orient)
+RUN apk --no-cache add ca-certificates tzdata libheif-tools imagemagick
 
 # Create a non-root user
 RUN addgroup -g 1001 appgroup && \

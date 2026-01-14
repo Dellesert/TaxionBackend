@@ -216,6 +216,7 @@ func (u *FileUsecase) createThumbnail(originalPath string, mimeType string) (str
 }
 
 // convertHEICtoJPEG converts a HEIC file to JPEG using heif-convert
+// and applies EXIF orientation to fix rotation issues (especially from iPhone photos)
 func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
 	// Generate output path with .jpg extension
 	jpegPath := strings.TrimSuffix(heicPath, filepath.Ext(heicPath)) + ".jpg"
@@ -227,6 +228,18 @@ func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
 
 	if err := cmd.Run(); err != nil {
 		return "", fmt.Errorf("heif-convert failed: %v, stderr: %s", err, stderr.String())
+	}
+
+	// Apply EXIF orientation using ImageMagick to fix rotation issues
+	// This physically rotates the pixels according to EXIF Orientation tag
+	// and then removes the tag (so the image displays correctly everywhere)
+	cmdOrient := exec.Command("magick", "mogrify", "-auto-orient", jpegPath)
+	var stderrOrient bytes.Buffer
+	cmdOrient.Stderr = &stderrOrient
+
+	if err := cmdOrient.Run(); err != nil {
+		// Log warning but don't fail - image is still usable, just might be rotated
+		fmt.Printf("Warning: failed to apply EXIF orientation: %v, stderr: %s\n", err, stderrOrient.String())
 	}
 
 	// Remove original HEIC file
