@@ -160,6 +160,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			messages.Any("/*path", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 		}
 
+		// Dashboard routes - proxy to task service
+		dashboard := v1.Group("/dashboard")
+		{
+			dashboard.Any("", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
+			dashboard.Any("/*path", proxyRequest(proxyConfig.TaskService.URL, proxyConfig.TaskService.Name))
+		}
+
 		// Task routes - proxy to task service
 		tasks := v1.Group("/tasks")
 		{

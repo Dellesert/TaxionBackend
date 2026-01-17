@@ -228,6 +228,12 @@ func setupRoutes(
 		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
 	}
 
+	// Internal polls endpoints (no auth required - only accessible from internal network)
+	internalPolls := r.Group("/internal/polls")
+	{
+		internalPolls.GET("/pending", pollHandler.GetPendingPolls)
+	}
+
 	// API routes
 	api := r.Group("/api/v1")
 

@@ -137,9 +137,13 @@ func main() {
 	// Set task usecase for checklist usecase (to avoid circular dependency)
 	checklistUsecase.SetTaskUsecase(taskUsecase)
 
+	// Initialize dashboard usecase
+	dashboardUsecase := usecase.NewDashboardUsecase(taskRepo)
+
 	// Initialize handlers
 	taskHandler := handlers.NewTaskHandler(taskUsecase, analyticsClient)
 	internalHandler := handlers.NewInternalHandler(taskUsecase)
+	dashboardHandler := handlers.NewDashboardHandler(dashboardUsecase)
 	activityHandler := handlers.NewActivityHandler(activityUsecase)
 	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase, taskUsecase)
 	checklistHandler := handlers.NewChecklistHandler(checklistUsecase)
@@ -151,7 +155,7 @@ func main() {
 	notificationWorker.Start()
 
 	// Setup routes
-	r := setupRoutes(taskHandler, internalHandler, activityHandler, attachmentHandler, checklistHandler, metricsHandler, jwtConfig)
+	r := setupRoutes(taskHandler, internalHandler, dashboardHandler, activityHandler, attachmentHandler, checklistHandler, metricsHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -194,6 +198,7 @@ func main() {
 func setupRoutes(
 	taskHandler *handlers.TaskHandler,
 	internalHandler *handlers.InternalHandler,
+	dashboardHandler *handlers.DashboardHandler,
 	activityHandler *handlers.ActivityHandler,
 	attachmentHandler *handlers.AttachmentHandler,
 	checklistHandler *handlers.ChecklistHandler,
@@ -253,6 +258,9 @@ func setupRoutes(
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware())
 	{
+		// Dashboard endpoint
+		protected.GET("/dashboard", dashboardHandler.GetDashboard)
+
 		// Task endpoints - viewing tasks (all authenticated users)
 		protected.GET("/tasks", taskHandler.GetTasks)
 		protected.GET("/tasks/:id", taskHandler.GetTask)

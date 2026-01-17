@@ -901,3 +901,58 @@ func (h *PollHandler) GetPollVoters(c *gin.Context) {
 		"request_id": requestID,
 	})
 }
+
+// GetPendingPolls handles internal request to get pending polls for a user
+// GET /internal/polls/pending?user_id=:user_id&limit=:limit
+func (h *PollHandler) GetPendingPolls(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user_id from query params (internal endpoint, no JWT)
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "user_id is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user_id",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse limit with default
+	limit := 5
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	polls, total, err := h.pollUsecase.GetPendingPollsForUser(uint(userID), limit)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get pending polls")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get pending polls",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"polls":      polls,
+		"total":      total,
+		"request_id": requestID,
+	})
+}

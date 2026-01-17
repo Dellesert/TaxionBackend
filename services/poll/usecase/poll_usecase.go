@@ -50,6 +50,9 @@ type PollUsecase interface {
 
 	// Sync methods
 	GetDeletedPollIDsSince(since time.Time) ([]uint, error)
+
+	// Dashboard methods
+	GetPendingPollsForUser(userID uint, limit int) ([]*models.PollResponse, int64, error)
 }
 
 // pollUsecase implements PollUsecase interface
@@ -1419,4 +1422,20 @@ func (u *pollUsecase) updatePollOptions(pollID uint, optionRequests []models.Upd
 	}
 
 	return nil
+}
+
+// GetPendingPollsForUser retrieves active polls where user hasn't voted yet
+func (u *pollUsecase) GetPendingPollsForUser(userID uint, limit int) ([]*models.PollResponse, int64, error) {
+	polls, total, err := u.pollRepo.GetPendingPollsForUser(userID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Convert to responses
+	responses := make([]*models.PollResponse, 0, len(polls))
+	for _, poll := range polls {
+		responses = append(responses, poll.ToResponse())
+	}
+
+	return responses, total, nil
 }

@@ -54,6 +54,11 @@ type TaskRepository interface {
 	GetTasksWithUpcomingDeadlines() ([]*models.Task, error)
 	GetUnviewedTasksOlderThan(cutoffTime time.Time) ([]*models.Task, error)
 	GetInProgressTasksWithoutUpdates(cutoffTime time.Time) ([]*models.Task, error)
+
+	// Dashboard methods
+	GetNewTasksForUser(userID uint, limit int) ([]*models.Task, int64, error)
+	GetActiveTasksForUser(userID uint, limit int) ([]*models.Task, int64, error)
+	GetOverdueTasksForUser(userID uint, limit int) ([]*models.Task, int64, error)
 }
 
 // TimeRange represents a time period for analytics
@@ -1339,4 +1344,119 @@ func (r *taskRepository) GetInProgressTasksWithoutUpdates(cutoffTime time.Time) 
 	}
 
 	return tasks, nil
+}
+
+// Dashboard methods
+
+// GetNewTasksForUser retrieves tasks with status 'new' assigned to user
+// Query: WHERE status = 'new' AND user_id IN assignees ORDER BY created_at DESC LIMIT n
+func (r *taskRepository) GetNewTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
+	var tasks []*models.Task
+	var total int64
+
+	// Count total
+	countQuery := r.db.Model(&models.Task{}).
+		Where("status = ?", models.TaskStatusNew).
+		Where("id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)", userID)
+
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count new tasks: %w", err)
+	}
+
+	// Get tasks
+	err := r.db.
+		Preload("Assignees").
+		Where("status = ?", models.TaskStatusNew).
+		Where("id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)", userID).
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get new tasks: %w", err)
+	}
+
+	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
+
+	return tasks, total, nil
+}
+
+// GetActiveTasksForUser retrieves tasks with status 'in_progress' or 'review' assigned to user
+// Query: WHERE status IN ('in_progress', 'review') AND user_id IN assignees ORDER BY updated_at DESC LIMIT n
+func (r *taskRepository) GetActiveTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
+	var tasks []*models.Task
+	var total int64
+
+	activeStatuses := []models.TaskStatus{models.TaskStatusInProgress, models.TaskStatusReview}
+
+	// Count total
+	countQuery := r.db.Model(&models.Task{}).
+		Where("status IN ?", activeStatuses).
+		Where("id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)", userID)
+
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count active tasks: %w", err)
+	}
+
+	// Get tasks
+	err := r.db.
+		Preload("Assignees").
+		Where("status IN ?", activeStatuses).
+		Where("id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)", userID).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get active tasks: %w", err)
+	}
+
+	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
+
+	return tasks, total, nil
+}
+
+// GetOverdueTasksForUser retrieves overdue tasks assigned to user
+// Query: WHERE due_date < NOW() AND status NOT IN ('done', 'cancelled') AND user_id IN assignees ORDER BY due_date ASC LIMIT n
+func (r *taskRepository) GetOverdueTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
+	var tasks []*models.Task
+	var total int64
+
+	excludedStatuses := []models.TaskStatus{models.TaskStatusDone, models.TaskStatusCancelled}
+
+	// Count total
+	countQuery := r.db.Model(&models.Task{}).
+		Where("due_date < ?", time.Now()).
+		Where("due_date IS NOT NULL").
+		Where("status NOT IN ?", excludedStatuses).
+		Where("id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)", userID)
+
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count overdue tasks: %w", err)
+	}
+
+	// Get tasks
+	err := r.db.
+		Preload("Assignees").
+		Where("due_date < ?", time.Now()).
+		Where("due_date IS NOT NULL").
+		Where("status NOT IN ?", excludedStatuses).
+		Where("id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)", userID).
+		Order("due_date ASC").
+		Limit(limit).
+		Find(&tasks).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get overdue tasks: %w", err)
+	}
+
+	r.loadCommentCounts(tasks)
+	r.loadSubtaskCounts(tasks)
+	r.loadAttachmentCounts(tasks)
+
+	return tasks, total, nil
 }

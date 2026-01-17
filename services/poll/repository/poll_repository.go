@@ -40,6 +40,9 @@ type PollRepository interface {
 	// Sync methods
 	GetDeletedPollIDsSince(since time.Time) ([]uint, error)
 	RecordDeletion(pollID uint, deletedBy *uint) error
+
+	// Dashboard methods
+	GetPendingPollsForUser(userID uint, limit int) ([]*models.Poll, int64, error)
 }
 
 // pollRepository implements PollRepository interface
@@ -908,4 +911,41 @@ func (r *pollRepository) RecordDeletion(pollID uint, deletedBy *uint) error {
 		DeletedBy:  deletedBy,
 	}
 	return r.db.Create(&record).Error
+}
+
+// GetPendingPollsForUser retrieves active polls where user hasn't voted yet
+// Query: WHERE status = 'active' AND NOT EXISTS (vote where user_id = current_user) ORDER BY created_at DESC LIMIT n
+func (r *pollRepository) GetPendingPollsForUser(userID uint, limit int) ([]*models.Poll, int64, error) {
+	var polls []*models.Poll
+	var total int64
+
+	// Base query: active polls where user hasn't voted
+	baseCondition := "status = ? AND NOT EXISTS (SELECT 1 FROM poll_votes WHERE poll_votes.poll_id = polls.id AND poll_votes.user_id = ?)"
+
+	// Count total
+	countQuery := r.db.Model(&models.Poll{}).
+		Where(baseCondition, models.PollStatusActive, userID)
+	countQuery = r.applyVisibilityFilter(countQuery, userID)
+
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to count pending polls: %w", err)
+	}
+
+	// Get polls
+	query := r.db.
+		Preload("Options", func(db *gorm.DB) *gorm.DB {
+			return db.Order("position ASC")
+		}).
+		Preload("Creator").
+		Where(baseCondition, models.PollStatusActive, userID)
+	query = r.applyVisibilityFilter(query, userID)
+
+	if err := query.Order("created_at DESC").Limit(limit).Find(&polls).Error; err != nil {
+		return nil, 0, fmt.Errorf("failed to get pending polls: %w", err)
+	}
+
+	// Load statistics
+	r.loadPollStatistics(polls, userID)
+
+	return polls, total, nil
 }
