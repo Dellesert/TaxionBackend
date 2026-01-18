@@ -54,7 +54,16 @@ func main() {
 	defer db.Close()
 
 	// Run database migrations
-	if err := db.Migrate(&models.Event{}, &models.EventParticipant{}, &models.EventReminder{}); err != nil {
+	if err := db.Migrate(
+		&models.Event{},
+		&models.EventParticipant{},
+		&models.EventReminder{},
+		&models.Schedule{},
+		&models.ScheduleEntry{},
+		&models.ScheduleTemplate{},
+		&models.ScheduleTemplateEntry{},
+		&models.ScheduleAssignment{},
+	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
@@ -90,23 +99,31 @@ func main() {
 	eventRepo := repository.NewEventRepository(db)
 	participantRepo := repository.NewParticipantRepository(db)
 	reminderRepo := repository.NewReminderRepository(db)
+	scheduleRepo := repository.NewScheduleRepository(db)
 
 	// Initialize clients
 	notificationClient := clients.NewNotificationClient()
 	userClient := clients.NewUserClient()
+	fileClient := clients.NewFileClient()
 
 	// Initialize usecases
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
+	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo)
+	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
+	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, fileClient)
 
 	// Initialize notification worker
 	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient, redisClient)
 
 	// Initialize handlers
 	calendarHandler := handlers.NewCalendarHandler(calendarUsecase)
+	scheduleHandler := handlers.NewScheduleHandler(scheduleUsecase)
+	templateHandler := handlers.NewScheduleTemplateHandler(templateUsecase)
+	importHandler := handlers.NewScheduleImportHandler(importUsecase, userClient)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "calendar-service", startTime)
 
 	// Setup routes
-	r := setupRoutes(calendarHandler, metricsHandler, jwtConfig)
+	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, importHandler, metricsHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -154,6 +171,9 @@ func main() {
 
 func setupRoutes(
 	calendarHandler *handlers.CalendarHandler,
+	scheduleHandler *handlers.ScheduleHandler,
+	templateHandler *handlers.ScheduleTemplateHandler,
+	importHandler *handlers.ScheduleImportHandler,
 	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
@@ -225,6 +245,39 @@ func setupRoutes(
 		// Reminder management
 		protected.POST("/events/:id/reminders", calendarHandler.SetReminder)
 		protected.DELETE("/events/:id/reminders/:reminder_id", calendarHandler.RemoveReminder)
+
+		// Schedule endpoints
+		protected.GET("/schedules", scheduleHandler.GetSchedules)
+		protected.GET("/schedules/my-entries", scheduleHandler.GetMyScheduleEntries)
+		protected.GET("/schedules/:id", scheduleHandler.GetSchedule)
+		protected.POST("/schedules", scheduleHandler.CreateSchedule)
+		protected.PUT("/schedules/:id", scheduleHandler.UpdateSchedule)
+		protected.DELETE("/schedules/:id", scheduleHandler.DeleteSchedule)
+
+		// Schedule entry endpoints
+		protected.GET("/schedules/:id/entries", scheduleHandler.GetScheduleEntries)
+		protected.POST("/schedules/:id/entries", scheduleHandler.CreateScheduleEntry)
+		protected.PUT("/schedules/:id/entries/:entry_id", scheduleHandler.UpdateScheduleEntry)
+		protected.DELETE("/schedules/:id/entries/:entry_id", scheduleHandler.DeleteScheduleEntry)
+
+		// Schedule import endpoints
+		protected.POST("/schedules/import", importHandler.ImportSchedule)
+		protected.GET("/schedules/import/formats", importHandler.GetSupportedFormats)
+
+		// Schedule template endpoints
+		protected.GET("/schedule-templates", templateHandler.GetTemplates)
+		protected.GET("/schedule-templates/:id", templateHandler.GetTemplate)
+		protected.POST("/schedule-templates", templateHandler.CreateTemplate)
+		protected.PUT("/schedule-templates/:id", templateHandler.UpdateTemplate)
+		protected.DELETE("/schedule-templates/:id", templateHandler.DeleteTemplate)
+
+		// Template entry endpoints
+		protected.GET("/schedule-templates/:id/entries", templateHandler.GetTemplateEntries)
+		protected.POST("/schedule-templates/:id/entries", templateHandler.AddTemplateEntry)
+		protected.DELETE("/schedule-templates/:id/entries/:entry_id", templateHandler.DeleteTemplateEntry)
+
+		// Apply template
+		protected.POST("/schedule-templates/:id/apply", templateHandler.ApplyTemplate)
 	}
 
 	return r

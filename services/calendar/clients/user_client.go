@@ -103,3 +103,29 @@ func (c *UserClient) GetUserByID(id uint) (*UserInfo, error) {
 
 	return user, nil
 }
+
+// GetAllUsers retrieves all users from user service
+func (c *UserClient) GetAllUsers() ([]*sharedmodels.User, error) {
+	url := fmt.Sprintf("%s/internal/users/all", c.baseURL)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to request users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("user service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var response struct {
+		Users []*sharedmodels.User `json:"users"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return response.Users, nil
+}

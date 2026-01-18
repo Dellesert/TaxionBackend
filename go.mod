@@ -6,6 +6,7 @@ toolchain go1.24.4
 
 require (
 	firebase.google.com/go/v4 v4.14.1
+	github.com/agnivade/levenshtein v1.2.0
 	github.com/brianvoe/gofakeit/v7 v7.9.0
 	github.com/gin-contrib/requestid v1.0.2
 	github.com/gin-gonic/gin v1.10.0
@@ -16,6 +17,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/redis/go-redis/v9 v9.5.1
 	github.com/sirupsen/logrus v1.9.3
+	github.com/unidoc/unioffice v1.41.0
 	golang.org/x/crypto v0.28.0
 	google.golang.org/api v0.170.0
 	gorm.io/datatypes v1.2.7
