@@ -9,7 +9,6 @@ import (
 	"tachyon-messenger/services/calendar/usecase"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
-	sharedmodels "tachyon-messenger/shared/models"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -716,13 +715,4 @@ func containsNotFoundError(errMsg string) bool {
 
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsSubstring(s, substr)))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
