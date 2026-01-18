@@ -104,14 +104,13 @@ func main() {
 	// Initialize clients
 	notificationClient := clients.NewNotificationClient()
 	userClient := clients.NewUserClient()
-	// fileClient := clients.NewFileClient()
+	fileClient := clients.NewFileClient()
 
 	// Initialize usecases
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
 	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo)
 	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
-	// TODO: Re-enable after fixing unioffice dependency
-	// importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, fileClient)
+	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, fileClient)
 
 	// Initialize notification worker
 	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient, redisClient)
@@ -120,12 +119,11 @@ func main() {
 	calendarHandler := handlers.NewCalendarHandler(calendarUsecase)
 	scheduleHandler := handlers.NewScheduleHandler(scheduleUsecase)
 	templateHandler := handlers.NewScheduleTemplateHandler(templateUsecase)
-	// TODO: Re-enable after fixing unioffice dependency
-	// importHandler := handlers.NewScheduleImportHandler(importUsecase, userClient)
+	importHandler := handlers.NewScheduleImportHandler(importUsecase, userClient)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "calendar-service", startTime)
 
 	// Setup routes
-	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, metricsHandler, jwtConfig)
+	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, importHandler, metricsHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -175,7 +173,7 @@ func setupRoutes(
 	calendarHandler *handlers.CalendarHandler,
 	scheduleHandler *handlers.ScheduleHandler,
 	templateHandler *handlers.ScheduleTemplateHandler,
-	// importHandler *handlers.ScheduleImportHandler,
+	importHandler *handlers.ScheduleImportHandler,
 	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
@@ -262,10 +260,9 @@ func setupRoutes(
 		protected.PUT("/schedules/:id/entries/:entry_id", scheduleHandler.UpdateScheduleEntry)
 		protected.DELETE("/schedules/:id/entries/:entry_id", scheduleHandler.DeleteScheduleEntry)
 
-		// TODO: Re-enable after fixing unioffice dependency
 		// Schedule import endpoints
-		// protected.POST("/schedules/import", importHandler.ImportSchedule)
-		// protected.GET("/schedules/import/formats", importHandler.GetSupportedFormats)
+		protected.POST("/schedules/import", importHandler.ImportSchedule)
+		protected.GET("/schedules/import/formats", importHandler.GetSupportedFormats)
 
 		// Schedule template endpoints
 		protected.GET("/schedule-templates", templateHandler.GetTemplates)
