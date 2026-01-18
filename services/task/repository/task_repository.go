@@ -1349,22 +1349,29 @@ func (r *taskRepository) GetInProgressTasksWithoutUpdates(cutoffTime time.Time) 
 // Dashboard methods
 
 // userTaskCondition returns the condition for filtering tasks visible to a user
-// User can see tasks where they are: creator, main assignee (both fields), or in additional assignees
-// Excludes subtasks (parent_task_id IS NULL) for consistency with GetUserTasks
+// Mirrors the logic from GetUserTasks:
+// 1. Top-level tasks where user is creator or assignee
+// 2. Subtasks where user is assignee OR user is creator of parent task
+// 3. Tasks in delegation chain (user delegated it or was original assignee)
 func (r *taskRepository) userTaskCondition() string {
-	return "(parent_task_id IS NULL AND (created_by = ? OR assigned_to_user_id = ? OR assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL)))"
+	return "(" +
+		"(parent_task_id IS NULL AND (created_by = ? OR assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL))) OR " +
+		"(parent_task_id IS NOT NULL AND (assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL) OR " +
+		"parent_task_id IN (SELECT id FROM tasks WHERE created_by = ? AND deleted_at IS NULL))) OR " +
+		"(delegated_from_user_id = ? OR original_assignee_id = ?)" +
+		")"
 }
 
 // GetNewTasksForUser retrieves tasks with status 'new' assigned to user
-// Query: WHERE status = 'new' AND (user is creator/assignee/in assignees) ORDER BY created_at DESC LIMIT n
+// Query: WHERE status = 'new' AND (user visible condition) ORDER BY created_at DESC LIMIT n
 func (r *taskRepository) GetNewTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
 	var tasks []*models.Task
 	var total int64
 
-	// Count total
+	// Count total - 8 userID params to match userTaskCondition
 	countQuery := r.db.Model(&models.Task{}).
 		Where("status = ?", models.TaskStatusNew).
-		Where(r.userTaskCondition(), userID, userID, userID, userID)
+		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count new tasks: %w", err)
@@ -1374,7 +1381,7 @@ func (r *taskRepository) GetNewTasksForUser(userID uint, limit int) ([]*models.T
 	err := r.db.
 		Preload("Assignees").
 		Where("status = ?", models.TaskStatusNew).
-		Where(r.userTaskCondition(), userID, userID, userID, userID).
+		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID).
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&tasks).Error
@@ -1391,17 +1398,17 @@ func (r *taskRepository) GetNewTasksForUser(userID uint, limit int) ([]*models.T
 }
 
 // GetActiveTasksForUser retrieves tasks with status 'in_progress' or 'review' assigned to user
-// Query: WHERE status IN ('in_progress', 'review') AND (user is creator/assignee/in assignees) ORDER BY updated_at DESC LIMIT n
+// Query: WHERE status IN ('in_progress', 'review') AND (user visible condition) ORDER BY updated_at DESC LIMIT n
 func (r *taskRepository) GetActiveTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
 	var tasks []*models.Task
 	var total int64
 
 	activeStatuses := []models.TaskStatus{models.TaskStatusInProgress, models.TaskStatusReview}
 
-	// Count total
+	// Count total - 8 userID params to match userTaskCondition
 	countQuery := r.db.Model(&models.Task{}).
 		Where("status IN ?", activeStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID)
+		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count active tasks: %w", err)
@@ -1411,7 +1418,7 @@ func (r *taskRepository) GetActiveTasksForUser(userID uint, limit int) ([]*model
 	err := r.db.
 		Preload("Assignees").
 		Where("status IN ?", activeStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID).
+		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID).
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&tasks).Error
@@ -1428,19 +1435,19 @@ func (r *taskRepository) GetActiveTasksForUser(userID uint, limit int) ([]*model
 }
 
 // GetOverdueTasksForUser retrieves overdue tasks assigned to user
-// Query: WHERE due_date < NOW() AND status NOT IN ('done', 'cancelled') AND (user is creator/assignee/in assignees) ORDER BY due_date ASC LIMIT n
+// Query: WHERE due_date < NOW() AND status NOT IN ('done', 'cancelled') AND (user visible condition) ORDER BY due_date ASC LIMIT n
 func (r *taskRepository) GetOverdueTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
 	var tasks []*models.Task
 	var total int64
 
 	excludedStatuses := []models.TaskStatus{models.TaskStatusDone, models.TaskStatusCancelled}
 
-	// Count total
+	// Count total - 8 userID params to match userTaskCondition
 	countQuery := r.db.Model(&models.Task{}).
 		Where("due_date < ?", time.Now()).
 		Where("due_date IS NOT NULL").
 		Where("status NOT IN ?", excludedStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID)
+		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count overdue tasks: %w", err)
@@ -1452,7 +1459,7 @@ func (r *taskRepository) GetOverdueTasksForUser(userID uint, limit int) ([]*mode
 		Where("due_date < ?", time.Now()).
 		Where("due_date IS NOT NULL").
 		Where("status NOT IN ?", excludedStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID).
+		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID).
 		Order("due_date ASC").
 		Limit(limit).
 		Find(&tasks).Error
