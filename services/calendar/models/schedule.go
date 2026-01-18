@@ -30,7 +30,7 @@ const (
 
 // Schedule represents a work schedule
 type Schedule struct {
-	models.BaseModel
+	sharedmodels.BaseModel
 	Title         string             `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description   string             `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
 	Type          ScheduleType       `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty shift custom"`
@@ -117,7 +117,7 @@ const (
 
 // ScheduleEntry represents an entry in a schedule
 type ScheduleEntry struct {
-	models.BaseModel
+	sharedmodels.BaseModel
 	ScheduleID  uint      `gorm:"not null;index" json:"schedule_id" validate:"required"`
 	UserID      uint      `gorm:"not null;index" json:"user_id" validate:"required"`
 	Date        time.Time `gorm:"not null;index;type:date" json:"date" validate:"required"`
@@ -168,7 +168,7 @@ func (se *ScheduleEntry) BeforeUpdate(tx *gorm.DB) error {
 
 // ScheduleTemplate represents a reusable schedule template
 type ScheduleTemplate struct {
-	models.BaseModel
+	sharedmodels.BaseModel
 	Title        string       `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description  string       `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
 	Type         ScheduleType `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty shift custom"`
@@ -200,7 +200,7 @@ func (st *ScheduleTemplate) BeforeCreate(tx *gorm.DB) error {
 
 // ScheduleTemplateEntry represents an entry in a schedule template
 type ScheduleTemplateEntry struct {
-	models.BaseModel
+	sharedmodels.BaseModel
 	TemplateID uint         `gorm:"not null;index" json:"template_id" validate:"required"`
 	UserID     *uint        `gorm:"index" json:"user_id,omitempty"` // nil = apply to all assigned users
 	DayOfWeek  int          `gorm:"not null" json:"day_of_week" validate:"required,min=0,max=6"` // 0-6 (Sunday-Saturday)
@@ -221,7 +221,7 @@ func (ScheduleTemplateEntry) TableName() string {
 
 // ScheduleAssignment represents a user assignment to a schedule
 type ScheduleAssignment struct {
-	models.BaseModel
+	sharedmodels.BaseModel
 	ScheduleID uint      `gorm:"not null;index" json:"schedule_id" validate:"required"`
 	UserID     uint      `gorm:"not null;index" json:"user_id" validate:"required"`
 	AssignedBy uint      `gorm:"not null;index" json:"assigned_by" validate:"required,min=1"`
@@ -472,7 +472,7 @@ type ScheduleTemplateResponse struct {
 	Description  string             `json:"description,omitempty"`
 	Type         ScheduleType       `json:"type"`
 	CreatedBy    uint               `json:"created_by"`
-	Creator      *sharedsharedmodels.User `json:"creator,omitempty"`
+	Creator      *sharedmodels.User `json:"creator,omitempty"`
 	DepartmentID *uint              `json:"department_id,omitempty"`
 	Color        string             `json:"color"`
 	IsActive     bool               `json:"is_active"`
@@ -502,7 +502,7 @@ type ScheduleTemplateEntryResponse struct {
 	ID         uint               `json:"id"`
 	TemplateID uint               `json:"template_id"`
 	UserID     *uint              `json:"user_id,omitempty"`
-	User       *sharedsharedmodels.User `json:"user,omitempty"`
+	User       *sharedmodels.User `json:"user,omitempty"`
 	DayOfWeek  int                `json:"day_of_week"`
 	StartTime  string             `json:"start_time"`
 	EndTime    string             `json:"end_time"`
