@@ -1276,3 +1276,91 @@ func containsSubstring(text, substring string) bool {
 	}
 	return false
 }
+
+// GetTodayEvents handles internal request to get today's events for a user
+// GET /internal/events/today?user_id=:user_id&limit=:limit&start=:start&end=:end
+func (h *CalendarHandler) GetTodayEvents(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user_id from query params (internal endpoint, no JWT)
+	userIDStr := c.Query("user_id")
+	if userIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "user_id is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	userID, err := strconv.ParseUint(userIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user_id",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse limit with default
+	limit := 10
+	if limitStr := c.Query("limit"); limitStr != "" {
+		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	// Parse start and end times
+	startStr := c.Query("start")
+	endStr := c.Query("end")
+
+	var startTime, endTime time.Time
+	if startStr != "" {
+		startTime, err = time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":      "Invalid start time format",
+				"request_id": requestID,
+			})
+			return
+		}
+	} else {
+		// Default to today
+		now := time.Now()
+		startTime = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	}
+
+	if endStr != "" {
+		endTime, err = time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":      "Invalid end time format",
+				"request_id": requestID,
+			})
+			return
+		}
+	} else {
+		endTime = startTime.Add(24 * time.Hour)
+	}
+
+	events, total, err := h.calendarUsecase.GetTodayEvents(uint(userID), startTime, endTime, limit)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"error":      err.Error(),
+		}).Error("Failed to get today's events")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get today's events",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"events":     events,
+		"total":      total,
+		"request_id": requestID,
+	})
+}

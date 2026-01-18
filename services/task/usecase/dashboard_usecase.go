@@ -14,9 +14,10 @@ type DashboardUsecase interface {
 
 // dashboardUsecase implements DashboardUsecase interface
 type dashboardUsecase struct {
-	taskRepo   repository.TaskRepository
-	userClient *clients.UserClient
-	pollClient *clients.PollClient
+	taskRepo       repository.TaskRepository
+	userClient     *clients.UserClient
+	pollClient     *clients.PollClient
+	calendarClient *clients.CalendarClient
 }
 
 // NewDashboardUsecase creates a new dashboard usecase
@@ -24,9 +25,10 @@ func NewDashboardUsecase(
 	taskRepo repository.TaskRepository,
 ) DashboardUsecase {
 	return &dashboardUsecase{
-		taskRepo:   taskRepo,
-		userClient: clients.NewUserClient(),
-		pollClient: clients.NewPollClient(),
+		taskRepo:       taskRepo,
+		userClient:     clients.NewUserClient(),
+		pollClient:     clients.NewPollClient(),
+		calendarClient: clients.NewCalendarClient(),
 	}
 }
 
@@ -44,6 +46,7 @@ func (u *dashboardUsecase) GetDashboard(userID uint, limit int) (*models.Dashboa
 		ActiveTasks:  make([]*models.TaskResponse, 0),
 		OverdueTasks: make([]*models.TaskResponse, 0),
 		PendingPolls: make([]*models.PendingPollResponse, 0),
+		TodayEvents:  make([]*models.TodayEventResponse, 0),
 		Counts:       models.DashboardCounts{},
 	}
 
@@ -93,6 +96,18 @@ func (u *dashboardUsecase) GetDashboard(userID uint, limit int) (*models.Dashboa
 	} else {
 		dashboard.PendingPolls = u.convertPollsToResponses(pendingPolls)
 		dashboard.Counts.PendingPollsCount = pendingPollsCount
+	}
+
+	// Get today's events from calendar service
+	todayEvents, todayEventsCount, err := u.calendarClient.GetTodayEventsForUser(userID, limit)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"user_id": userID,
+			"error":   err.Error(),
+		}).Warn("Failed to get today's events for dashboard")
+	} else {
+		dashboard.TodayEvents = u.convertEventsToResponses(todayEvents)
+		dashboard.Counts.TodayEventsCount = todayEventsCount
 	}
 
 	return dashboard, nil
@@ -201,6 +216,31 @@ func (u *dashboardUsecase) convertPollsToResponses(polls []*clients.PendingPollR
 			CreatedBy:   poll.CreatedBy,
 			CreatedAt:   poll.CreatedAt,
 			EndTime:     endTime,
+		})
+	}
+
+	return responses
+}
+
+// convertEventsToResponses converts TodayEventResponse from client to model
+func (u *dashboardUsecase) convertEventsToResponses(events []*clients.TodayEventResponse) []*models.TodayEventResponse {
+	if len(events) == 0 {
+		return []*models.TodayEventResponse{}
+	}
+
+	responses := make([]*models.TodayEventResponse, 0, len(events))
+	for _, event := range events {
+		responses = append(responses, &models.TodayEventResponse{
+			ID:          event.ID,
+			Title:       event.Title,
+			Description: event.Description,
+			StartTime:   event.StartTime,
+			EndTime:     event.EndTime,
+			AllDay:      event.AllDay,
+			Location:    event.Location,
+			Type:        event.Type,
+			Color:       event.Color,
+			IsPrivate:   event.IsPrivate,
 		})
 	}
 

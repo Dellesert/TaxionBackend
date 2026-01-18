@@ -42,6 +42,9 @@ type CalendarUsecase interface {
 
 	// Background processing methods
 	ProcessEventReminders() error
+
+	// Dashboard methods
+	GetTodayEvents(userID uint, startTime, endTime time.Time, limit int) ([]*models.TodayEventResponse, int64, error)
 }
 
 // calendarUsecase implements CalendarUsecase interface
@@ -871,4 +874,38 @@ func (u *calendarUsecase) isValidReminderType(reminderType models.ReminderType) 
 // GetDeletedEventIDsSince returns IDs of events deleted since the given timestamp
 func (u *calendarUsecase) GetDeletedEventIDsSince(since time.Time) ([]uint, error) {
 	return u.eventRepo.GetDeletedEventIDsSince(since)
+}
+
+// GetTodayEvents retrieves events for a user within a date range (for dashboard)
+func (u *calendarUsecase) GetTodayEvents(userID uint, startTime, endTime time.Time, limit int) ([]*models.TodayEventResponse, int64, error) {
+	events, err := u.eventRepo.GetEventsByDateRange(userID, startTime, endTime)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get today's events: %w", err)
+	}
+
+	total := int64(len(events))
+
+	// Apply limit
+	if limit > 0 && len(events) > limit {
+		events = events[:limit]
+	}
+
+	// Convert to TodayEventResponse
+	responses := make([]*models.TodayEventResponse, 0, len(events))
+	for _, event := range events {
+		responses = append(responses, &models.TodayEventResponse{
+			ID:          event.ID,
+			Title:       event.Title,
+			Description: event.Description,
+			StartTime:   event.StartTime.Format(time.RFC3339),
+			EndTime:     event.EndTime.Format(time.RFC3339),
+			AllDay:      event.AllDay,
+			Location:    event.Location,
+			Type:        string(event.Type),
+			Color:       event.Color,
+			IsPrivate:   event.IsPrivate,
+		})
+	}
+
+	return responses, total, nil
 }

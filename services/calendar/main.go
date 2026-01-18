@@ -187,6 +187,12 @@ func setupRoutes(
 		internalMetrics.GET("/runtime", metricsHandler.GetRuntimeMetrics)
 	}
 
+	// Internal events endpoints (no auth required - only accessible from internal network)
+	internalEvents := r.Group("/internal/events")
+	{
+		internalEvents.GET("/today", calendarHandler.GetTodayEvents)
+	}
+
 	// API routes
 	api := r.Group("/api/v1")
 

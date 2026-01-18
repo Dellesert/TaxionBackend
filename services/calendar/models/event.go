@@ -436,3 +436,17 @@ type EventStatsResponse struct {
 	EventsThisWeek  int `json:"events_this_week"`
 	EventsThisMonth int `json:"events_this_month"`
 }
+
+// TodayEventResponse represents a simplified event for dashboard
+type TodayEventResponse struct {
+	ID          uint   `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	StartTime   string `json:"start_time"`
+	EndTime     string `json:"end_time"`
+	AllDay      bool   `json:"all_day"`
+	Location    string `json:"location,omitempty"`
+	Type        string `json:"type"`
+	Color       string `json:"color,omitempty"`
+	IsPrivate   bool   `json:"is_private"`
+}
