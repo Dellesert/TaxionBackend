@@ -9,8 +9,6 @@ import (
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
 	sharedmodels "tachyon-messenger/shared/models"
-
-	"gorm.io/gorm"
 )
 
 // ScheduleUsecase defines the interface for schedule business logic
