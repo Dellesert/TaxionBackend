@@ -415,25 +415,9 @@ func (p *ScheduleParser) findBestMatch(name string, users []*sharedmodels.User) 
 	nameNorm := p.normalizeName(name)
 
 	for _, user := range users {
-		// Try matching against full name
-		fullName := p.normalizeName(fmt.Sprintf("%s %s", user.FirstName, user.LastName))
-		score := p.calculateSimilarity(nameNorm, fullName)
-
-		// Also try reversed order
-		fullNameReversed := p.normalizeName(fmt.Sprintf("%s %s", user.LastName, user.FirstName))
-		scoreReversed := p.calculateSimilarity(nameNorm, fullNameReversed)
-
-		if scoreReversed > score {
-			score = scoreReversed
-		}
-
-		// Also try just last name
-		lastName := p.normalizeName(user.LastName)
-		scoreLastName := p.calculateSimilarity(nameNorm, lastName)
-
-		if scoreLastName > score {
-			score = scoreLastName
-		}
+		// Try matching against user name
+		userName := p.normalizeName(user.Name)
+		score := p.calculateSimilarity(nameNorm, userName)
 
 		if score > bestScore && score >= MinMatchScore {
 			bestScore = score
