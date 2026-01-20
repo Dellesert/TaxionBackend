@@ -46,61 +46,6 @@ func (c *DocxCell) GetText() string {
 	return strings.Join(texts, " ")
 }
 
-// XML structures for parsing DOCX
-
-// WordDocument represents the main document.xml structure
-type WordDocument struct {
-	XMLName xml.Name   `xml:"document"`
-	Body    WordBody   `xml:"body"`
-}
-
-// WordBody represents the body element
-type WordBody struct {
-	Content []WordBodyContent `xml:",any"`
-}
-
-// WordBodyContent represents any content in the body
-type WordBodyContent struct {
-	XMLName xml.Name
-	Content []byte `xml:",innerxml"`
-}
-
-// WordParagraph represents a paragraph (w:p)
-type WordParagraph struct {
-	XMLName xml.Name  `xml:"p"`
-	Runs    []WordRun `xml:"r"`
-}
-
-// WordRun represents a run (w:r)
-type WordRun struct {
-	XMLName xml.Name   `xml:"r"`
-	Text    []WordText `xml:"t"`
-}
-
-// WordText represents text (w:t)
-type WordText struct {
-	XMLName xml.Name `xml:"t"`
-	Content string   `xml:",chardata"`
-}
-
-// WordTable represents a table (w:tbl)
-type WordTable struct {
-	XMLName xml.Name       `xml:"tbl"`
-	Rows    []WordTableRow `xml:"tr"`
-}
-
-// WordTableRow represents a table row (w:tr)
-type WordTableRow struct {
-	XMLName xml.Name        `xml:"tr"`
-	Cells   []WordTableCell `xml:"tc"`
-}
-
-// WordTableCell represents a table cell (w:tc)
-type WordTableCell struct {
-	XMLName    xml.Name        `xml:"tc"`
-	Paragraphs []WordParagraph `xml:"p"`
-}
-
 // ReadDocx reads a DOCX file from bytes and returns a DocxDocument
 func ReadDocx(content []byte) (*DocxDocument, error) {
 	// Open ZIP archive
@@ -134,175 +79,180 @@ func ReadDocx(content []byte) (*DocxDocument, error) {
 	return parseDocumentXML(documentXML)
 }
 
+// xmlNode represents a node in the XML tree
+type xmlNode struct {
+	Name     string
+	Text     string
+	Children []*xmlNode
+}
+
 // parseDocumentXML parses the document.xml content
 func parseDocumentXML(xmlContent []byte) (*DocxDocument, error) {
+	// Build a tree structure first
+	decoder := xml.NewDecoder(bytes.NewReader(xmlContent))
+	root, err := buildXMLTree(decoder)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build xml tree: %w", err)
+	}
+
 	doc := &DocxDocument{
 		Paragraphs: make([]DocxParagraph, 0),
 		Tables:     make([]DocxTable, 0),
 	}
 
-	// Create decoder
-	decoder := xml.NewDecoder(bytes.NewReader(xmlContent))
+	// Find body element
+	body := findNode(root, "body")
+	if body == nil {
+		return nil, fmt.Errorf("body element not found")
+	}
 
-	// Parse the XML manually to handle the Word namespace properly
-	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("xml parse error: %w", err)
-		}
-
-		switch elem := token.(type) {
-		case xml.StartElement:
-			localName := elem.Name.Local
-
-			if localName == "p" {
-				// Parse paragraph
-				para, err := parseParagraph(decoder)
-				if err != nil {
-					continue
-				}
-				if para.Text != "" {
-					doc.Paragraphs = append(doc.Paragraphs, para)
-				}
-			} else if localName == "tbl" {
-				// Parse table
-				table, err := parseTable(decoder)
-				if err != nil {
-					continue
-				}
-				doc.Tables = append(doc.Tables, table)
+	// Process body children
+	for _, child := range body.Children {
+		switch child.Name {
+		case "p":
+			// Top-level paragraph
+			text := extractAllText(child)
+			if text != "" {
+				doc.Paragraphs = append(doc.Paragraphs, DocxParagraph{Text: text})
 			}
+		case "tbl":
+			// Table
+			table := parseTableNode(child)
+			doc.Tables = append(doc.Tables, table)
 		}
 	}
 
 	return doc, nil
 }
 
-// parseParagraph parses a paragraph element
-func parseParagraph(decoder *xml.Decoder) (DocxParagraph, error) {
-	para := DocxParagraph{}
-	var textParts []string
-	depth := 1
+// buildXMLTree builds a tree structure from XML
+func buildXMLTree(decoder *xml.Decoder) (*xmlNode, error) {
+	var root *xmlNode
+	var stack []*xmlNode
 
-	for depth > 0 {
+	for {
 		token, err := decoder.Token()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
-			return para, err
+			return nil, err
 		}
 
 		switch elem := token.(type) {
 		case xml.StartElement:
-			depth++
-			if elem.Name.Local == "t" {
-				// Read text content
-				textToken, err := decoder.Token()
-				if err == nil {
-					if charData, ok := textToken.(xml.CharData); ok {
-						textParts = append(textParts, string(charData))
-					}
-				}
+			node := &xmlNode{
+				Name:     elem.Name.Local,
+				Children: make([]*xmlNode, 0),
 			}
+			if len(stack) > 0 {
+				parent := stack[len(stack)-1]
+				parent.Children = append(parent.Children, node)
+			} else {
+				root = node
+			}
+			stack = append(stack, node)
+
 		case xml.EndElement:
-			depth--
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+
+		case xml.CharData:
+			text := strings.TrimSpace(string(elem))
+			if text != "" && len(stack) > 0 {
+				current := stack[len(stack)-1]
+				current.Text += text
+			}
 		}
 	}
 
-	para.Text = strings.Join(textParts, "")
-	return para, nil
+	return root, nil
 }
 
-// parseTable parses a table element
-func parseTable(decoder *xml.Decoder) (DocxTable, error) {
+// findNode finds first child node with given name (recursive)
+func findNode(node *xmlNode, name string) *xmlNode {
+	if node == nil {
+		return nil
+	}
+	if node.Name == name {
+		return node
+	}
+	for _, child := range node.Children {
+		if found := findNode(child, name); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// extractAllText extracts all text from a node and its descendants
+func extractAllText(node *xmlNode) string {
+	if node == nil {
+		return ""
+	}
+
+	var parts []string
+
+	// Only collect text from 't' elements (w:t in Word XML)
+	if node.Name == "t" && node.Text != "" {
+		parts = append(parts, node.Text)
+	}
+
+	for _, child := range node.Children {
+		childText := extractAllText(child)
+		if childText != "" {
+			parts = append(parts, childText)
+		}
+	}
+
+	return strings.Join(parts, "")
+}
+
+// parseTableNode parses a table node
+func parseTableNode(node *xmlNode) DocxTable {
 	table := DocxTable{
 		Rows: make([]DocxRow, 0),
 	}
-	depth := 1
 
-	for depth > 0 {
-		token, err := decoder.Token()
-		if err != nil {
-			return table, err
-		}
-
-		switch elem := token.(type) {
-		case xml.StartElement:
-			depth++
-			if elem.Name.Local == "tr" {
-				row, err := parseTableRow(decoder)
-				if err == nil {
-					table.Rows = append(table.Rows, row)
-					depth-- // parseTableRow consumed the end element
-				}
-			}
-		case xml.EndElement:
-			depth--
+	for _, child := range node.Children {
+		if child.Name == "tr" {
+			row := parseRowNode(child)
+			table.Rows = append(table.Rows, row)
 		}
 	}
 
-	return table, nil
+	return table
 }
 
-// parseTableRow parses a table row element
-func parseTableRow(decoder *xml.Decoder) (DocxRow, error) {
+// parseRowNode parses a table row node
+func parseRowNode(node *xmlNode) DocxRow {
 	row := DocxRow{
 		Cells: make([]DocxCell, 0),
 	}
-	depth := 1
 
-	for depth > 0 {
-		token, err := decoder.Token()
-		if err != nil {
-			return row, err
-		}
-
-		switch elem := token.(type) {
-		case xml.StartElement:
-			depth++
-			if elem.Name.Local == "tc" {
-				cell, err := parseTableCell(decoder)
-				if err == nil {
-					row.Cells = append(row.Cells, cell)
-					depth-- // parseTableCell consumed the end element
-				}
-			}
-		case xml.EndElement:
-			depth--
+	for _, child := range node.Children {
+		if child.Name == "tc" {
+			cell := parseCellNode(child)
+			row.Cells = append(row.Cells, cell)
 		}
 	}
 
-	return row, nil
+	return row
 }
 
-// parseTableCell parses a table cell element
-func parseTableCell(decoder *xml.Decoder) (DocxCell, error) {
+// parseCellNode parses a table cell node
+func parseCellNode(node *xmlNode) DocxCell {
 	cell := DocxCell{
 		Paragraphs: make([]DocxParagraph, 0),
 	}
-	depth := 1
 
-	for depth > 0 {
-		token, err := decoder.Token()
-		if err != nil {
-			return cell, err
-		}
-
-		switch elem := token.(type) {
-		case xml.StartElement:
-			depth++
-			if elem.Name.Local == "p" {
-				para, err := parseParagraph(decoder)
-				if err == nil {
-					cell.Paragraphs = append(cell.Paragraphs, para)
-					depth-- // parseParagraph consumed the end element
-				}
-			}
-		case xml.EndElement:
-			depth--
+	for _, child := range node.Children {
+		if child.Name == "p" {
+			text := extractAllText(child)
+			cell.Paragraphs = append(cell.Paragraphs, DocxParagraph{Text: text})
 		}
 	}
 
-	return cell, nil
+	return cell
 }

@@ -31,51 +31,80 @@ type TableDetector struct {
 func NewTableDetector() *TableDetector {
 	return &TableDetector{
 		monthPattern: regexp.MustCompile(`(?i)(январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\s*(\d{4})`),
-		timePattern:  regexp.MustCompile(`\d{1,2}[:\.]\d{2}\s*-\s*\d{1,2}[:\.]\d{2}`),
+		timePattern:  regexp.MustCompile(`\d{1,2}[:\.]\d{2}\s*[-–—]\s*\d{1,2}[:\.]\d{2}`),
 	}
 }
 
 // DetectFormat detects the table format in a Word document
 func (d *TableDetector) DetectFormat(doc *DocxDocument) (TableFormat, error) {
 	if len(doc.Tables) == 0 {
-		return FormatUnknown, fmt.Errorf("no tables found in document")
+		return FormatUnknown, fmt.Errorf("no tables found in document (found %d paragraphs)", len(doc.Paragraphs))
 	}
 
-	// Analyze first table (main schedule table)
-	table := doc.Tables[0]
-	if len(table.Rows) < 2 {
-		return FormatUnknown, fmt.Errorf("table has insufficient rows")
+	// Try each table until we find one that matches a format
+	for tableIdx, table := range doc.Tables {
+		if len(table.Rows) < 2 {
+			continue
+		}
+
+		// Get all text from first few rows for analysis
+		var allRowsText strings.Builder
+		for i := 0; i < min(5, len(table.Rows)); i++ {
+			allRowsText.WriteString(d.extractRowText(table.Rows[i]))
+			allRowsText.WriteString(" ")
+		}
+		tableText := allRowsText.String()
+
+		// Check for Format 1: Time slots format (look for time patterns like "10:00-14:00")
+		if d.hasTimeSlots(tableText) {
+			// Verify it's really a time slots table by checking header
+			if tableIdx == 0 || d.hasTimeSlots(d.extractRowText(table.Rows[0])) {
+				return FormatTimeSlots, nil
+			}
+		}
+
+		// Check for Format 2: У/В designation (check multiple rows)
+		designationCount := 0
+		for i := 1; i < min(10, len(table.Rows)); i++ {
+			rowText := d.extractRowText(table.Rows[i])
+			if d.hasDesignationInRow(rowText) {
+				designationCount++
+			}
+		}
+		if designationCount >= 2 {
+			return FormatDesignation, nil
+		}
+
+		// Check for Format 3: Calendar grid (header with numbers 1-31)
+		if d.hasCalendarGrid(table.Rows[0]) {
+			return FormatCalendarGrid, nil
+		}
 	}
 
-	// Get first few rows for analysis
-	headerRow := table.Rows[0]
-	firstDataRow := table.Rows[1]
-
-	headerText := d.extractRowText(headerRow)
-	dataText := d.extractRowText(firstDataRow)
-
-	// Check for Format 1: Time slots format
-	if d.hasTimeSlots(headerText) {
-		return FormatTimeSlots, nil
-	}
-
-	// Check for Format 2: У/В designation
-	if d.hasDesignation(dataText) {
+	// If no specific format detected, try to determine based on structure
+	// If there are tables, assume the most common format (designation)
+	if len(doc.Tables) > 0 && len(doc.Tables[0].Rows) >= 2 {
+		// Default to designation format if we have a table with data
 		return FormatDesignation, nil
 	}
 
-	// Check for Format 3: Calendar grid
-	if d.hasCalendarGrid(headerRow) {
-		return FormatCalendarGrid, nil
-	}
-
-	return FormatUnknown, fmt.Errorf("unable to detect table format")
+	return FormatUnknown, fmt.Errorf("unable to detect table format (found %d tables)", len(doc.Tables))
 }
 
-// hasTimeSlots checks if header has time slot columns
-func (d *TableDetector) hasTimeSlots(headerText string) bool {
+// hasTimeSlots checks if text has time slot patterns
+func (d *TableDetector) hasTimeSlots(text string) bool {
 	// Format 1 has columns like "10:00-14:00", "14:00-18:00"
-	return d.timePattern.MatchString(headerText)
+	matches := d.timePattern.FindAllString(text, -1)
+	return len(matches) >= 1
+}
+
+// hasDesignationInRow checks if a single row has У/В markers
+func (d *TableDetector) hasDesignationInRow(rowText string) bool {
+	normalized := strings.ToUpper(rowText)
+	countU := strings.Count(normalized, "У")
+	countV := strings.Count(normalized, "В")
+	// Row should have at least a few markers to be considered designation format
+	return (countU + countV) >= 2
 }
 
 // hasDesignation checks if row has У/В designation
@@ -96,21 +125,21 @@ func (d *TableDetector) hasDesignation(rowText string) bool {
 func (d *TableDetector) hasCalendarGrid(headerRow DocxRow) bool {
 	cells := headerRow.Cells
 
-	// Calendar grid typically has 31+ columns (dates)
-	if len(cells) < 20 {
+	// Calendar grid typically has many columns (dates)
+	if len(cells) < 10 {
 		return false
 	}
 
-	// Check if first cells contain numbers 1, 2, 3...
+	// Check if cells contain sequential numbers
 	numberCount := 0
-	for i := 0; i < min(10, len(cells)); i++ {
+	for i := 0; i < min(15, len(cells)); i++ {
 		cellText := strings.TrimSpace(cells[i].GetText())
 		if matched, _ := regexp.MatchString(`^\d{1,2}$`, cellText); matched {
 			numberCount++
 		}
 	}
 
-	// At least 5 out of first 10 should be numbers
+	// At least 5 numbers found
 	return numberCount >= 5
 }
 
@@ -146,6 +175,14 @@ func (d *TableDetector) ExtractMonthYear(doc *DocxDocument) (time.Month, int, er
 			month, year, ok := d.parseMonthYear(text)
 			if ok {
 				return month, year, nil
+			}
+			// Also check individual cells
+			for _, cell := range row.Cells {
+				cellText := cell.GetText()
+				month, year, ok := d.parseMonthYear(cellText)
+				if ok {
+					return month, year, nil
+				}
 			}
 		}
 	}
