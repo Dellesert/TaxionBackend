@@ -208,6 +208,11 @@ func (p *ScheduleParser) parseDesignationFormat(doc *DocxDocument, result *Parse
 			continue
 		}
 
+		// Skip if first column looks like a date (table might be transposed)
+		if !p.looksLikeName(userName) {
+			continue
+		}
+
 		// Track user
 		if _, exists := result.Users[userName]; !exists {
 			result.Users[userName] = &models.ImportedUser{
@@ -274,15 +279,55 @@ func (p *ScheduleParser) parseTimeSlots(headerRow DocxRow) ([]*TimeSlot, error) 
 	cells := headerRow.Cells
 	slots := make([]*TimeSlot, 0)
 
+	// Patterns for time slots:
+	// 1. "10:00-14:00" or "10.00-14.00"
+	timePattern1 := regexp.MustCompile(`(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})`)
+	// 2. "С 9 до 14 часов" or "с 9 до 14"
+	timePattern2 := regexp.MustCompile(`(?i)[сc]\s*(\d{1,2})\s*(?:[:.](\d{2}))?\s*до\s*(\d{1,2})\s*(?:[:.](\d{2}))?`)
+	// 3. "9:00 - 14:00" with spaces
+	timePattern3 := regexp.MustCompile(`(\d{1,2})\s*[-–—]\s*(\d{1,2})`)
+
 	for i := 1; i < len(cells); i++ { // Skip first column (dates)
 		cellText := cells[i].GetText()
-		matches := p.timePattern.FindStringSubmatch(cellText)
+		var slot *TimeSlot
 
-		if len(matches) >= 5 {
-			slot := &TimeSlot{
+		// Try pattern 1: "10:00-14:00"
+		if matches := timePattern1.FindStringSubmatch(cellText); len(matches) >= 5 {
+			slot = &TimeSlot{
 				Start: fmt.Sprintf("%02s:%02s", matches[1], matches[2]),
 				End:   fmt.Sprintf("%02s:%02s", matches[3], matches[4]),
 			}
+		}
+
+		// Try pattern 2: "С 9 до 14 часов"
+		if slot == nil {
+			if matches := timePattern2.FindStringSubmatch(cellText); len(matches) >= 4 {
+				startMin := "00"
+				endMin := "00"
+				if len(matches) > 2 && matches[2] != "" {
+					startMin = matches[2]
+				}
+				if len(matches) > 4 && matches[4] != "" {
+					endMin = matches[4]
+				}
+				slot = &TimeSlot{
+					Start: fmt.Sprintf("%02s:%s", matches[1], startMin),
+					End:   fmt.Sprintf("%02s:%s", matches[3], endMin),
+				}
+			}
+		}
+
+		// Try pattern 3: simple "9-14" (hours only)
+		if slot == nil {
+			if matches := timePattern3.FindStringSubmatch(cellText); len(matches) >= 3 {
+				slot = &TimeSlot{
+					Start: fmt.Sprintf("%02s:00", matches[1]),
+					End:   fmt.Sprintf("%02s:00", matches[2]),
+				}
+			}
+		}
+
+		if slot != nil {
 			slots = append(slots, slot)
 		}
 	}
@@ -325,7 +370,32 @@ func (p *ScheduleParser) parseDateHeader(headerRow DocxRow, month time.Month, ye
 
 // parseDate parses date from text
 func (p *ScheduleParser) parseDate(text string, month time.Month, year int) (time.Time, bool) {
-	// Try to extract day number
+	text = strings.TrimSpace(text)
+
+	// Try to parse full date format "DD.MM.YYYY"
+	fullDatePattern := regexp.MustCompile(`^(\d{1,2})\.(\d{1,2})\.(\d{4})$`)
+	if matches := fullDatePattern.FindStringSubmatch(text); len(matches) >= 4 {
+		var day, mon, yr int
+		fmt.Sscanf(matches[1], "%d", &day)
+		fmt.Sscanf(matches[2], "%d", &mon)
+		fmt.Sscanf(matches[3], "%d", &yr)
+		if day >= 1 && day <= 31 && mon >= 1 && mon <= 12 {
+			return time.Date(yr, time.Month(mon), day, 0, 0, 0, 0, time.Local), true
+		}
+	}
+
+	// Try to parse "DD.MM" format
+	shortDatePattern := regexp.MustCompile(`^(\d{1,2})\.(\d{1,2})$`)
+	if matches := shortDatePattern.FindStringSubmatch(text); len(matches) >= 3 {
+		var day, mon int
+		fmt.Sscanf(matches[1], "%d", &day)
+		fmt.Sscanf(matches[2], "%d", &mon)
+		if day >= 1 && day <= 31 && mon >= 1 && mon <= 12 {
+			return time.Date(year, time.Month(mon), day, 0, 0, 0, 0, time.Local), true
+		}
+	}
+
+	// Try to extract just day number
 	var day int
 	if n, err := fmt.Sscanf(text, "%d", &day); n == 1 && err == nil {
 		if day >= 1 && day <= 31 {
@@ -345,7 +415,7 @@ func (p *ScheduleParser) extractNames(text string) []string {
 	names := make([]string, 0)
 	for _, part := range parts {
 		name := strings.TrimSpace(part)
-		if name != "" && !p.isIgnoredText(name) {
+		if name != "" && !p.isIgnoredText(name) && p.looksLikeName(name) {
 			names = append(names, name)
 		}
 	}
@@ -353,9 +423,45 @@ func (p *ScheduleParser) extractNames(text string) []string {
 	return names
 }
 
+// looksLikeName checks if text looks like a person's name (not a date or number)
+func (p *ScheduleParser) looksLikeName(text string) bool {
+	// Skip if it's just a number
+	if matched, _ := regexp.MatchString(`^\d+$`, text); matched {
+		return false
+	}
+
+	// Skip if it looks like a date (DD.MM.YYYY or DD.MM or DD/MM/YYYY etc)
+	datePatterns := []string{
+		`^\d{1,2}\.\d{1,2}\.\d{2,4}$`,  // 19.01.2026
+		`^\d{1,2}\.\d{1,2}$`,            // 19.01
+		`^\d{1,2}/\d{1,2}/\d{2,4}$`,     // 19/01/2026
+		`^\d{1,2}-\d{1,2}-\d{2,4}$`,     // 19-01-2026
+		`^\d{1,2}\s+(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)`,
+	}
+
+	textLower := strings.ToLower(text)
+	for _, pattern := range datePatterns {
+		if matched, _ := regexp.MatchString(pattern, textLower); matched {
+			return false
+		}
+	}
+
+	// A name should contain at least one letter
+	if matched, _ := regexp.MatchString(`[a-zA-Zа-яА-ЯёЁ]`, text); !matched {
+		return false
+	}
+
+	// Skip very short strings (likely not names)
+	if len([]rune(text)) < 2 {
+		return false
+	}
+
+	return true
+}
+
 // isIgnoredText checks if text should be ignored (not a name)
 func (p *ScheduleParser) isIgnoredText(text string) bool {
-	ignored := []string{"у", "в", "-", "–", "—"}
+	ignored := []string{"у", "в", "-", "–", "—", "пн", "вт", "ср", "чт", "пт", "сб", "вс"}
 	lower := strings.ToLower(text)
 
 	for _, ign := range ignored {

@@ -31,7 +31,8 @@ type TableDetector struct {
 func NewTableDetector() *TableDetector {
 	return &TableDetector{
 		monthPattern: regexp.MustCompile(`(?i)(январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\s*(\d{4})`),
-		timePattern:  regexp.MustCompile(`\d{1,2}[:\.]\d{2}\s*[-–—]\s*\d{1,2}[:\.]\d{2}`),
+		// Matches both "10:00-14:00" and "С 9 до 14 часов"
+		timePattern: regexp.MustCompile(`(\d{1,2}[:\.]\d{2}\s*[-–—]\s*\d{1,2}[:\.]\d{2})|([сСcC]\s*\d{1,2}\s*до\s*\d{1,2})`),
 	}
 }
 
