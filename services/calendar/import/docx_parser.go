@@ -293,26 +293,33 @@ func (p *ScheduleParser) parseTimeSlots(headerRow DocxRow) ([]*TimeSlot, error) 
 
 		// Try pattern 1: "10:00-14:00"
 		if matches := timePattern1.FindStringSubmatch(cellText); len(matches) >= 5 {
+			var startH, startM, endH, endM int
+			fmt.Sscanf(matches[1], "%d", &startH)
+			fmt.Sscanf(matches[2], "%d", &startM)
+			fmt.Sscanf(matches[3], "%d", &endH)
+			fmt.Sscanf(matches[4], "%d", &endM)
 			slot = &TimeSlot{
-				Start: fmt.Sprintf("%02s:%02s", matches[1], matches[2]),
-				End:   fmt.Sprintf("%02s:%02s", matches[3], matches[4]),
+				Start: fmt.Sprintf("%02d:%02d", startH, startM),
+				End:   fmt.Sprintf("%02d:%02d", endH, endM),
 			}
 		}
 
 		// Try pattern 2: "С 9 до 14 часов"
 		if slot == nil {
 			if matches := timePattern2.FindStringSubmatch(cellText); len(matches) >= 4 {
-				startMin := "00"
-				endMin := "00"
+				var startH, endH int
+				var startM, endM int
+				fmt.Sscanf(matches[1], "%d", &startH)
+				fmt.Sscanf(matches[3], "%d", &endH)
 				if len(matches) > 2 && matches[2] != "" {
-					startMin = matches[2]
+					fmt.Sscanf(matches[2], "%d", &startM)
 				}
 				if len(matches) > 4 && matches[4] != "" {
-					endMin = matches[4]
+					fmt.Sscanf(matches[4], "%d", &endM)
 				}
 				slot = &TimeSlot{
-					Start: fmt.Sprintf("%02s:%s", matches[1], startMin),
-					End:   fmt.Sprintf("%02s:%s", matches[3], endMin),
+					Start: fmt.Sprintf("%02d:%02d", startH, startM),
+					End:   fmt.Sprintf("%02d:%02d", endH, endM),
 				}
 			}
 		}
@@ -320,9 +327,12 @@ func (p *ScheduleParser) parseTimeSlots(headerRow DocxRow) ([]*TimeSlot, error) 
 		// Try pattern 3: simple "9-14" (hours only)
 		if slot == nil {
 			if matches := timePattern3.FindStringSubmatch(cellText); len(matches) >= 3 {
+				var startH, endH int
+				fmt.Sscanf(matches[1], "%d", &startH)
+				fmt.Sscanf(matches[2], "%d", &endH)
 				slot = &TimeSlot{
-					Start: fmt.Sprintf("%02s:00", matches[1]),
-					End:   fmt.Sprintf("%02s:00", matches[2]),
+					Start: fmt.Sprintf("%02d:00", startH),
+					End:   fmt.Sprintf("%02d:00", endH),
 				}
 			}
 		}

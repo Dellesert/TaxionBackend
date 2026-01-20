@@ -42,6 +42,9 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		return nil, err
 	}
 
+	// Extract shift times from parsed entries
+	morningStart, morningEnd, eveningStart, eveningEnd := u.extractShiftTimes(parsed)
+
 	// Create schedule
 	schedule := &models.Schedule{
 		Title:         req.Title,
@@ -53,10 +56,10 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		EndDate:       req.EndDate,
 		IsActive:      true,
 		ImportedFrom:  &metadata.FileName,
-		MorningStart:  "10:00",
-		MorningEnd:    "14:00",
-		EveningStart:  "14:00",
-		EveningEnd:    "18:00",
+		MorningStart:  morningStart,
+		MorningEnd:    morningEnd,
+		EveningStart:  eveningStart,
+		EveningEnd:    eveningEnd,
 	}
 
 	if err := u.scheduleRepo.CreateSchedule(schedule); err != nil {
@@ -104,6 +107,9 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		return nil, err
 	}
 
+	// Extract shift times from parsed entries
+	morningStart, morningEnd, eveningStart, eveningEnd := u.extractShiftTimes(parsed)
+
 	// Create preview schedule (not saved)
 	schedule := &models.Schedule{
 		Title:        req.Title,
@@ -114,10 +120,10 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
 		IsActive:     true,
-		MorningStart: "10:00",
-		MorningEnd:   "14:00",
-		EveningStart: "14:00",
-		EveningEnd:   "18:00",
+		MorningStart: morningStart,
+		MorningEnd:   morningEnd,
+		EveningStart: eveningStart,
+		EveningEnd:   eveningEnd,
 	}
 
 	// Build user map for quick lookup
@@ -224,4 +230,40 @@ func (u *scheduleImportUsecase) parseTimeOnDate(date time.Time, timeStr string) 
 	fmt.Sscanf(timeStr, "%d:%d", &hour, &minute)
 
 	return time.Date(date.Year(), date.Month(), date.Day(), hour, minute, 0, 0, date.Location())
+}
+
+// extractShiftTimes extracts morning and evening shift times from parsed entries
+func (u *scheduleImportUsecase) extractShiftTimes(parsed *importschedule.ParsedSchedule) (morningStart, morningEnd, eveningStart, eveningEnd string) {
+	// Default values
+	morningStart = "09:00"
+	morningEnd = "14:00"
+	eveningStart = "14:00"
+	eveningEnd = "19:00"
+
+	foundMorning := false
+	foundEvening := false
+
+	// Look for actual times from parsed entries
+	for _, entry := range parsed.Entries {
+		switch entry.ShiftType {
+		case models.ShiftMorning:
+			if !foundMorning && entry.StartTime != "" && entry.EndTime != "" {
+				morningStart = entry.StartTime
+				morningEnd = entry.EndTime
+				foundMorning = true
+			}
+		case models.ShiftEvening:
+			if !foundEvening && entry.StartTime != "" && entry.EndTime != "" {
+				eveningStart = entry.StartTime
+				eveningEnd = entry.EndTime
+				foundEvening = true
+			}
+		}
+		// Once we have both, we can stop
+		if foundMorning && foundEvening {
+			break
+		}
+	}
+
+	return morningStart, morningEnd, eveningStart, eveningEnd
 }
