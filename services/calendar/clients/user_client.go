@@ -104,7 +104,16 @@ func (c *UserClient) GetUserByID(id uint) (*UserInfo, error) {
 	return user, nil
 }
 
-// GetAllUsers retrieves all users from user service
+// UserForMatching represents user data needed for schedule import name matching
+type UserForMatching struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
+	Email     string `json:"email"`
+}
+
+// GetAllUsers retrieves all users from user service for name matching
 func (c *UserClient) GetAllUsers() ([]*sharedmodels.User, error) {
 	url := fmt.Sprintf("%s/internal/users/all", c.baseURL)
 
@@ -120,12 +129,22 @@ func (c *UserClient) GetAllUsers() ([]*sharedmodels.User, error) {
 	}
 
 	var response struct {
-		Users []*sharedmodels.User `json:"users"`
+		Users []*UserForMatching `json:"users"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return response.Users, nil
+	// Convert to sharedmodels.User for compatibility with existing code
+	users := make([]*sharedmodels.User, len(response.Users))
+	for i, u := range response.Users {
+		users[i] = &sharedmodels.User{
+			BaseModel: sharedmodels.BaseModel{ID: u.ID},
+			Name:      u.Name,
+			Email:     u.Email,
+		}
+	}
+
+	return users, nil
 }

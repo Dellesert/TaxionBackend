@@ -692,6 +692,37 @@ func sortByDepartmentHeadFirst(users []*models.UserResponse) []*models.UserRespo
 	return result
 }
 
+// GetAllUsers retrieves all users for internal service-to-service communication
+// GET /internal/users/all
+func (h *UserHandler) GetAllUsers(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get all users with a large limit
+	users, _, err := h.userUsecase.GetUsers(10000, 0)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get all users")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get users",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"count":      len(users),
+	}).Info("All users retrieved successfully (internal)")
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":      users,
+		"request_id": requestID,
+	})
+}
+
 // ResetOnlineStatuses resets all online user statuses to offline (internal endpoint)
 // POST /internal/users/reset-online-statuses
 func (h *UserHandler) ResetOnlineStatuses(c *gin.Context) {

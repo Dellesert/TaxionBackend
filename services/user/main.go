@@ -372,6 +372,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		internal.GET("/users/:id", userHandler.GetUser)
 		// Get multiple users by IDs for task-service
 		internal.GET("/users", userHandler.GetUsersByIDs)
+		// Get all users for calendar-service (schedule import matching)
+		internal.GET("/users/all", userHandler.GetAllUsers)
 		// Get users by department for poll-service
 		internal.GET("/users/department/:department_id", userHandler.GetUsersByDepartment)
 		// Session management (for admin/analytics service)
