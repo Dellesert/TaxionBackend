@@ -120,12 +120,22 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		EveningEnd:   "18:00",
 	}
 
-	// Create preview entries
+	// Build user map for quick lookup
+	userMap := make(map[uint]*sharedmodels.User)
+	for _, user := range allUsers {
+		userMap[user.ID] = user
+	}
+
+	// Create preview entries with user data
 	entries, warnings := u.createEntriesFromParsed(userID, 0, parsed)
 
-	// Convert to response format
+	// Convert to response format with user data
 	entryResponses := make([]*models.ScheduleEntryResponse, len(entries))
 	for i, entry := range entries {
+		// Attach user data for preview
+		if user, exists := userMap[entry.UserID]; exists {
+			entry.User = user
+		}
 		entryResponses[i] = entry.ToResponse()
 	}
 
