@@ -475,14 +475,26 @@ func (p *ScheduleParser) isIgnoredText(text string) bool {
 
 // determineShiftType determines shift type from times
 func (p *ScheduleParser) determineShiftType(startTime, endTime string) models.ShiftType {
-	// Standard shifts
-	if startTime == "10:00" && endTime == "14:00" {
+	// Parse start and end hours
+	var startHour, endHour int
+	fmt.Sscanf(startTime, "%d:", &startHour)
+	fmt.Sscanf(endTime, "%d:", &endHour)
+
+	// Morning shift: starts early (before 12:00), ends before or around 15:00
+	// Examples: 09:00-14:00, 10:00-14:00, 08:00-13:00
+	if startHour >= 7 && startHour <= 11 && endHour >= 12 && endHour <= 15 {
 		return models.ShiftMorning
 	}
-	if startTime == "14:00" && endTime == "18:00" {
+
+	// Evening shift: starts around midday (12:00-15:00), ends in evening (17:00-21:00)
+	// Examples: 14:00-18:00, 14:00-19:00, 13:00-18:00
+	if startHour >= 12 && startHour <= 15 && endHour >= 17 && endHour <= 21 {
 		return models.ShiftEvening
 	}
-	if startTime == "10:00" && endTime == "18:00" {
+
+	// Full day: starts early, ends late (8+ hours)
+	// Examples: 09:00-18:00, 10:00-19:00
+	if startHour >= 7 && startHour <= 11 && endHour >= 17 && endHour <= 21 {
 		return models.ShiftFullDay
 	}
 
@@ -515,11 +527,47 @@ func (p *ScheduleParser) findBestMatch(name string, users []*sharedmodels.User) 
 	bestScore := 0.0
 
 	nameNorm := p.normalizeName(name)
+	nameParts := strings.Fields(nameNorm)
 
 	for _, user := range users {
-		// Try matching against user name
 		userName := p.normalizeName(user.Name)
+		userParts := strings.Fields(userName)
+
+		// Method 1: Full string similarity
 		score := p.calculateSimilarity(nameNorm, userName)
+
+		// Method 2: Check if document name is contained in user name (surname match)
+		// e.g., "Козлов" matches "Козлов Иван Петрович"
+		if score < MinMatchScore {
+			for _, userPart := range userParts {
+				partScore := p.calculateSimilarity(nameNorm, userPart)
+				if partScore > score {
+					score = partScore
+				}
+			}
+		}
+
+		// Method 3: Check if user name part is contained in document name
+		// e.g., "Козлов И.П." matches "Козлов"
+		if score < MinMatchScore {
+			for _, namePart := range nameParts {
+				for _, userPart := range userParts {
+					partScore := p.calculateSimilarity(namePart, userPart)
+					if partScore > score {
+						score = partScore
+					}
+				}
+			}
+		}
+
+		// Method 4: Check if name starts with same letters (handles initials)
+		// e.g., "Козлов" matches "Козлов И." or "К. Иванов"
+		if score < MinMatchScore && len(userParts) > 0 && len(nameParts) > 0 {
+			// Compare first parts (usually surname)
+			if strings.HasPrefix(userParts[0], nameParts[0]) || strings.HasPrefix(nameParts[0], userParts[0]) {
+				score = 0.8 // High confidence for prefix match
+			}
+		}
 
 		if score > bestScore && score >= MinMatchScore {
 			bestScore = score
