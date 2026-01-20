@@ -5,8 +5,6 @@ import (
 	"regexp"
 	"strings"
 	"time"
-
-	"github.com/unidoc/unioffice/document"
 )
 
 // TableFormat represents the detected table format type
@@ -38,21 +36,20 @@ func NewTableDetector() *TableDetector {
 }
 
 // DetectFormat detects the table format in a Word document
-func (d *TableDetector) DetectFormat(doc *document.Document) (TableFormat, error) {
-	tables := doc.Tables()
-	if len(tables) == 0 {
+func (d *TableDetector) DetectFormat(doc *DocxDocument) (TableFormat, error) {
+	if len(doc.Tables) == 0 {
 		return FormatUnknown, fmt.Errorf("no tables found in document")
 	}
 
 	// Analyze first table (main schedule table)
-	table := tables[0]
-	if len(table.Rows()) < 2 {
+	table := doc.Tables[0]
+	if len(table.Rows) < 2 {
 		return FormatUnknown, fmt.Errorf("table has insufficient rows")
 	}
 
 	// Get first few rows for analysis
-	headerRow := table.Rows()[0]
-	firstDataRow := table.Rows()[1]
+	headerRow := table.Rows[0]
+	firstDataRow := table.Rows[1]
 
 	headerText := d.extractRowText(headerRow)
 	dataText := d.extractRowText(firstDataRow)
@@ -96,8 +93,8 @@ func (d *TableDetector) hasDesignation(rowText string) bool {
 }
 
 // hasCalendarGrid checks if header is a calendar grid (1-31 columns)
-func (d *TableDetector) hasCalendarGrid(headerRow document.Row) bool {
-	cells := headerRow.Cells()
+func (d *TableDetector) hasCalendarGrid(headerRow DocxRow) bool {
+	cells := headerRow.Cells
 
 	// Calendar grid typically has 31+ columns (dates)
 	if len(cells) < 20 {
@@ -107,7 +104,7 @@ func (d *TableDetector) hasCalendarGrid(headerRow document.Row) bool {
 	// Check if first cells contain numbers 1, 2, 3...
 	numberCount := 0
 	for i := 0; i < min(10, len(cells)); i++ {
-		cellText := strings.TrimSpace(d.extractCellText(cells[i]))
+		cellText := strings.TrimSpace(cells[i].GetText())
 		if matched, _ := regexp.MatchString(`^\d{1,2}$`, cellText); matched {
 			numberCount++
 		}
@@ -118,44 +115,33 @@ func (d *TableDetector) hasCalendarGrid(headerRow document.Row) bool {
 }
 
 // extractRowText extracts all text from a row
-func (d *TableDetector) extractRowText(row document.Row) string {
+func (d *TableDetector) extractRowText(row DocxRow) string {
 	var text strings.Builder
-	for _, cell := range row.Cells() {
-		text.WriteString(d.extractCellText(cell))
+	for _, cell := range row.Cells {
+		text.WriteString(cell.GetText())
 		text.WriteString(" ")
 	}
 	return text.String()
 }
 
 // extractCellText extracts text from a cell
-func (d *TableDetector) extractCellText(cell document.Cell) string {
-	var text strings.Builder
-	for _, para := range cell.Paragraphs() {
-		for _, run := range para.Runs() {
-			text.WriteString(run.Text())
-		}
-	}
-	return text.String()
+func (d *TableDetector) extractCellText(cell DocxCell) string {
+	return cell.GetText()
 }
 
 // ExtractMonthYear extracts month and year from document text
-func (d *TableDetector) ExtractMonthYear(doc *document.Document) (time.Month, int, error) {
+func (d *TableDetector) ExtractMonthYear(doc *DocxDocument) (time.Month, int, error) {
 	// Search in paragraphs
-	for _, para := range doc.Paragraphs() {
-		text := ""
-		for _, run := range para.Runs() {
-			text += run.Text()
-		}
-
-		month, year, ok := d.parseMonthYear(text)
+	for _, para := range doc.Paragraphs {
+		month, year, ok := d.parseMonthYear(para.Text)
 		if ok {
 			return month, year, nil
 		}
 	}
 
 	// Search in tables
-	for _, table := range doc.Tables() {
-		for _, row := range table.Rows() {
+	for _, table := range doc.Tables {
+		for _, row := range table.Rows {
 			text := d.extractRowText(row)
 			month, year, ok := d.parseMonthYear(text)
 			if ok {

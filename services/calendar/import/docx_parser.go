@@ -1,14 +1,12 @@
 package importschedule
 
 import (
-	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/agnivade/levenshtein"
-	"github.com/unidoc/unioffice/document"
 
 	"tachyon-messenger/services/calendar/models"
 	sharedmodels "tachyon-messenger/shared/models"
@@ -54,8 +52,8 @@ func NewScheduleParser() *ScheduleParser {
 
 // ParseDocument parses a Word document into schedule data
 func (p *ScheduleParser) ParseDocument(content []byte) (*ParsedSchedule, error) {
-	// Open document
-	doc, err := document.Read(bytes.NewReader(content), int64(len(content)))
+	// Open document using our custom DOCX reader
+	doc, err := ReadDocx(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read document: %w", err)
 	}
@@ -101,14 +99,13 @@ func (p *ScheduleParser) ParseDocument(content []byte) (*ParsedSchedule, error) 
 }
 
 // parseTimeSlotsFormat parses Format 1: Time slots with names
-func (p *ScheduleParser) parseTimeSlotsFormat(doc *document.Document, result *ParsedSchedule) error {
-	tables := doc.Tables()
-	if len(tables) == 0 {
+func (p *ScheduleParser) parseTimeSlotsFormat(doc *DocxDocument, result *ParsedSchedule) error {
+	if len(doc.Tables) == 0 {
 		return fmt.Errorf("no tables found")
 	}
 
-	table := tables[0]
-	rows := table.Rows()
+	table := doc.Tables[0]
+	rows := table.Rows
 	if len(rows) < 2 {
 		return fmt.Errorf("insufficient rows in table")
 	}
@@ -123,14 +120,14 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *document.Document, result *Pa
 	// Parse data rows
 	for rowIdx := 1; rowIdx < len(rows); rowIdx++ {
 		row := rows[rowIdx]
-		cells := row.Cells()
+		cells := row.Cells
 
 		if len(cells) < 2 {
 			continue
 		}
 
 		// First column: date
-		dateText := strings.TrimSpace(p.detector.extractCellText(cells[0]))
+		dateText := strings.TrimSpace(cells[0].GetText())
 		if dateText == "" {
 			continue
 		}
@@ -143,7 +140,7 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *document.Document, result *Pa
 
 		// Process each time slot
 		for colIdx := 1; colIdx < len(cells) && colIdx <= len(timeSlots); colIdx++ {
-			cellText := strings.TrimSpace(p.detector.extractCellText(cells[colIdx]))
+			cellText := strings.TrimSpace(cells[colIdx].GetText())
 			if cellText == "" {
 				continue
 			}
@@ -178,14 +175,13 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *document.Document, result *Pa
 }
 
 // parseDesignationFormat parses Format 2: У/В designation
-func (p *ScheduleParser) parseDesignationFormat(doc *document.Document, result *ParsedSchedule) error {
-	tables := doc.Tables()
-	if len(tables) == 0 {
+func (p *ScheduleParser) parseDesignationFormat(doc *DocxDocument, result *ParsedSchedule) error {
+	if len(doc.Tables) == 0 {
 		return fmt.Errorf("no tables found")
 	}
 
-	table := tables[0]
-	rows := table.Rows()
+	table := doc.Tables[0]
+	rows := table.Rows
 	if len(rows) < 2 {
 		return fmt.Errorf("insufficient rows in table")
 	}
@@ -200,14 +196,14 @@ func (p *ScheduleParser) parseDesignationFormat(doc *document.Document, result *
 	// Parse data rows
 	for rowIdx := 1; rowIdx < len(rows); rowIdx++ {
 		row := rows[rowIdx]
-		cells := row.Cells()
+		cells := row.Cells
 
 		if len(cells) < 2 {
 			continue
 		}
 
 		// First column: name
-		userName := strings.TrimSpace(p.detector.extractCellText(cells[0]))
+		userName := strings.TrimSpace(cells[0].GetText())
 		if userName == "" {
 			continue
 		}
@@ -222,7 +218,7 @@ func (p *ScheduleParser) parseDesignationFormat(doc *document.Document, result *
 
 		// Process each date column
 		for colIdx := 1; colIdx < len(cells) && colIdx <= len(dates); colIdx++ {
-			cellText := strings.ToUpper(strings.TrimSpace(p.detector.extractCellText(cells[colIdx])))
+			cellText := strings.ToUpper(strings.TrimSpace(cells[colIdx].GetText()))
 			if cellText == "" {
 				continue
 			}
@@ -261,7 +257,7 @@ func (p *ScheduleParser) parseDesignationFormat(doc *document.Document, result *
 }
 
 // parseCalendarGridFormat parses Format 3: Calendar grid
-func (p *ScheduleParser) parseCalendarGridFormat(doc *document.Document, result *ParsedSchedule) error {
+func (p *ScheduleParser) parseCalendarGridFormat(doc *DocxDocument, result *ParsedSchedule) error {
 	// Similar to parseDesignationFormat but with different interpretation
 	// For now, treat it as designation format
 	return p.parseDesignationFormat(doc, result)
@@ -274,12 +270,12 @@ type TimeSlot struct {
 }
 
 // parseTimeSlots parses time slots from header row
-func (p *ScheduleParser) parseTimeSlots(headerRow document.Row) ([]*TimeSlot, error) {
-	cells := headerRow.Cells()
+func (p *ScheduleParser) parseTimeSlots(headerRow DocxRow) ([]*TimeSlot, error) {
+	cells := headerRow.Cells
 	slots := make([]*TimeSlot, 0)
 
 	for i := 1; i < len(cells); i++ { // Skip first column (dates)
-		cellText := p.detector.extractCellText(cells[i])
+		cellText := cells[i].GetText()
 		matches := p.timePattern.FindStringSubmatch(cellText)
 
 		if len(matches) >= 5 {
@@ -299,12 +295,12 @@ func (p *ScheduleParser) parseTimeSlots(headerRow document.Row) ([]*TimeSlot, er
 }
 
 // parseDateHeader parses dates from header row (Format 2/3)
-func (p *ScheduleParser) parseDateHeader(headerRow document.Row, month time.Month, year int) ([]time.Time, error) {
-	cells := headerRow.Cells()
+func (p *ScheduleParser) parseDateHeader(headerRow DocxRow, month time.Month, year int) ([]time.Time, error) {
+	cells := headerRow.Cells
 	dates := make([]time.Time, 0)
 
 	for i := 1; i < len(cells); i++ { // Skip first column (names)
-		cellText := strings.TrimSpace(p.detector.extractCellText(cells[i]))
+		cellText := strings.TrimSpace(cells[i].GetText())
 
 		// Try to parse as day number
 		var day int
