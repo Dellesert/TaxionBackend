@@ -228,12 +228,17 @@ services:
       - PORT=8084
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - GIN_MODE=${GIN_MODE:-debug}
+      # Service URLs for inter-service communication
+      - USER_SERVICE_URL=http://user-service:8081
+      - FILE_SERVICE_URL=http://file-service:8088
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       user-service:
+        condition: service_healthy
+      file-service:
         condition: service_healthy
     networks:
       - tachyon-network

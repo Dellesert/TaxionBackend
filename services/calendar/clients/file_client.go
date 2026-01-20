@@ -34,7 +34,7 @@ type FileMetadata struct {
 func NewFileClient() *FileClient {
 	baseURL := os.Getenv("FILE_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://file-service:8084" // Default file service URL in Docker (port 8084)
+		baseURL = "http://file-service:8088" // Default file service URL in Docker (port 8088)
 	}
 
 	return &FileClient{
