@@ -462,6 +462,12 @@ func (u *FileUsecase) GetFileByName(fileName string, userID uint) (*models.File,
 	return file, nil
 }
 
+// GetFileByNameInternal retrieves a file by filename without access control check
+// Used for internal service-to-service communication
+func (u *FileUsecase) GetFileByNameInternal(fileName string) (*models.File, error) {
+	return u.repo.GetByFileName(fileName)
+}
+
 // GetPublicFileByName retrieves a public file by filename (no auth required)
 // If the filename ends with _thumb, it will try to find the original file and return it with thumbnail path
 func (u *FileUsecase) GetPublicFileByName(fileName string) (*models.File, error) {

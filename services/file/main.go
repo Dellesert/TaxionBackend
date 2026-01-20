@@ -235,6 +235,8 @@ func setupRoutes(
 	{
 		internal.GET("/stats", internalHandler.GetFileStats)
 		internal.GET("/:id", fileHandler.GetFileInternal)
+		internal.GET("/by-name/:filename", fileHandler.GetFileByNameInternal)
+		internal.GET("/download/:filename", fileHandler.DownloadFileInternal)
 	}
 
 	return r

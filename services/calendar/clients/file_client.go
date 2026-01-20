@@ -34,7 +34,7 @@ type FileMetadata struct {
 func NewFileClient() *FileClient {
 	baseURL := os.Getenv("FILE_SERVICE_URL")
 	if baseURL == "" {
-		baseURL = "http://localhost:8087" // Default file service URL
+		baseURL = "http://file-service:8084" // Default file service URL in Docker (port 8084)
 	}
 
 	return &FileClient{
@@ -45,16 +45,16 @@ func NewFileClient() *FileClient {
 	}
 }
 
-// GetFileMetadata retrieves file metadata by ID
+// GetFileMetadata retrieves file metadata by filename (UUID) using internal endpoint
 func (c *FileClient) GetFileMetadata(fileID string, userID uint) (*FileMetadata, error) {
-	url := fmt.Sprintf("%s/api/v1/files/%s/metadata", c.baseURL, fileID)
+	// Use internal endpoint for service-to-service communication (by-name)
+	url := fmt.Sprintf("%s/api/v1/internal/files/by-name/%s", c.baseURL, fileID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("X-User-ID", fmt.Sprintf("%d", userID))
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -69,26 +69,44 @@ func (c *FileClient) GetFileMetadata(fileID string, userID uint) (*FileMetadata,
 	}
 
 	var result struct {
-		File *FileMetadata `json:"file"`
+		ID           uint      `json:"id"`
+		FileName     string    `json:"file_name"`
+		OriginalName string    `json:"original_name"`
+		FilePath     string    `json:"file_path"`
+		FileSize     int64     `json:"file_size"`
+		MimeType     string    `json:"mime_type"`
+		FileType     string    `json:"file_type"`
+		FileURL      string    `json:"file_url"`
+		UploadedBy   uint      `json:"uploaded_by"`
+		IsPublic     bool      `json:"is_public"`
+		CreatedAt    time.Time `json:"created_at"`
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return result.File, nil
+	return &FileMetadata{
+		ID:         fmt.Sprintf("%d", result.ID),
+		FileName:   result.FileName,
+		FileSize:   result.FileSize,
+		MimeType:   result.MimeType,
+		UploadedBy: result.UploadedBy,
+		UploadedAt: result.CreatedAt,
+		IsPublic:   result.IsPublic,
+		URL:        result.FileURL,
+	}, nil
 }
 
-// DownloadFile downloads file content by ID
+// DownloadFile downloads file content by filename (UUID) using internal endpoint
 func (c *FileClient) DownloadFile(fileID string, userID uint) ([]byte, error) {
-	url := fmt.Sprintf("%s/api/v1/files/%s/download", c.baseURL, fileID)
+	// Use internal download endpoint with filename (UUID)
+	url := fmt.Sprintf("%s/api/v1/internal/files/download/%s", c.baseURL, fileID)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	req.Header.Set("X-User-ID", fmt.Sprintf("%d", userID))
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -475,3 +475,72 @@ func (h *FileHandler) GetFileInternal(c *gin.Context) {
 	response := file.ToResponse(h.fileUsecase.GetBaseURL())
 	c.JSON(http.StatusOK, response)
 }
+
+// GetFileByNameInternal handles getting file by filename for internal service-to-service communication
+// No authentication required - should only be accessible within Docker network
+// @Summary Get file by filename (Internal)
+// @Description Get file details by filename (UUID) for inter-service communication (no auth required)
+// @Tags internal
+// @Produce json
+// @Param filename path string true "File name (UUID)"
+// @Success 200 {object} models.FileResponse
+// @Failure 404 {object} map[string]interface{}
+// @Router /internal/files/by-name/{filename} [get]
+func (h *FileHandler) GetFileByNameInternal(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	fileName := c.Param("filename")
+	if fileName == "" {
+		apiErr := sharedErrors.BadRequestError("Имя файла обязательно").
+			WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
+	}
+
+	// Get file without access control check (userID=0 means internal call)
+	file, err := h.fileUsecase.GetFileByNameInternal(fileName)
+	if err != nil {
+		apiErr := sharedErrors.FileNotFoundError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
+	}
+
+	// Return response
+	response := file.ToResponse(h.fileUsecase.GetBaseURL())
+	c.JSON(http.StatusOK, response)
+}
+
+// DownloadFileInternal handles file download for internal service-to-service communication
+// No authentication required - should only be accessible within Docker network
+// @Summary Download file (Internal)
+// @Description Download file by filename for inter-service communication (no auth required)
+// @Tags internal
+// @Produce octet-stream
+// @Param filename path string true "File name (UUID)"
+// @Success 200 {file} binary
+// @Failure 404 {object} map[string]interface{}
+// @Router /internal/files/download/{filename} [get]
+func (h *FileHandler) DownloadFileInternal(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	fileName := c.Param("filename")
+	if fileName == "" {
+		apiErr := sharedErrors.BadRequestError("Имя файла обязательно").
+			WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
+	}
+
+	// Get file without access control check
+	file, err := h.fileUsecase.GetFileByNameInternal(fileName)
+	if err != nil {
+		apiErr := sharedErrors.FileNotFoundError().WithRequestID(requestID)
+		c.JSON(apiErr.StatusCode, apiErr)
+		return
+	}
+
+	// Serve the file
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.OriginalName))
+	c.Header("Content-Type", file.MimeType)
+	c.File(file.FilePath)
+}
