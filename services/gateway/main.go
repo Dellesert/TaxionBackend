@@ -210,6 +210,20 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			events.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
 		}
 
+		// Schedule routes - proxy to calendar service
+		schedules := v1.Group("/schedules")
+		{
+			schedules.Any("", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+			schedules.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+		}
+
+		// Schedule template routes - proxy to calendar service
+		scheduleTemplates := v1.Group("/schedule-templates")
+		{
+			scheduleTemplates.Any("", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+			scheduleTemplates.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+		}
+
 		// Poll routes - proxy to poll service
 		polls := v1.Group("/polls")
 		{
