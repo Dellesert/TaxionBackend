@@ -137,11 +137,23 @@ func (c *UserClient) GetAllUsers() ([]*sharedmodels.User, error) {
 	}
 
 	// Convert to sharedmodels.User for compatibility with existing code
+	// Use full name (LastName + FirstName) for better matching if available
 	users := make([]*sharedmodels.User, len(response.Users))
 	for i, u := range response.Users {
+		// Build full name for matching: prefer "LastName FirstName" format
+		// This allows matching "Иванов" from document to "Иванов Иван" in system
+		name := u.Name
+		if u.LastName != "" {
+			if u.FirstName != "" {
+				name = u.LastName + " " + u.FirstName
+			} else {
+				name = u.LastName
+			}
+		}
+
 		users[i] = &sharedmodels.User{
 			BaseModel: sharedmodels.BaseModel{ID: u.ID},
-			Name:      u.Name,
+			Name:      name,
 			Email:     u.Email,
 		}
 	}

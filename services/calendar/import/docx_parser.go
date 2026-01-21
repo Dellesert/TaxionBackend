@@ -543,10 +543,25 @@ func (p *ScheduleParser) findBestMatch(name string, users []*sharedmodels.User) 
 		userName := p.normalizeName(user.Name)
 		userParts := strings.Fields(userName)
 
-		// Method 1: Full string similarity
-		score := p.calculateSimilarity(nameNorm, userName)
+		score := 0.0
 
-		// Method 2: Check if document name is contained in user name (surname match)
+		// Method 1: Exact match of any part (surname match)
+		// e.g., "Иванов" exactly matches any part of "Иванов Иван" or "Иван Иванов"
+		if len(nameParts) > 0 {
+			for _, userPart := range userParts {
+				if nameParts[0] == userPart {
+					score = 1.0 // Exact surname match
+					break
+				}
+			}
+		}
+
+		// Method 2: Full string similarity
+		if score < MinMatchScore {
+			score = p.calculateSimilarity(nameNorm, userName)
+		}
+
+		// Method 3: Check if document name is contained in user name (surname match)
 		// e.g., "Козлов" matches "Козлов Иван Петрович"
 		if score < MinMatchScore {
 			for _, userPart := range userParts {
@@ -557,7 +572,7 @@ func (p *ScheduleParser) findBestMatch(name string, users []*sharedmodels.User) 
 			}
 		}
 
-		// Method 3: Check if user name part is contained in document name
+		// Method 4: Check if user name part is contained in document name
 		// e.g., "Козлов И.П." matches "Козлов"
 		if score < MinMatchScore {
 			for _, namePart := range nameParts {
@@ -570,12 +585,15 @@ func (p *ScheduleParser) findBestMatch(name string, users []*sharedmodels.User) 
 			}
 		}
 
-		// Method 4: Check if name starts with same letters (handles initials)
+		// Method 5: Check if name starts with same letters (handles initials)
 		// e.g., "Козлов" matches "Козлов И." or "К. Иванов"
 		if score < MinMatchScore && len(userParts) > 0 && len(nameParts) > 0 {
-			// Compare first parts (usually surname)
-			if strings.HasPrefix(userParts[0], nameParts[0]) || strings.HasPrefix(nameParts[0], userParts[0]) {
-				score = 0.8 // High confidence for prefix match
+			// Compare with any part (usually surname)
+			for _, userPart := range userParts {
+				if strings.HasPrefix(userPart, nameParts[0]) || strings.HasPrefix(nameParts[0], userPart) {
+					score = 0.8 // High confidence for prefix match
+					break
+				}
 			}
 		}
 
