@@ -656,22 +656,24 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 		return nil, err
 	}
 
-	// Build query for conflicting entries
-	query := r.db.Model(&models.ScheduleEntry{}).
-		Preload("Schedule").
-		Joins("JOIN schedules ON schedules.id = schedule_entries.schedule_id").
-		Where("schedule_entries.user_id = ? AND schedule_entries.date = ?", userID, date).
-		Where("((schedule_entries.start_time < ? AND schedule_entries.end_time > ?) OR (schedule_entries.start_time < ? AND schedule_entries.end_time > ?) OR (schedule_entries.start_time >= ? AND schedule_entries.end_time <= ?))",
-			endTime, startTime, endTime, endTime, startTime, endTime)
-
-	// Exclude compatible schedule types
+	// Build subquery for schedule IDs with incompatible types
+	// Incompatible = NOT in compatibleTypes list (same type is also incompatible)
+	subQuery := r.db.Model(&models.Schedule{}).Select("id")
 	if len(compatibleTypes) > 0 {
-		query = query.Where("schedules.type NOT IN ?", compatibleTypes)
+		subQuery = subQuery.Where("type NOT IN ?", compatibleTypes)
 	}
+	// If no compatible types defined, all schedules are potentially incompatible
+
+	// Build query for conflicting entries
+	query := r.db.Preload("Schedule").
+		Where("user_id = ? AND date = ?", userID, date).
+		Where("((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?) OR (start_time >= ? AND end_time <= ?))",
+			endTime, startTime, endTime, endTime, startTime, endTime).
+		Where("schedule_id IN (?)", subQuery)
 
 	// Exclude entry being updated
 	if excludeEntryID != nil {
-		query = query.Where("schedule_entries.id != ?", *excludeEntryID)
+		query = query.Where("id != ?", *excludeEntryID)
 	}
 
 	var entries []*models.ScheduleEntry
