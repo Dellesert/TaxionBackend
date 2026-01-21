@@ -590,7 +590,8 @@ func (u *scheduleUsecase) parseTimeOnDate(date time.Time, timeStr string) time.T
 	var hour, minute int
 	fmt.Sscanf(timeStr, "%d:%d", &hour, &minute)
 
-	return time.Date(date.Year(), date.Month(), date.Day(), hour, minute, 0, 0, date.Location())
+	// Use local timezone to ensure consistent time display
+	return time.Date(date.Year(), date.Month(), date.Day(), hour, minute, 0, 0, time.Local)
 }
 
 // createEventForScheduleEntry creates a calendar event for a schedule entry

@@ -78,7 +78,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Set environment variables
 ENV GIN_MODE=release
-ENV TZ=UTC
+ENV TZ=Europe/Moscow
 
 # Run the application
 CMD ["./calendar-service"]
