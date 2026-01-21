@@ -133,6 +133,26 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 		return nil, fmt.Errorf("failed to create schedule: %w", err)
 	}
 
+	// For recurring schedules, auto-create a template if not provided
+	if schedule.Mode == models.ScheduleModeRecurring && schedule.TemplateID == nil {
+		template := &models.ScheduleTemplate{
+			Title:        schedule.Title + " (шаблон)",
+			Description:  "Автоматически созданный шаблон для повторяющегося графика",
+			Type:         schedule.Type,
+			CreatedBy:    userID,
+			DepartmentID: schedule.DepartmentID,
+			IsActive:     true,
+		}
+		if err := u.scheduleRepo.CreateScheduleTemplate(template); err != nil {
+			return nil, fmt.Errorf("failed to create template for recurring schedule: %w", err)
+		}
+		// Link template to schedule
+		schedule.TemplateID = &template.ID
+		if err := u.scheduleRepo.UpdateSchedule(schedule); err != nil {
+			return nil, fmt.Errorf("failed to link template to schedule: %w", err)
+		}
+	}
+
 	// Get schedule with creator info
 	createdSchedule, err := u.scheduleRepo.GetScheduleByID(schedule.ID)
 	if err != nil {
@@ -147,6 +167,26 @@ func (u *scheduleUsecase) GetScheduleByID(userID, scheduleID uint) (*models.Sche
 	schedule, err := u.scheduleRepo.GetScheduleWithEntries(scheduleID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Auto-create template for existing recurring schedules without one
+	if schedule.Mode == models.ScheduleModeRecurring && schedule.TemplateID == nil {
+		template := &models.ScheduleTemplate{
+			Title:        schedule.Title + " (шаблон)",
+			Description:  "Автоматически созданный шаблон для повторяющегося графика",
+			Type:         schedule.Type,
+			CreatedBy:    schedule.CreatedBy,
+			DepartmentID: schedule.DepartmentID,
+			IsActive:     true,
+		}
+		if err := u.scheduleRepo.CreateScheduleTemplate(template); err != nil {
+			return nil, fmt.Errorf("failed to create template for recurring schedule: %w", err)
+		}
+		schedule.TemplateID = &template.ID
+		schedule.Template = template
+		if err := u.scheduleRepo.UpdateSchedule(schedule); err != nil {
+			return nil, fmt.Errorf("failed to link template to schedule: %w", err)
+		}
 	}
 
 	return schedule.ToResponse(), nil
