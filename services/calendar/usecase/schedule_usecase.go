@@ -622,19 +622,8 @@ func (u *scheduleUsecase) generateEventTitle(schedule *models.Schedule, entry *m
 		return entry.Title
 	}
 
-	shiftName := ""
-	switch entry.ShiftType {
-	case models.ShiftMorning:
-		shiftName = "Утренняя смена"
-	case models.ShiftEvening:
-		shiftName = "Вечерняя смена"
-	case models.ShiftFullDay:
-		shiftName = "Весь день"
-	case models.ShiftCustom:
-		shiftName = "Смена"
-	}
-
-	return fmt.Sprintf("%s - %s", schedule.Title, shiftName)
+	// Just use the schedule title - shift time is already shown in the event
+	return schedule.Title
 }
 
 // validateCreateScheduleRequest validates create schedule request
