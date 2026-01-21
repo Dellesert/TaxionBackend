@@ -105,6 +105,9 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 
 		}
 
+		// User absences route - proxy to calendar service (must be before general users routes)
+		v1.GET("/users/:id/absences", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+
 		// User routes - proxy to user service
 		users := v1.Group("/users")
 		{
@@ -222,6 +225,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		{
 			scheduleTemplates.Any("", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
 			scheduleTemplates.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+		}
+
+		// Absence routes - proxy to calendar service
+		absences := v1.Group("/absences")
+		{
+			absences.Any("", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
+			absences.Any("/*path", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
 		}
 
 		// Poll routes - proxy to poll service
