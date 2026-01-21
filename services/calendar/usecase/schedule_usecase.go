@@ -602,7 +602,7 @@ func (u *scheduleUsecase) createEventForScheduleEntry(schedule *models.Schedule,
 		EndTime:         entry.EndTime,
 		Location:        entry.Location,
 		Type:            models.EventTypeSchedule,
-		CreatedBy:       entry.CreatedBy,
+		CreatedBy:       entry.UserID, // Event should belong to the user assigned to the shift, not the creator
 		Color:           schedule.Color,
 		IsPrivate:       true, // Schedule events are private by default
 		ScheduleEntryID: &entry.ID,
