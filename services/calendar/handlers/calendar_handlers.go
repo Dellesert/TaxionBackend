@@ -1213,6 +1213,7 @@ func containsValidationError(errMsg string) bool {
 		"cannot be in the past",
 		"must be after",
 		"date range too large",
+		"в отсутствии", // User is absent
 	}
 
 	for _, keyword := range validationKeywords {
