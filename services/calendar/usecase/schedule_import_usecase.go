@@ -21,15 +21,17 @@ type ScheduleImportUsecase interface {
 // scheduleImportUsecase implements ScheduleImportUsecase interface
 type scheduleImportUsecase struct {
 	scheduleRepo repository.ScheduleRepository
+	eventRepo    repository.EventRepository
 	absenceRepo  repository.AbsenceRepository
 	fileClient   *clients.FileClient
 	parser       *importschedule.ScheduleParser
 }
 
 // NewScheduleImportUsecase creates a new schedule import usecase
-func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, absenceRepo repository.AbsenceRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
+func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, eventRepo repository.EventRepository, absenceRepo repository.AbsenceRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
 	return &scheduleImportUsecase{
 		scheduleRepo: scheduleRepo,
+		eventRepo:    eventRepo,
 		absenceRepo:  absenceRepo,
 		fileClient:   fileClient,
 		parser:       importschedule.NewScheduleParser(),
@@ -74,6 +76,15 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 	if len(entries) > 0 {
 		if err := u.scheduleRepo.CreateScheduleEntries(entries); err != nil {
 			return nil, fmt.Errorf("failed to create schedule entries: %w", err)
+		}
+
+		// Create calendar events for each entry
+		for _, entry := range entries {
+			event, err := u.createEventForScheduleEntry(schedule, entry)
+			if err == nil {
+				entry.EventID = &event.ID
+				u.scheduleRepo.UpdateScheduleEntry(entry)
+			}
 		}
 	}
 
@@ -316,4 +327,31 @@ func (u *scheduleImportUsecase) extractShiftTimes(parsed *importschedule.ParsedS
 	}
 
 	return morningStart, morningEnd, eveningStart, eveningEnd
+}
+
+// createEventForScheduleEntry creates a calendar event for a schedule entry
+func (u *scheduleImportUsecase) createEventForScheduleEntry(schedule *models.Schedule, entry *models.ScheduleEntry) (*models.Event, error) {
+	title := schedule.Title
+	if entry.Title != "" {
+		title = entry.Title
+	}
+
+	event := &models.Event{
+		Title:           title,
+		Description:     entry.Description,
+		StartTime:       entry.StartTime,
+		EndTime:         entry.EndTime,
+		Location:        entry.Location,
+		Type:            models.EventTypeSchedule,
+		CreatedBy:       entry.UserID, // Event belongs to the assigned user
+		Color:           schedule.Color,
+		IsPrivate:       true,
+		ScheduleEntryID: &entry.ID,
+	}
+
+	if err := u.eventRepo.CreateEvent(event); err != nil {
+		return nil, err
+	}
+
+	return event, nil
 }

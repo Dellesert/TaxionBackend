@@ -116,7 +116,7 @@ func main() {
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
 	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo, absenceRepo)
 	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
-	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, absenceRepo, fileClient)
+	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, eventRepo, absenceRepo, fileClient)
 	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo)
 
 	// Initialize notification worker
