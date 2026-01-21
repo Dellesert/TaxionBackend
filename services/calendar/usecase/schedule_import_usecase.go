@@ -20,21 +20,25 @@ type ScheduleImportUsecase interface {
 
 // scheduleImportUsecase implements ScheduleImportUsecase interface
 type scheduleImportUsecase struct {
-	scheduleRepo repository.ScheduleRepository
-	eventRepo    repository.EventRepository
-	absenceRepo  repository.AbsenceRepository
-	fileClient   *clients.FileClient
-	parser       *importschedule.ScheduleParser
+	scheduleRepo       repository.ScheduleRepository
+	eventRepo          repository.EventRepository
+	absenceRepo        repository.AbsenceRepository
+	fileClient         *clients.FileClient
+	parser             *importschedule.ScheduleParser
+	notificationClient *clients.NotificationClient
+	userClient         *clients.UserClient
 }
 
 // NewScheduleImportUsecase creates a new schedule import usecase
 func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, eventRepo repository.EventRepository, absenceRepo repository.AbsenceRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
 	return &scheduleImportUsecase{
-		scheduleRepo: scheduleRepo,
-		eventRepo:    eventRepo,
-		absenceRepo:  absenceRepo,
-		fileClient:   fileClient,
-		parser:       importschedule.NewScheduleParser(),
+		scheduleRepo:       scheduleRepo,
+		eventRepo:          eventRepo,
+		absenceRepo:        absenceRepo,
+		fileClient:         fileClient,
+		parser:             importschedule.NewScheduleParser(),
+		notificationClient: clients.NewNotificationClient(),
+		userClient:         clients.NewUserClient(),
 	}
 }
 
@@ -103,6 +107,9 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		"warnings_count": len(allWarnings),
 		"user_id":        userID,
 	}).Info("Schedule imported successfully")
+
+	// Send notifications to all participants about the new schedule
+	go u.sendScheduleImportedNotification(createdSchedule, entries, userID)
 
 	return &models.ImportScheduleResponse{
 		Schedule:     createdSchedule.ToResponse(),
@@ -354,4 +361,102 @@ func (u *scheduleImportUsecase) createEventForScheduleEntry(schedule *models.Sch
 	}
 
 	return event, nil
+}
+
+// sendScheduleImportedNotification sends notification to all participants about imported schedule
+func (u *scheduleImportUsecase) sendScheduleImportedNotification(schedule *models.Schedule, entries []*models.ScheduleEntry, creatorID uint) {
+	logger.WithFields(map[string]interface{}{
+		"schedule_id":    schedule.ID,
+		"schedule_title": schedule.Title,
+		"entries_count":  len(entries),
+		"creator_id":     creatorID,
+	}).Info("Sending notifications for imported schedule")
+
+	// Collect unique user IDs (excluding creator)
+	userIDSet := make(map[uint]bool)
+	for _, entry := range entries {
+		if entry.UserID != creatorID {
+			userIDSet[entry.UserID] = true
+		}
+	}
+
+	logger.WithField("unique_users_count", len(userIDSet)).Info("Unique users to notify about imported schedule")
+
+	if len(userIDSet) == 0 {
+		logger.Info("No users to notify (all entries belong to creator)")
+		return
+	}
+
+	// Get creator info
+	creatorInfo, err := u.userClient.GetUserByID(creatorID)
+	creatorName := "Кто-то"
+	if err == nil && creatorInfo != nil {
+		creatorName = creatorInfo.Name
+	}
+
+	priority := "medium"
+
+	// Format date range
+	dateRange := fmt.Sprintf("%s - %s",
+		schedule.StartDate.Format("02.01.2006"),
+		schedule.EndDate.Format("02.01.2006"),
+	)
+
+	// Get schedule type name
+	typeName := getScheduleTypeNameForImport(schedule.Type)
+
+	message := fmt.Sprintf("%s опубликовал(а) график %s \"%s\" на период %s",
+		creatorName, typeName, schedule.Title, dateRange)
+
+	// Send notification to each participant
+	for userID := range userIDSet {
+		notificationReq := &clients.NotificationRequest{
+			UserID:      userID,
+			Type:        "calendar",
+			Title:       "📅 Новый график",
+			Message:     message,
+			Priority:    &priority,
+			RelatedID:   &schedule.ID,
+			RelatedType: "schedule",
+			Data: map[string]interface{}{
+				"schedule_id":   schedule.ID,
+				"schedule_type": schedule.Type,
+				"start_date":    schedule.StartDate,
+				"end_date":      schedule.EndDate,
+				"creator_id":    creatorID,
+			},
+			Channels: []string{"in_app", "push"},
+		}
+
+		if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"user_id":     userID,
+				"schedule_id": schedule.ID,
+				"error":       err.Error(),
+			}).Error("Failed to send schedule imported notification")
+		} else {
+			logger.WithFields(map[string]interface{}{
+				"user_id":     userID,
+				"schedule_id": schedule.ID,
+			}).Info("Schedule imported notification sent successfully")
+		}
+	}
+}
+
+// getScheduleTypeNameForImport returns Russian name for schedule type
+func getScheduleTypeNameForImport(scheduleType models.ScheduleType) string {
+	switch scheduleType {
+	case models.ScheduleTypeWork:
+		return "рабочий"
+	case models.ScheduleTypePaidServices:
+		return "платные услуги"
+	case models.ScheduleTypeOnDuty:
+		return "дежурство"
+	case models.ScheduleTypeShift:
+		return "сменный"
+	case models.ScheduleTypeCustom:
+		return "особый"
+	default:
+		return "рабочий"
+	}
 }
