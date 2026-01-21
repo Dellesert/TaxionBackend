@@ -497,22 +497,23 @@ type ApplyTemplateRequest struct {
 
 // ScheduleTemplateResponse represents a template in API responses
 type ScheduleTemplateResponse struct {
-	ID           uint               `json:"id"`
-	Title        string             `json:"title"`
-	Description  string             `json:"description,omitempty"`
-	Type         ScheduleType       `json:"type"`
-	CreatedBy    uint               `json:"created_by"`
-	Creator      *sharedmodels.User `json:"creator,omitempty"`
-	DepartmentID *uint              `json:"department_id,omitempty"`
-	Color        string             `json:"color"`
-	IsActive     bool               `json:"is_active"`
-	CreatedAt    time.Time          `json:"created_at"`
-	UpdatedAt    time.Time          `json:"updated_at"`
+	ID           uint                            `json:"id"`
+	Title        string                          `json:"title"`
+	Description  string                          `json:"description,omitempty"`
+	Type         ScheduleType                    `json:"type"`
+	CreatedBy    uint                            `json:"created_by"`
+	Creator      *sharedmodels.User              `json:"creator,omitempty"`
+	DepartmentID *uint                           `json:"department_id,omitempty"`
+	Color        string                          `json:"color"`
+	IsActive     bool                            `json:"is_active"`
+	Entries      []*ScheduleTemplateEntryResponse `json:"entries,omitempty"`
+	CreatedAt    time.Time                       `json:"created_at"`
+	UpdatedAt    time.Time                       `json:"updated_at"`
 }
 
 // ToResponse converts ScheduleTemplate model to ScheduleTemplateResponse
 func (st *ScheduleTemplate) ToResponse() *ScheduleTemplateResponse {
-	return &ScheduleTemplateResponse{
+	resp := &ScheduleTemplateResponse{
 		ID:           st.ID,
 		Title:        st.Title,
 		Description:  st.Description,
@@ -525,6 +526,16 @@ func (st *ScheduleTemplate) ToResponse() *ScheduleTemplateResponse {
 		CreatedAt:    st.CreatedAt,
 		UpdatedAt:    st.UpdatedAt,
 	}
+
+	// Include entries if loaded
+	if len(st.Entries) > 0 {
+		resp.Entries = make([]*ScheduleTemplateEntryResponse, len(st.Entries))
+		for i, entry := range st.Entries {
+			resp.Entries[i] = entry.ToResponse()
+		}
+	}
+
+	return resp
 }
 
 // ScheduleTemplateEntryResponse represents a template entry in API responses
