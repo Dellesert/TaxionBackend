@@ -305,15 +305,15 @@ func (u *scheduleTemplateUsecase) ApplyTemplate(userID, templateID, scheduleID u
 				shiftType := determineShiftType(schedule, templateEntry.StartTime, templateEntry.EndTime)
 
 				entry := &models.ScheduleEntry{
-					ScheduleID:  scheduleID,
-					UserID:      uid,
-					Date:        currentDate,
-					ShiftType:   shiftType,
-					StartTime:   startTime,
-					EndTime:     endTime,
-					Title:       templateEntry.Title,
-					Location:    templateEntry.Location,
-					CreatedBy:   userID,
+					ScheduleID: scheduleID,
+					UserID:     uid,
+					Date:       currentDate,
+					ShiftType:  shiftType,
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Title:      templateEntry.Title,
+					Location:   templateEntry.Location,
+					CreatedBy:  userID,
 				}
 
 				entries = append(entries, entry)

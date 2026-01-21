@@ -380,10 +380,10 @@ func (er *EventReminder) ToResponse() *EventReminderResponse {
 
 // EventFilterRequest represents filtering parameters for events
 type EventFilterRequest struct {
-	Type        *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline schedule"`
+	Type *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline schedule"`
 	// Date range filters (alternative naming)
-	Start       *time.Time `form:"start" time_format:"2006-01-02T15:04:05Z07:00"` // Alias for date range start
-	End         *time.Time `form:"end" time_format:"2006-01-02T15:04:05Z07:00"`   // Alias for date range end
+	Start *time.Time `form:"start" time_format:"2006-01-02T15:04:05Z07:00"` // Alias for date range start
+	End   *time.Time `form:"end" time_format:"2006-01-02T15:04:05Z07:00"`   // Alias for date range end
 	// Detailed time filters
 	StartAfter  *time.Time `form:"start_after" time_format:"2006-01-02T15:04:05Z07:00"`
 	StartBefore *time.Time `form:"start_before" time_format:"2006-01-02T15:04:05Z07:00"`

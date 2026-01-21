@@ -47,19 +47,19 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 
 	// Create schedule
 	schedule := &models.Schedule{
-		Title:         req.Title,
-		Description:   req.Description,
-		Type:          req.Type,
-		Visibility:    models.VisibilityManagement,
-		CreatedBy:     userID,
-		StartDate:     req.StartDate,
-		EndDate:       req.EndDate,
-		IsActive:      true,
-		ImportedFrom:  &metadata.FileName,
-		MorningStart:  morningStart,
-		MorningEnd:    morningEnd,
-		EveningStart:  eveningStart,
-		EveningEnd:    eveningEnd,
+		Title:        req.Title,
+		Description:  req.Description,
+		Type:         req.Type,
+		Visibility:   models.VisibilityManagement,
+		CreatedBy:    userID,
+		StartDate:    req.StartDate,
+		EndDate:      req.EndDate,
+		IsActive:     true,
+		ImportedFrom: &metadata.FileName,
+		MorningStart: morningStart,
+		MorningEnd:   morningEnd,
+		EveningStart: eveningStart,
+		EveningEnd:   eveningEnd,
 	}
 
 	if err := u.scheduleRepo.CreateSchedule(schedule); err != nil {

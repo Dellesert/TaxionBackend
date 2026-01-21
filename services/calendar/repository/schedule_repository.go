@@ -50,18 +50,23 @@ type ScheduleRepository interface {
 	GetTemplateEntries(templateID uint) ([]*models.ScheduleTemplateEntry, error)
 	UpdateTemplateEntry(entry *models.ScheduleTemplateEntry) error
 	DeleteTemplateEntry(id uint) error
+
+	// Recurring schedule support
+	HasEntriesForMonth(scheduleID uint, year int, month time.Month) (bool, error)
+	GetRecurringSchedulesForUser(userID uint) ([]*models.Schedule, error)
+	DeleteEntriesForMonth(scheduleID uint, year int, month time.Month) error
 }
 
 // ScheduleFilter defines filtering parameters for schedules
 type ScheduleFilter struct {
-	Type          *models.ScheduleType
-	IsActive      *bool
-	CreatedBy     *uint
-	DepartmentID  *uint
-	StartDate     *time.Time
-	EndDate       *time.Time
-	Limit         int
-	Offset        int
+	Type         *models.ScheduleType
+	IsActive     *bool
+	CreatedBy    *uint
+	DepartmentID *uint
+	StartDate    *time.Time
+	EndDate      *time.Time
+	Limit        int
+	Offset       int
 }
 
 // EntryFilter defines filtering parameters for schedule entries
@@ -561,4 +566,49 @@ func (r *scheduleRepository) DeleteTemplateEntry(id uint) error {
 		return errors.New("template entry not found")
 	}
 	return nil
+}
+
+// HasEntriesForMonth checks if a schedule has entries for a specific month
+func (r *scheduleRepository) HasEntriesForMonth(scheduleID uint, year int, month time.Month) (bool, error) {
+	startOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
+	endOfMonth := startOfMonth.AddDate(0, 1, -1)
+
+	var count int64
+	err := r.db.Model(&models.ScheduleEntry{}).
+		Where("schedule_id = ? AND date >= ? AND date <= ?", scheduleID, startOfMonth, endOfMonth).
+		Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// GetRecurringSchedulesForUser retrieves all recurring schedules where user is assigned
+func (r *scheduleRepository) GetRecurringSchedulesForUser(userID uint) ([]*models.Schedule, error) {
+	var schedules []*models.Schedule
+
+	err := r.db.
+		Preload("Template").
+		Preload("Template.Entries").
+		Joins("JOIN schedule_assignments ON schedule_assignments.schedule_id = schedules.id").
+		Where("schedule_assignments.user_id = ? AND schedules.mode = ? AND schedules.is_active = ?",
+			userID, models.ScheduleModeRecurring, true).
+		Find(&schedules).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return schedules, nil
+}
+
+// DeleteEntriesForMonth deletes all entries for a schedule in a specific month
+func (r *scheduleRepository) DeleteEntriesForMonth(scheduleID uint, year int, month time.Month) error {
+	startOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
+	endOfMonth := startOfMonth.AddDate(0, 1, -1)
+
+	return r.db.Where("schedule_id = ? AND date >= ? AND date <= ?", scheduleID, startOfMonth, endOfMonth).
+		Delete(&models.ScheduleEntry{}).Error
 }

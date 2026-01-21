@@ -12,7 +12,7 @@ import (
 type ScheduleType string
 
 const (
-	ScheduleTypeWork         ScheduleType = "work"           // Рабочий график
+	ScheduleTypeWork         ScheduleType = "work"          // Рабочий график
 	ScheduleTypePaidServices ScheduleType = "paid_services" // Платные услуги
 	ScheduleTypeOnDuty       ScheduleType = "on_duty"       // Дежурства
 	ScheduleTypeShift        ScheduleType = "shift"         // Сменный график
@@ -23,9 +23,17 @@ const (
 type ScheduleVisibility string
 
 const (
-	VisibilityCreatorOnly  ScheduleVisibility = "creator_only"  // Только создатель
-	VisibilityManagement   ScheduleVisibility = "management"    // Руководство
-	VisibilityParticipants ScheduleVisibility = "participants"  // Участники
+	VisibilityCreatorOnly  ScheduleVisibility = "creator_only" // Только создатель
+	VisibilityManagement   ScheduleVisibility = "management"   // Руководство
+	VisibilityParticipants ScheduleVisibility = "participants" // Участники
+)
+
+// ScheduleMode represents whether schedule is recurring or monthly
+type ScheduleMode string
+
+const (
+	ScheduleModeRecurring ScheduleMode = "recurring" // Повторяющийся (автоматически генерируется из шаблона)
+	ScheduleModeMonthly   ScheduleMode = "monthly"   // Ежемесячный (загружается вручную каждый месяц)
 )
 
 // Schedule represents a work schedule
@@ -42,6 +50,7 @@ type Schedule struct {
 	DepartmentID  *uint              `gorm:"index" json:"department_id,omitempty" validate:"omitempty,min=1"`
 	Color         string             `gorm:"size:7;default:'#4CAF50'" json:"color" validate:"omitempty,len=7"`
 	IsActive      bool               `gorm:"not null;default:true;index" json:"is_active"`
+	Mode          ScheduleMode       `gorm:"not null;default:'monthly';size:20" json:"mode" validate:"omitempty,oneof=recurring monthly"`
 	TemplateID    *uint              `gorm:"index" json:"template_id,omitempty" validate:"omitempty,min=1"`
 	ImportedFrom  *string            `gorm:"size:500" json:"imported_from,omitempty"`
 
@@ -52,10 +61,10 @@ type Schedule struct {
 	EveningEnd   string `gorm:"size:5;default:'18:00'" json:"evening_end" validate:"omitempty,len=5"`   // "18:00"
 
 	// Associations
-	Creator     *sharedmodels.User        `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
-	Entries     []ScheduleEntry     `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"entries,omitempty"`
+	Creator     *sharedmodels.User   `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	Entries     []ScheduleEntry      `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"entries,omitempty"`
 	Assignments []ScheduleAssignment `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"assignments,omitempty"`
-	Template    *ScheduleTemplate   `gorm:"foreignKey:TemplateID" json:"template,omitempty"`
+	Template    *ScheduleTemplate    `gorm:"foreignKey:TemplateID" json:"template,omitempty"`
 }
 
 // TableName returns the table name for Schedule model
@@ -86,6 +95,15 @@ func (s *Schedule) BeforeCreate(tx *gorm.DB) error {
 	}
 	if s.EveningEnd == "" {
 		s.EveningEnd = "18:00"
+	}
+	if s.Mode == "" {
+		// Set default mode based on schedule type
+		switch s.Type {
+		case ScheduleTypeWork, ScheduleTypePaidServices, ScheduleTypeShift:
+			s.Mode = ScheduleModeRecurring
+		default:
+			s.Mode = ScheduleModeMonthly
+		}
 	}
 
 	// Validate date logic
@@ -131,9 +149,9 @@ type ScheduleEntry struct {
 	CreatedBy   uint      `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
 
 	// Associations
-	Schedule *Schedule    `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
+	Schedule *Schedule          `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
 	User     *sharedmodels.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
-	Event    *Event       `gorm:"foreignKey:EventID" json:"event,omitempty"`
+	Event    *Event             `gorm:"foreignKey:EventID" json:"event,omitempty"`
 	Creator  *sharedmodels.User `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
 }
 
@@ -178,8 +196,8 @@ type ScheduleTemplate struct {
 	IsActive     bool         `gorm:"not null;default:true;index" json:"is_active"`
 
 	// Associations
-	Creator *sharedmodels.User             `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
-	Entries []ScheduleTemplateEntry  `gorm:"foreignKey:TemplateID;constraint:OnDelete:CASCADE" json:"entries,omitempty"`
+	Creator *sharedmodels.User      `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
+	Entries []ScheduleTemplateEntry `gorm:"foreignKey:TemplateID;constraint:OnDelete:CASCADE" json:"entries,omitempty"`
 }
 
 // TableName returns the table name for ScheduleTemplate model
@@ -201,17 +219,17 @@ func (st *ScheduleTemplate) BeforeCreate(tx *gorm.DB) error {
 // ScheduleTemplateEntry represents an entry in a schedule template
 type ScheduleTemplateEntry struct {
 	sharedmodels.BaseModel
-	TemplateID uint         `gorm:"not null;index" json:"template_id" validate:"required"`
-	UserID     *uint        `gorm:"index" json:"user_id,omitempty"` // nil = apply to all assigned users
-	DayOfWeek  int          `gorm:"not null" json:"day_of_week" validate:"required,min=0,max=6"` // 0-6 (Sunday-Saturday)
-	StartTime  string       `gorm:"not null;size:5" json:"start_time" validate:"required,len=5"` // "09:00"
-	EndTime    string       `gorm:"not null;size:5" json:"end_time" validate:"required,len=5"`   // "18:00"
-	Title      string       `gorm:"size:255" json:"title,omitempty" validate:"omitempty,max=255"`
-	Location   string       `gorm:"size:500" json:"location,omitempty" validate:"omitempty,max=500"`
+	TemplateID uint   `gorm:"not null;index" json:"template_id" validate:"required"`
+	UserID     *uint  `gorm:"index" json:"user_id,omitempty"`                              // nil = apply to all assigned users
+	DayOfWeek  int    `gorm:"not null" json:"day_of_week" validate:"required,min=0,max=6"` // 0-6 (Sunday-Saturday)
+	StartTime  string `gorm:"not null;size:5" json:"start_time" validate:"required,len=5"` // "09:00"
+	EndTime    string `gorm:"not null;size:5" json:"end_time" validate:"required,len=5"`   // "18:00"
+	Title      string `gorm:"size:255" json:"title,omitempty" validate:"omitempty,max=255"`
+	Location   string `gorm:"size:500" json:"location,omitempty" validate:"omitempty,max=500"`
 
 	// Associations
-	Template *ScheduleTemplate `gorm:"foreignKey:TemplateID" json:"template,omitempty"`
-	User     *sharedmodels.User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Template *ScheduleTemplate  `gorm:"foreignKey:TemplateID" json:"template,omitempty"`
+	User     *sharedmodels.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // TableName returns the table name for ScheduleTemplateEntry model
@@ -228,7 +246,7 @@ type ScheduleAssignment struct {
 	AssignedAt time.Time `gorm:"not null" json:"assigned_at"`
 
 	// Associations
-	Schedule *Schedule    `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
+	Schedule *Schedule          `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
 	User     *sharedmodels.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 	Assigner *sharedmodels.User `gorm:"foreignKey:AssignedBy" json:"assigner,omitempty"`
 }
@@ -259,6 +277,7 @@ type CreateScheduleRequest struct {
 	IsForAllUsers bool               `json:"is_for_all_users"`
 	DepartmentID  *uint              `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	Color         string             `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
+	Mode          *ScheduleMode      `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
 	TemplateID    *uint              `json:"template_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 
 	// Default shift times
@@ -280,6 +299,7 @@ type UpdateScheduleRequest struct {
 	DepartmentID  *uint               `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	Color         *string             `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 	IsActive      *bool               `json:"is_active,omitempty"`
+	Mode          *ScheduleMode       `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
 	MorningStart  *string             `json:"morning_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
 	MorningEnd    *string             `json:"morning_end,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
 	EveningStart  *string             `json:"evening_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
@@ -323,13 +343,14 @@ type ScheduleResponse struct {
 	Type          ScheduleType       `json:"type"`
 	Visibility    ScheduleVisibility `json:"visibility"`
 	CreatedBy     uint               `json:"created_by"`
-	Creator       *sharedmodels.User       `json:"creator,omitempty"`
+	Creator       *sharedmodels.User `json:"creator,omitempty"`
 	StartDate     time.Time          `json:"start_date"`
 	EndDate       time.Time          `json:"end_date"`
 	IsForAllUsers bool               `json:"is_for_all_users"`
 	DepartmentID  *uint              `json:"department_id,omitempty"`
 	Color         string             `json:"color"`
 	IsActive      bool               `json:"is_active"`
+	Mode          ScheduleMode       `json:"mode"`
 	TemplateID    *uint              `json:"template_id,omitempty"`
 	ImportedFrom  *string            `json:"imported_from,omitempty"`
 	MorningStart  string             `json:"morning_start"`
@@ -357,6 +378,7 @@ func (s *Schedule) ToResponse() *ScheduleResponse {
 		DepartmentID:  s.DepartmentID,
 		Color:         s.Color,
 		IsActive:      s.IsActive,
+		Mode:          s.Mode,
 		TemplateID:    s.TemplateID,
 		ImportedFrom:  s.ImportedFrom,
 		MorningStart:  s.MorningStart,
@@ -371,22 +393,22 @@ func (s *Schedule) ToResponse() *ScheduleResponse {
 
 // ScheduleEntryResponse represents a schedule entry in API responses
 type ScheduleEntryResponse struct {
-	ID          uint         `json:"id"`
-	ScheduleID  uint         `json:"schedule_id"`
-	UserID      uint         `json:"user_id"`
+	ID          uint               `json:"id"`
+	ScheduleID  uint               `json:"schedule_id"`
+	UserID      uint               `json:"user_id"`
 	User        *sharedmodels.User `json:"user,omitempty"`
-	Date        time.Time    `json:"date"`
-	ShiftType   ShiftType    `json:"shift_type"`
-	StartTime   time.Time    `json:"start_time"`
-	EndTime     time.Time    `json:"end_time"`
-	Title       string       `json:"title,omitempty"`
-	Description string       `json:"description,omitempty"`
-	Location    string       `json:"location,omitempty"`
-	EventID     *uint        `json:"event_id,omitempty"`
-	CreatedBy   uint         `json:"created_by"`
+	Date        time.Time          `json:"date"`
+	ShiftType   ShiftType          `json:"shift_type"`
+	StartTime   time.Time          `json:"start_time"`
+	EndTime     time.Time          `json:"end_time"`
+	Title       string             `json:"title,omitempty"`
+	Description string             `json:"description,omitempty"`
+	Location    string             `json:"location,omitempty"`
+	EventID     *uint              `json:"event_id,omitempty"`
+	CreatedBy   uint               `json:"created_by"`
 	Creator     *sharedmodels.User `json:"creator,omitempty"`
-	CreatedAt   time.Time    `json:"created_at"`
-	UpdatedAt   time.Time    `json:"updated_at"`
+	CreatedAt   time.Time          `json:"created_at"`
+	UpdatedAt   time.Time          `json:"updated_at"`
 }
 
 // ToResponse converts ScheduleEntry model to ScheduleEntryResponse
@@ -541,36 +563,36 @@ type ScheduleTemplateListResponse struct {
 
 // ImportScheduleRequest represents request for importing schedule from file
 type ImportScheduleRequest struct {
-	FileID      string     `json:"file_id" binding:"required" validate:"required"`
-	Title       string     `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
-	Description string     `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	FileID      string       `json:"file_id" binding:"required" validate:"required"`
+	Title       string       `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
+	Description string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
 	Type        ScheduleType `json:"type" binding:"required" validate:"required"`
-	StartDate   time.Time  `json:"start_date" binding:"required" validate:"required"`
-	EndDate     time.Time  `json:"end_date" binding:"required" validate:"required"`
-	Preview     bool       `json:"preview"` // If true, returns preview without creating
+	StartDate   time.Time    `json:"start_date" binding:"required" validate:"required"`
+	EndDate     time.Time    `json:"end_date" binding:"required" validate:"required"`
+	Preview     bool         `json:"preview"` // If true, returns preview without creating
 }
 
 // ImportPreviewResponse represents preview of imported schedule
 type ImportPreviewResponse struct {
-	Schedule      *ScheduleResponse       `json:"schedule"`
-	Entries       []*ScheduleEntryResponse `json:"entries"`
-	EntriesCount  int                     `json:"entries_count"`
-	Users         []*ImportedUser         `json:"users"`
-	Warnings      []string                `json:"warnings,omitempty"`
+	Schedule     *ScheduleResponse        `json:"schedule"`
+	Entries      []*ScheduleEntryResponse `json:"entries"`
+	EntriesCount int                      `json:"entries_count"`
+	Users        []*ImportedUser          `json:"users"`
+	Warnings     []string                 `json:"warnings,omitempty"`
 }
 
 // ImportedUser represents a user detected during import
 type ImportedUser struct {
-	Name          string `json:"name"`           // Name from document
-	UserID        *uint  `json:"user_id,omitempty"` // Matched user ID
-	MatchScore    float64 `json:"match_score,omitempty"` // Fuzzy match score
-	IsUnmatched   bool   `json:"is_unmatched"`   // No match found
+	Name        string  `json:"name"`                  // Name from document
+	UserID      *uint   `json:"user_id,omitempty"`     // Matched user ID
+	MatchScore  float64 `json:"match_score,omitempty"` // Fuzzy match score
+	IsUnmatched bool    `json:"is_unmatched"`          // No match found
 }
 
 // ImportScheduleResponse represents successful import result
 type ImportScheduleResponse struct {
-	Schedule      *ScheduleResponse `json:"schedule"`
-	EntriesCount  int              `json:"entries_count"`
-	ImportedFrom  string           `json:"imported_from"`
-	Warnings      []string         `json:"warnings,omitempty"`
+	Schedule     *ScheduleResponse `json:"schedule"`
+	EntriesCount int               `json:"entries_count"`
+	ImportedFrom string            `json:"imported_from"`
+	Warnings     []string          `json:"warnings,omitempty"`
 }

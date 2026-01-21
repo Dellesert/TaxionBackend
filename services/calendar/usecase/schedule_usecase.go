@@ -58,16 +58,19 @@ type EntryFilterParams struct {
 type scheduleUsecase struct {
 	scheduleRepo repository.ScheduleRepository
 	eventRepo    repository.EventRepository
+	absenceRepo  repository.AbsenceRepository
 }
 
 // NewScheduleUsecase creates a new schedule usecase
 func NewScheduleUsecase(
 	scheduleRepo repository.ScheduleRepository,
 	eventRepo repository.EventRepository,
+	absenceRepo repository.AbsenceRepository,
 ) ScheduleUsecase {
 	return &scheduleUsecase{
 		scheduleRepo: scheduleRepo,
 		eventRepo:    eventRepo,
+		absenceRepo:  absenceRepo,
 	}
 }
 
@@ -118,6 +121,11 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 	}
 	if req.EveningEnd != "" {
 		schedule.EveningEnd = req.EveningEnd
+	}
+
+	// Set mode if provided
+	if req.Mode != nil {
+		schedule.Mode = *req.Mode
 	}
 
 	// Save schedule
@@ -227,6 +235,9 @@ func (u *scheduleUsecase) UpdateSchedule(userID, scheduleID uint, req *models.Up
 	if req.EveningEnd != nil {
 		schedule.EveningEnd = *req.EveningEnd
 	}
+	if req.Mode != nil {
+		schedule.Mode = *req.Mode
+	}
 
 	// Save updated schedule
 	if err := u.scheduleRepo.UpdateSchedule(schedule); err != nil {
@@ -280,6 +291,18 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check if user is absent on this date
+	isAbsent, absence, err := u.absenceRepo.IsUserAbsent(req.UserID, req.Date)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check absence: %w", err)
+	}
+	if isAbsent {
+		return nil, fmt.Errorf("пользователь в отсутствии (%s) с %s по %s",
+			GetAbsenceTypeName(absence.Type),
+			absence.StartDate.Format("02.01"),
+			absence.EndDate.Format("02.01"))
 	}
 
 	// Calculate start and end times based on shift type
@@ -348,7 +371,45 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 	entries := make([]*models.ScheduleEntry, 0, len(req.Entries))
 	responses := make([]*models.ScheduleEntryResponse, 0, len(req.Entries))
 
+	// Collect all user IDs and date range
+	var userIDs []uint
+	var minDate, maxDate time.Time
+	userIDSet := make(map[uint]bool)
+
 	for _, entryReq := range req.Entries {
+		if !userIDSet[entryReq.UserID] {
+			userIDs = append(userIDs, entryReq.UserID)
+			userIDSet[entryReq.UserID] = true
+		}
+		if minDate.IsZero() || entryReq.Date.Before(minDate) {
+			minDate = entryReq.Date
+		}
+		if maxDate.IsZero() || entryReq.Date.After(maxDate) {
+			maxDate = entryReq.Date
+		}
+	}
+
+	// Get absences for all users in the date range
+	absenceMap, err := u.absenceRepo.GetAbsentUsersForPeriod(userIDs, minDate, maxDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absences: %w", err)
+	}
+
+	for _, entryReq := range req.Entries {
+		// Check if user is absent on this date
+		if userAbsences, ok := absenceMap[entryReq.UserID]; ok {
+			isAbsent := false
+			for _, absence := range userAbsences {
+				if !entryReq.Date.Before(absence.StartDate) && !entryReq.Date.After(absence.EndDate) {
+					isAbsent = true
+					break
+				}
+			}
+			if isAbsent {
+				continue // Skip entries for absent users
+			}
+		}
+
 		// Calculate shift times
 		startTime, endTime, err := u.calculateShiftTimes(schedule, entryReq.Date, entryReq.ShiftType, entryReq.StartTime, entryReq.EndTime)
 		if err != nil {
@@ -532,18 +593,197 @@ func (u *scheduleUsecase) DeleteScheduleEntry(userID, scheduleID, entryID uint) 
 
 // GetMyScheduleEntries retrieves schedule entries for a user
 func (u *scheduleUsecase) GetMyScheduleEntries(userID uint, startDate, endDate time.Time) ([]*models.ScheduleEntryResponse, error) {
+	// Get recurring schedules for this user and ensure entries are generated
+	recurringSchedules, err := u.scheduleRepo.GetRecurringSchedulesForUser(userID)
+	if err != nil {
+		// Log but don't fail - continue with regular entries
+	} else {
+		for _, schedule := range recurringSchedules {
+			if schedule.TemplateID != nil {
+				if err := u.ensureEntriesGenerated(schedule, userID, startDate, endDate); err != nil {
+					// Log but continue
+				}
+			}
+		}
+	}
+
+	// Get all entries for the user in the date range
 	entries, err := u.scheduleRepo.GetUserScheduleEntries(userID, startDate, endDate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user schedule entries: %w", err)
 	}
 
+	// Get user absences for the period
+	absences, err := u.absenceRepo.GetUserAbsences(userID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user absences: %w", err)
+	}
+
+	// Filter out entries on absence days
+	filteredEntries := u.filterEntriesByAbsences(entries, absences)
+
 	// Convert to responses
-	responses := make([]*models.ScheduleEntryResponse, len(entries))
-	for i, entry := range entries {
+	responses := make([]*models.ScheduleEntryResponse, len(filteredEntries))
+	for i, entry := range filteredEntries {
 		responses[i] = entry.ToResponse()
 	}
 
 	return responses, nil
+}
+
+// ensureEntriesGenerated ensures that entries exist for a recurring schedule in the given period
+func (u *scheduleUsecase) ensureEntriesGenerated(schedule *models.Schedule, userID uint, startDate, endDate time.Time) error {
+	if schedule.TemplateID == nil {
+		return errors.New("recurring schedule must have a template")
+	}
+
+	// Get template with entries
+	template, err := u.scheduleRepo.GetTemplateWithEntries(*schedule.TemplateID)
+	if err != nil {
+		return err
+	}
+
+	// Get months that need generation
+	months := u.getMonthsInRange(startDate, endDate)
+
+	for _, month := range months {
+		// Check if entries already exist for this month
+		hasEntries, err := u.scheduleRepo.HasEntriesForMonth(schedule.ID, month.Year, month.Month)
+		if err != nil {
+			continue
+		}
+
+		if !hasEntries {
+			// Generate entries from template for this month
+			if err := u.generateMonthEntries(schedule, template, userID, month.Year, month.Month); err != nil {
+				// Log but continue
+			}
+		}
+	}
+
+	return nil
+}
+
+// YearMonth represents a year and month combination
+type YearMonth struct {
+	Year  int
+	Month time.Month
+}
+
+// getMonthsInRange returns all months in the given date range
+func (u *scheduleUsecase) getMonthsInRange(startDate, endDate time.Time) []YearMonth {
+	var months []YearMonth
+
+	current := time.Date(startDate.Year(), startDate.Month(), 1, 0, 0, 0, 0, time.Local)
+	end := time.Date(endDate.Year(), endDate.Month(), 1, 0, 0, 0, 0, time.Local)
+
+	for !current.After(end) {
+		months = append(months, YearMonth{Year: current.Year(), Month: current.Month()})
+		current = current.AddDate(0, 1, 0)
+	}
+
+	return months
+}
+
+// generateMonthEntries generates entries from template for a specific month
+func (u *scheduleUsecase) generateMonthEntries(schedule *models.Schedule, template *models.ScheduleTemplate, userID uint, year int, month time.Month) error {
+	startOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
+	endOfMonth := startOfMonth.AddDate(0, 1, -1)
+
+	// Get absences for this user in this month
+	absences, _ := u.absenceRepo.GetUserAbsences(userID, startOfMonth, endOfMonth)
+	absenceSet := make(map[string]bool)
+	for _, absence := range absences {
+		for d := absence.StartDate; !d.After(absence.EndDate); d = d.AddDate(0, 0, 1) {
+			absenceSet[d.Format("2006-01-02")] = true
+		}
+	}
+
+	var entries []*models.ScheduleEntry
+
+	// Iterate through each day of the month
+	currentDate := startOfMonth
+	for !currentDate.After(endOfMonth) {
+		// Skip if user is absent
+		if absenceSet[currentDate.Format("2006-01-02")] {
+			currentDate = currentDate.AddDate(0, 0, 1)
+			continue
+		}
+
+		dayOfWeek := int(currentDate.Weekday())
+
+		// Find matching template entries for this day of week
+		for _, templateEntry := range template.Entries {
+			if templateEntry.DayOfWeek == dayOfWeek {
+				// Check if this template entry applies to this user
+				if templateEntry.UserID != nil && *templateEntry.UserID != userID {
+					continue
+				}
+
+				startTime := u.parseTimeOnDate(currentDate, templateEntry.StartTime)
+				endTime := u.parseTimeOnDate(currentDate, templateEntry.EndTime)
+
+				entry := &models.ScheduleEntry{
+					ScheduleID: schedule.ID,
+					UserID:     userID,
+					Date:       currentDate,
+					ShiftType:  models.ShiftCustom,
+					StartTime:  startTime,
+					EndTime:    endTime,
+					Title:      templateEntry.Title,
+					Location:   templateEntry.Location,
+					CreatedBy:  schedule.CreatedBy,
+				}
+
+				entries = append(entries, entry)
+			}
+		}
+
+		currentDate = currentDate.AddDate(0, 0, 1)
+	}
+
+	// Save all entries
+	if len(entries) > 0 {
+		if err := u.scheduleRepo.CreateScheduleEntries(entries); err != nil {
+			return err
+		}
+
+		// Create events for entries
+		for _, entry := range entries {
+			event, err := u.createEventForScheduleEntry(schedule, entry)
+			if err == nil {
+				entry.EventID = &event.ID
+				u.scheduleRepo.UpdateScheduleEntry(entry)
+			}
+		}
+	}
+
+	return nil
+}
+
+// filterEntriesByAbsences filters out entries that fall on absence days
+func (u *scheduleUsecase) filterEntriesByAbsences(entries []*models.ScheduleEntry, absences []*models.Absence) []*models.ScheduleEntry {
+	if len(absences) == 0 {
+		return entries
+	}
+
+	// Build a set of absence dates
+	absenceSet := make(map[string]bool)
+	for _, absence := range absences {
+		for d := absence.StartDate; !d.After(absence.EndDate); d = d.AddDate(0, 0, 1) {
+			absenceSet[d.Format("2006-01-02")] = true
+		}
+	}
+
+	// Filter entries
+	var filtered []*models.ScheduleEntry
+	for _, entry := range entries {
+		if !absenceSet[entry.Date.Format("2006-01-02")] {
+			filtered = append(filtered, entry)
+		}
+	}
+
+	return filtered
 }
 
 // Helper functions
