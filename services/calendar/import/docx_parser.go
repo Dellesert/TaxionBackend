@@ -597,6 +597,29 @@ func (p *ScheduleParser) findBestMatch(name string, users []*sharedmodels.User) 
 			}
 		}
 
+		// Method 6: Check initials match (e.g., "И.И." matches "Иван Иванович")
+		// This gives bonus score if surname matches and initials also match
+		if score >= MinMatchScore && len(nameParts) > 1 && len(userParts) > 1 {
+			initialsMatch := 0
+			for _, namePart := range nameParts[1:] {
+				// Clean initials: "и." -> "и", "и.и." -> check both
+				cleanInitial := strings.TrimRight(namePart, ".")
+				if len(cleanInitial) == 1 {
+					// Single letter initial
+					for _, userPart := range userParts[1:] {
+						if strings.HasPrefix(userPart, cleanInitial) {
+							initialsMatch++
+							break
+						}
+					}
+				}
+			}
+			// Boost score slightly if initials match (confirms the match)
+			if initialsMatch > 0 && score < 1.0 {
+				score = 1.0
+			}
+		}
+
 		if score > bestScore && score >= MinMatchScore {
 			bestScore = score
 			bestMatch = &UserMatch{
