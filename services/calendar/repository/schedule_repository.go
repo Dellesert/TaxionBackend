@@ -212,6 +212,9 @@ func (r *scheduleRepository) GetScheduleWithEntries(id uint) (*models.Schedule, 
 		Preload("Entries.User").
 		Preload("Assignments").
 		Preload("Assignments.User").
+		Preload("Template").
+		Preload("Template.Entries").
+		Preload("Template.Entries.User").
 		First(&schedule, id).Error
 
 	if err != nil {
