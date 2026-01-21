@@ -5,6 +5,7 @@ import (
 
 	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/models"
+	"tachyon-messenger/shared/logger"
 )
 
 // sendScheduleCreatedNotification sends notification when a new schedule is created
@@ -105,32 +106,31 @@ func (u *scheduleUsecase) sendScheduleEntryNotification(schedule *models.Schedul
 
 	priority := "medium"
 
-	// Format date and time
-	dateStr := entry.Date.Format("02.01.2006")
-	timeStr := fmt.Sprintf("%s - %s", entry.StartTime.Format("15:04"), entry.EndTime.Format("15:04"))
+	// Format date range
+	dateRange := fmt.Sprintf("%s - %s",
+		schedule.StartDate.Format("02.01.2006"),
+		schedule.EndDate.Format("02.01.2006"),
+	)
 
-	// Get shift type name
-	shiftName := getShiftTypeName(entry.ShiftType)
+	// Get schedule type name
+	typeName := getScheduleTypeName(schedule.Type)
 
-	message := fmt.Sprintf("%s добавил(а) вас в график \"%s\" на %s (%s, %s)",
-		creatorName, schedule.Title, dateStr, shiftName, timeStr)
+	message := fmt.Sprintf("%s опубликовал(а) график %s \"%s\" на период %s",
+		creatorName, typeName, schedule.Title, dateRange)
 
 	notificationReq := &clients.NotificationRequest{
 		UserID:      entry.UserID,
 		Type:        "calendar",
-		Title:       "📅 Вас добавили в график",
+		Title:       "📅 Новый график",
 		Message:     message,
 		Priority:    &priority,
 		RelatedID:   &schedule.ID,
 		RelatedType: "schedule",
 		Data: map[string]interface{}{
 			"schedule_id":   schedule.ID,
-			"entry_id":      entry.ID,
 			"schedule_type": schedule.Type,
-			"date":          entry.Date,
-			"start_time":    entry.StartTime,
-			"end_time":      entry.EndTime,
-			"shift_type":    entry.ShiftType,
+			"start_date":    schedule.StartDate,
+			"end_date":      schedule.EndDate,
 			"creator_id":    creatorID,
 		},
 		Channels: []string{"in_app", "push"},
@@ -141,17 +141,27 @@ func (u *scheduleUsecase) sendScheduleEntryNotification(schedule *models.Schedul
 	}
 }
 
-// sendBatchScheduleEntryNotifications sends notifications for batch entry creation
+// sendBatchScheduleEntryNotifications sends one notification to all participants about new schedule
 func (u *scheduleUsecase) sendBatchScheduleEntryNotifications(schedule *models.Schedule, entries []*models.ScheduleEntry, creatorID uint) {
-	// Group entries by user to send one consolidated notification per user
-	userEntries := make(map[uint][]*models.ScheduleEntry)
+	logger.WithFields(map[string]interface{}{
+		"schedule_id":   schedule.ID,
+		"schedule_title": schedule.Title,
+		"entries_count": len(entries),
+		"creator_id":    creatorID,
+	}).Info("Sending schedule notifications to participants")
+
+	// Collect unique user IDs (excluding creator)
+	userIDSet := make(map[uint]bool)
 	for _, entry := range entries {
 		if entry.UserID != creatorID {
-			userEntries[entry.UserID] = append(userEntries[entry.UserID], entry)
+			userIDSet[entry.UserID] = true
 		}
 	}
 
-	if len(userEntries) == 0 {
+	logger.WithField("unique_users_count", len(userIDSet)).Info("Unique users to notify")
+
+	if len(userIDSet) == 0 {
+		logger.Info("No users to notify (all entries belong to creator)")
 		return
 	}
 
@@ -164,39 +174,49 @@ func (u *scheduleUsecase) sendBatchScheduleEntryNotifications(schedule *models.S
 
 	priority := "medium"
 
-	for userID, userEntriesList := range userEntries {
-		var message string
-		if len(userEntriesList) == 1 {
-			entry := userEntriesList[0]
-			dateStr := entry.Date.Format("02.01.2006")
-			timeStr := fmt.Sprintf("%s - %s", entry.StartTime.Format("15:04"), entry.EndTime.Format("15:04"))
-			shiftName := getShiftTypeName(entry.ShiftType)
-			message = fmt.Sprintf("%s добавил(а) вас в график \"%s\" на %s (%s, %s)",
-				creatorName, schedule.Title, dateStr, shiftName, timeStr)
-		} else {
-			// Multiple entries - summarize
-			message = fmt.Sprintf("%s добавил(а) вас в график \"%s\" (%d смен)",
-				creatorName, schedule.Title, len(userEntriesList))
-		}
+	// Format date range
+	dateRange := fmt.Sprintf("%s - %s",
+		schedule.StartDate.Format("02.01.2006"),
+		schedule.EndDate.Format("02.01.2006"),
+	)
 
+	// Get schedule type name
+	typeName := getScheduleTypeName(schedule.Type)
+
+	message := fmt.Sprintf("%s опубликовал(а) график %s \"%s\" на период %s",
+		creatorName, typeName, schedule.Title, dateRange)
+
+	// Send one notification to each participant
+	for userID := range userIDSet {
 		notificationReq := &clients.NotificationRequest{
 			UserID:      userID,
 			Type:        "calendar",
-			Title:       "📅 Вас добавили в график",
+			Title:       "📅 Новый график",
 			Message:     message,
 			Priority:    &priority,
 			RelatedID:   &schedule.ID,
 			RelatedType: "schedule",
 			Data: map[string]interface{}{
-				"schedule_id":  schedule.ID,
-				"entries_count": len(userEntriesList),
-				"creator_id":   creatorID,
+				"schedule_id":   schedule.ID,
+				"schedule_type": schedule.Type,
+				"start_date":    schedule.StartDate,
+				"end_date":      schedule.EndDate,
+				"creator_id":    creatorID,
 			},
 			Channels: []string{"in_app", "push"},
 		}
 
 		if err := u.notificationClient.SendNotification(notificationReq); err != nil {
-			fmt.Printf("Failed to send batch schedule entry notification to user %d: %v\n", userID, err)
+			logger.WithFields(map[string]interface{}{
+				"user_id":     userID,
+				"schedule_id": schedule.ID,
+				"error":       err.Error(),
+			}).Error("Failed to send schedule notification")
+		} else {
+			logger.WithFields(map[string]interface{}{
+				"user_id":     userID,
+				"schedule_id": schedule.ID,
+			}).Info("Schedule notification sent successfully")
 		}
 	}
 }
