@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -369,9 +370,20 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 		return
 	}
 
-	// Check if it's a batch request
+	// Read raw body once to avoid EOF issue with multiple ShouldBindJSON calls
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Failed to read request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Try to parse as batch request first
 	var batchReq models.BatchCreateScheduleEntriesRequest
-	if err := c.ShouldBindJSON(&batchReq); err == nil && len(batchReq.Entries) > 0 {
+	if err := json.Unmarshal(rawBody, &batchReq); err == nil && len(batchReq.Entries) > 0 {
 		// Batch creation
 		entries, err := h.scheduleUsecase.CreateScheduleEntries(userID, uint(scheduleID), &batchReq)
 		if err != nil {
@@ -400,7 +412,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 
 	// Single entry creation
 	var req models.CreateScheduleEntryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(rawBody, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid request body",
 			"details":    err.Error(),
