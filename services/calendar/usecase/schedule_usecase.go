@@ -311,13 +311,17 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 		return nil, err
 	}
 
-	// Check for schedule conflicts
-	hasConflict, err := u.scheduleRepo.CheckScheduleConflict(req.UserID, req.Date, startTime, endTime, nil)
+	// Check for schedule conflicts with incompatible schedule types
+	conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(req.UserID, req.Date, startTime, endTime, schedule.Type, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check schedule conflict: %w", err)
 	}
-	if hasConflict {
-		return nil, errors.New("schedule conflict: user already has a shift at this time")
+	if len(conflictingEntries) > 0 {
+		conflict := conflictingEntries[0]
+		return nil, fmt.Errorf("пользователь уже стоит в графике \"%s\" с %s до %s",
+			conflict.Schedule.Title,
+			conflict.StartTime.Format("15:04"),
+			conflict.EndTime.Format("15:04"))
 	}
 
 	// Create schedule entry
@@ -414,6 +418,15 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		startTime, endTime, err := u.calculateShiftTimes(schedule, entryReq.Date, entryReq.ShiftType, entryReq.StartTime, entryReq.EndTime)
 		if err != nil {
 			continue // Skip invalid entries
+		}
+
+		// Check for schedule conflicts with incompatible schedule types
+		conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(entryReq.UserID, entryReq.Date, startTime, endTime, schedule.Type, nil)
+		if err != nil {
+			continue // Skip on error
+		}
+		if len(conflictingEntries) > 0 {
+			continue // Skip entries with conflicts
 		}
 
 		// Create entry

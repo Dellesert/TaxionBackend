@@ -55,6 +55,10 @@ type ScheduleRepository interface {
 	HasEntriesForMonth(scheduleID uint, year int, month time.Month) (bool, error)
 	GetRecurringSchedulesForUser(userID uint) ([]*models.Schedule, error)
 	DeleteEntriesForMonth(scheduleID uint, year int, month time.Month) error
+
+	// Schedule type compatibility
+	AreScheduleTypesCompatible(type1, type2 models.ScheduleType) (bool, error)
+	GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]*models.ScheduleEntry, error)
 }
 
 // ScheduleFilter defines filtering parameters for schedules
@@ -611,4 +615,61 @@ func (r *scheduleRepository) DeleteEntriesForMonth(scheduleID uint, year int, mo
 
 	return r.db.Where("schedule_id = ? AND date >= ? AND date <= ?", scheduleID, startOfMonth, endOfMonth).
 		Delete(&models.ScheduleEntry{}).Error
+}
+
+// AreScheduleTypesCompatible checks if two schedule types are compatible
+func (r *scheduleRepository) AreScheduleTypesCompatible(type1, type2 models.ScheduleType) (bool, error) {
+	// Same type is always compatible with itself for the same schedule
+	// but not compatible for different schedules of the same type
+	if type1 == type2 {
+		return false, nil
+	}
+
+	var count int64
+	err := r.db.Model(&models.ScheduleTypeCompatibility{}).
+		Where("schedule_type = ? AND compatible_with = ?", type1, type2).
+		Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// GetConflictingEntries returns schedule entries that conflict by time and are not compatible by type
+func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]*models.ScheduleEntry, error) {
+	// Get compatible types for the given schedule type
+	var compatibleTypes []models.ScheduleType
+	err := r.db.Model(&models.ScheduleTypeCompatibility{}).
+		Where("schedule_type = ?", scheduleType).
+		Pluck("compatible_with", &compatibleTypes).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Build query for conflicting entries
+	query := r.db.Model(&models.ScheduleEntry{}).
+		Preload("Schedule").
+		Joins("JOIN schedules ON schedules.id = schedule_entries.schedule_id").
+		Where("schedule_entries.user_id = ? AND schedule_entries.date = ?", userID, date).
+		Where("((schedule_entries.start_time < ? AND schedule_entries.end_time > ?) OR (schedule_entries.start_time < ? AND schedule_entries.end_time > ?) OR (schedule_entries.start_time >= ? AND schedule_entries.end_time <= ?))",
+			endTime, startTime, endTime, endTime, startTime, endTime)
+
+	// Exclude compatible schedule types
+	if len(compatibleTypes) > 0 {
+		query = query.Where("schedules.type NOT IN ?", compatibleTypes)
+	}
+
+	// Exclude entry being updated
+	if excludeEntryID != nil {
+		query = query.Where("schedule_entries.id != ?", *excludeEntryID)
+	}
+
+	var entries []*models.ScheduleEntry
+	if err := query.Find(&entries).Error; err != nil {
+		return nil, err
+	}
+
+	return entries, nil
 }

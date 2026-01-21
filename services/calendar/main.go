@@ -64,9 +64,13 @@ func main() {
 		&models.ScheduleTemplateEntry{},
 		&models.ScheduleAssignment{},
 		&models.Absence{},
+		&models.ScheduleTypeCompatibility{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
+
+	// Seed default schedule type compatibilities
+	seedScheduleTypeCompatibilities(db)
 
 	log.Info("Database connected and migrations completed")
 
@@ -322,4 +326,25 @@ func startBackgroundTasks(calendarUC usecase.CalendarUsecase) {
 	}()
 
 	log.Info("Background tasks started successfully")
+}
+
+// seedScheduleTypeCompatibilities seeds default schedule type compatibilities
+// Work schedule is compatible with on_duty (дежурство)
+func seedScheduleTypeCompatibilities(db *database.DB) {
+	compatibilities := []models.ScheduleTypeCompatibility{
+		{ScheduleType: models.ScheduleTypeWork, CompatibleWith: models.ScheduleTypeOnDuty},
+		{ScheduleType: models.ScheduleTypeOnDuty, CompatibleWith: models.ScheduleTypeWork},
+	}
+
+	for _, c := range compatibilities {
+		// Insert only if not exists
+		var count int64
+		db.Model(&models.ScheduleTypeCompatibility{}).
+			Where("schedule_type = ? AND compatible_with = ?", c.ScheduleType, c.CompatibleWith).
+			Count(&count)
+
+		if count == 0 {
+			db.Create(&c)
+		}
+	}
 }
