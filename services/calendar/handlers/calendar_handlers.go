@@ -1250,6 +1250,7 @@ func containsConflictError(errMsg string) bool {
 		"conflict detected",
 		"already scheduled",
 		"time overlap",
+		"уже стоит в графике",
 	}
 
 	for _, keyword := range conflictKeywords {
