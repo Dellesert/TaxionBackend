@@ -117,7 +117,12 @@ func (r *scheduleRepository) CreateSchedule(schedule *models.Schedule) error {
 // GetScheduleByID retrieves a schedule by ID
 func (r *scheduleRepository) GetScheduleByID(id uint) (*models.Schedule, error) {
 	var schedule models.Schedule
-	err := r.db.Preload("Creator").First(&schedule, id).Error
+	err := r.db.
+		Preload("Creator").
+		Preload("Template").
+		Preload("Template.Entries").
+		Preload("Template.Entries.User").
+		First(&schedule, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("schedule not found")
