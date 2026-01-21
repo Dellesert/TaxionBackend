@@ -337,34 +337,35 @@ type UpdateScheduleEntryRequest struct {
 
 // ScheduleResponse represents a schedule in API responses
 type ScheduleResponse struct {
-	ID            uint               `json:"id"`
-	Title         string             `json:"title"`
-	Description   string             `json:"description,omitempty"`
-	Type          ScheduleType       `json:"type"`
-	Visibility    ScheduleVisibility `json:"visibility"`
-	CreatedBy     uint               `json:"created_by"`
-	Creator       *sharedmodels.User `json:"creator,omitempty"`
-	StartDate     time.Time          `json:"start_date"`
-	EndDate       time.Time          `json:"end_date"`
-	IsForAllUsers bool               `json:"is_for_all_users"`
-	DepartmentID  *uint              `json:"department_id,omitempty"`
-	Color         string             `json:"color"`
-	IsActive      bool               `json:"is_active"`
-	Mode          ScheduleMode       `json:"mode"`
-	TemplateID    *uint              `json:"template_id,omitempty"`
-	ImportedFrom  *string            `json:"imported_from,omitempty"`
-	MorningStart  string             `json:"morning_start"`
-	MorningEnd    string             `json:"morning_end"`
-	EveningStart  string             `json:"evening_start"`
-	EveningEnd    string             `json:"evening_end"`
-	EntryCount    int                `json:"entry_count,omitempty"`
-	CreatedAt     time.Time          `json:"created_at"`
-	UpdatedAt     time.Time          `json:"updated_at"`
+	ID            uint                      `json:"id"`
+	Title         string                    `json:"title"`
+	Description   string                    `json:"description,omitempty"`
+	Type          ScheduleType              `json:"type"`
+	Visibility    ScheduleVisibility        `json:"visibility"`
+	CreatedBy     uint                      `json:"created_by"`
+	Creator       *sharedmodels.User        `json:"creator,omitempty"`
+	StartDate     time.Time                 `json:"start_date"`
+	EndDate       time.Time                 `json:"end_date"`
+	IsForAllUsers bool                      `json:"is_for_all_users"`
+	DepartmentID  *uint                     `json:"department_id,omitempty"`
+	Color         string                    `json:"color"`
+	IsActive      bool                      `json:"is_active"`
+	Mode          ScheduleMode              `json:"mode"`
+	TemplateID    *uint                     `json:"template_id,omitempty"`
+	Template      *ScheduleTemplateResponse `json:"template,omitempty"`
+	ImportedFrom  *string                   `json:"imported_from,omitempty"`
+	MorningStart  string                    `json:"morning_start"`
+	MorningEnd    string                    `json:"morning_end"`
+	EveningStart  string                    `json:"evening_start"`
+	EveningEnd    string                    `json:"evening_end"`
+	EntryCount    int                       `json:"entry_count,omitempty"`
+	CreatedAt     time.Time                 `json:"created_at"`
+	UpdatedAt     time.Time                 `json:"updated_at"`
 }
 
 // ToResponse converts Schedule model to ScheduleResponse
 func (s *Schedule) ToResponse() *ScheduleResponse {
-	return &ScheduleResponse{
+	resp := &ScheduleResponse{
 		ID:            s.ID,
 		Title:         s.Title,
 		Description:   s.Description,
@@ -389,6 +390,13 @@ func (s *Schedule) ToResponse() *ScheduleResponse {
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
 	}
+
+	// Include template for recurring schedules
+	if s.Template != nil {
+		resp.Template = s.Template.ToResponse()
+	}
+
+	return resp
 }
 
 // ScheduleEntryResponse represents a schedule entry in API responses
