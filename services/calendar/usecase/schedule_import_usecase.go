@@ -424,6 +424,7 @@ func (u *scheduleImportUsecase) sendScheduleImportedNotification(schedule *model
 				"start_date":    schedule.StartDate,
 				"end_date":      schedule.EndDate,
 				"creator_id":    creatorID,
+				"action":        "open_schedule",
 			},
 			Channels: []string{"in_app", "push"},
 		}
