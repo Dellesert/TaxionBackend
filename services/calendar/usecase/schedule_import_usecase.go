@@ -21,14 +21,16 @@ type ScheduleImportUsecase interface {
 // scheduleImportUsecase implements ScheduleImportUsecase interface
 type scheduleImportUsecase struct {
 	scheduleRepo repository.ScheduleRepository
+	absenceRepo  repository.AbsenceRepository
 	fileClient   *clients.FileClient
 	parser       *importschedule.ScheduleParser
 }
 
 // NewScheduleImportUsecase creates a new schedule import usecase
-func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
+func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, absenceRepo repository.AbsenceRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
 	return &scheduleImportUsecase{
 		scheduleRepo: scheduleRepo,
+		absenceRepo:  absenceRepo,
 		fileClient:   fileClient,
 		parser:       importschedule.NewScheduleParser(),
 	}
@@ -196,6 +198,34 @@ func (u *scheduleImportUsecase) createEntriesFromParsed(userID, scheduleID uint,
 	entries := make([]*models.ScheduleEntry, 0)
 	warnings := make([]string, 0)
 
+	// Collect all user IDs and date range
+	var userIDs []uint
+	var minDate, maxDate time.Time
+	userIDSet := make(map[uint]bool)
+
+	for _, parsedEntry := range parsed.Entries {
+		importedUser, exists := parsed.Users[parsedEntry.UserName]
+		if exists && importedUser.UserID != nil && !userIDSet[*importedUser.UserID] {
+			userIDs = append(userIDs, *importedUser.UserID)
+			userIDSet[*importedUser.UserID] = true
+		}
+		if minDate.IsZero() || parsedEntry.Date.Before(minDate) {
+			minDate = parsedEntry.Date
+		}
+		if maxDate.IsZero() || parsedEntry.Date.After(maxDate) {
+			maxDate = parsedEntry.Date
+		}
+	}
+
+	// Get absences for all users in the date range
+	absenceMap := make(map[uint][]*models.Absence)
+	if len(userIDs) > 0 && !minDate.IsZero() && !maxDate.IsZero() {
+		absMap, err := u.absenceRepo.GetAbsentUsersForPeriod(userIDs, minDate, maxDate)
+		if err == nil {
+			absenceMap = absMap
+		}
+	}
+
 	for _, parsedEntry := range parsed.Entries {
 		// Get matched user ID
 		importedUser, exists := parsed.Users[parsedEntry.UserName]
@@ -204,13 +234,33 @@ func (u *scheduleImportUsecase) createEntriesFromParsed(userID, scheduleID uint,
 			continue
 		}
 
+		targetUserID := *importedUser.UserID
+
+		// Check if user is absent on this date
+		if userAbsences, ok := absenceMap[targetUserID]; ok {
+			isAbsent := false
+			var absenceType string
+			for _, absence := range userAbsences {
+				if !parsedEntry.Date.Before(absence.StartDate) && !parsedEntry.Date.After(absence.EndDate) {
+					isAbsent = true
+					absenceType = GetAbsenceTypeName(absence.Type)
+					break
+				}
+			}
+			if isAbsent {
+				warnings = append(warnings, fmt.Sprintf("Пропущена запись для %s на %s: пользователь в отсутствии (%s)",
+					parsedEntry.UserName, parsedEntry.Date.Format("02.01.2006"), absenceType))
+				continue
+			}
+		}
+
 		// Parse times
 		startTime := u.parseTimeOnDate(parsedEntry.Date, parsedEntry.StartTime)
 		endTime := u.parseTimeOnDate(parsedEntry.Date, parsedEntry.EndTime)
 
 		entry := &models.ScheduleEntry{
 			ScheduleID: scheduleID,
-			UserID:     *importedUser.UserID,
+			UserID:     targetUserID,
 			Date:       parsedEntry.Date,
 			ShiftType:  parsedEntry.ShiftType,
 			StartTime:  startTime,
