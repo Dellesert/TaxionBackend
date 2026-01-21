@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
 	sharedmodels "tachyon-messenger/shared/models"
@@ -56,9 +57,11 @@ type EntryFilterParams struct {
 
 // scheduleUsecase implements ScheduleUsecase interface
 type scheduleUsecase struct {
-	scheduleRepo repository.ScheduleRepository
-	eventRepo    repository.EventRepository
-	absenceRepo  repository.AbsenceRepository
+	scheduleRepo       repository.ScheduleRepository
+	eventRepo          repository.EventRepository
+	absenceRepo        repository.AbsenceRepository
+	notificationClient *clients.NotificationClient
+	userClient         *clients.UserClient
 }
 
 // NewScheduleUsecase creates a new schedule usecase
@@ -68,9 +71,11 @@ func NewScheduleUsecase(
 	absenceRepo repository.AbsenceRepository,
 ) ScheduleUsecase {
 	return &scheduleUsecase{
-		scheduleRepo: scheduleRepo,
-		eventRepo:    eventRepo,
-		absenceRepo:  absenceRepo,
+		scheduleRepo:       scheduleRepo,
+		eventRepo:          eventRepo,
+		absenceRepo:        absenceRepo,
+		notificationClient: clients.NewNotificationClient(),
+		userClient:         clients.NewUserClient(),
 	}
 }
 
@@ -158,6 +163,9 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 	if err != nil {
 		return nil, fmt.Errorf("failed to get created schedule: %w", err)
 	}
+
+	// Send notifications to participants asynchronously
+	go u.sendScheduleCreatedNotification(createdSchedule, userID)
 
 	return createdSchedule.ToResponse(), nil
 }

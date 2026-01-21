@@ -160,3 +160,29 @@ func (c *UserClient) GetAllUsers() ([]*sharedmodels.User, error) {
 
 	return users, nil
 }
+
+// GetUsersByDepartment retrieves all users from a specific department
+func (c *UserClient) GetUsersByDepartment(departmentID uint) ([]*UserInfo, error) {
+	url := fmt.Sprintf("%s/internal/users/department/%d", c.baseURL, departmentID)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to request users by department: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("user service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var response struct {
+		Users []*UserInfo `json:"users"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return response.Users, nil
+}
