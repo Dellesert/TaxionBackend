@@ -343,15 +343,17 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 		return nil, fmt.Errorf("failed to create schedule entry: %w", err)
 	}
 
-	// Create associated calendar event
-	event, err := u.createEventForScheduleEntry(schedule, entry)
-	if err != nil {
-		// Log error but don't fail the entry creation
-		// The entry can exist without an event
-	} else {
-		entry.EventID = &event.ID
-		if err := u.scheduleRepo.UpdateScheduleEntry(entry); err != nil {
-			// Log error
+	// Create associated calendar event (skip for recurring schedules)
+	if schedule.Mode != models.ScheduleModeRecurring {
+		event, err := u.createEventForScheduleEntry(schedule, entry)
+		if err != nil {
+			// Log error but don't fail the entry creation
+			// The entry can exist without an event
+		} else {
+			entry.EventID = &event.ID
+			if err := u.scheduleRepo.UpdateScheduleEntry(entry); err != nil {
+				// Log error
+			}
 		}
 	}
 
@@ -451,12 +453,14 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		return nil, fmt.Errorf("failed to create schedule entries: %w", err)
 	}
 
-	// Create calendar events for each entry
+	// Create calendar events for each entry (skip for recurring schedules)
 	for _, entry := range entries {
-		event, err := u.createEventForScheduleEntry(schedule, entry)
-		if err == nil {
-			entry.EventID = &event.ID
-			u.scheduleRepo.UpdateScheduleEntry(entry)
+		if schedule.Mode != models.ScheduleModeRecurring {
+			event, err := u.createEventForScheduleEntry(schedule, entry)
+			if err == nil {
+				entry.EventID = &event.ID
+				u.scheduleRepo.UpdateScheduleEntry(entry)
+			}
 		}
 
 		// Get entry with relations
@@ -761,12 +765,14 @@ func (u *scheduleUsecase) generateMonthEntries(schedule *models.Schedule, templa
 			return err
 		}
 
-		// Create events for entries
-		for _, entry := range entries {
-			event, err := u.createEventForScheduleEntry(schedule, entry)
-			if err == nil {
-				entry.EventID = &event.ID
-				u.scheduleRepo.UpdateScheduleEntry(entry)
+		// Create events for entries (skip for recurring schedules)
+		if schedule.Mode != models.ScheduleModeRecurring {
+			for _, entry := range entries {
+				event, err := u.createEventForScheduleEntry(schedule, entry)
+				if err == nil {
+					entry.EventID = &event.ID
+					u.scheduleRepo.UpdateScheduleEntry(entry)
+				}
 			}
 		}
 	}
