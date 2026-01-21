@@ -411,6 +411,9 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 		return nil, fmt.Errorf("failed to get created entry: %w", err)
 	}
 
+	// Send notification to the user asynchronously
+	go u.sendScheduleEntryNotification(schedule, createdEntry, userID)
+
 	return createdEntry.ToResponse(), nil
 }
 
@@ -517,6 +520,9 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 			responses = append(responses, createdEntry.ToResponse())
 		}
 	}
+
+	// Send notifications to all affected users asynchronously
+	go u.sendBatchScheduleEntryNotifications(schedule, entries, userID)
 
 	return responses, nil
 }

@@ -89,6 +89,134 @@ func (u *scheduleUsecase) sendScheduleCreatedNotification(schedule *models.Sched
 	}
 }
 
+// sendScheduleEntryNotification sends notification when user is added to a schedule
+func (u *scheduleUsecase) sendScheduleEntryNotification(schedule *models.Schedule, entry *models.ScheduleEntry, creatorID uint) {
+	// Don't notify if user added themselves
+	if entry.UserID == creatorID {
+		return
+	}
+
+	// Get creator info
+	creatorInfo, err := u.userClient.GetUserByID(creatorID)
+	creatorName := "Кто-то"
+	if err == nil && creatorInfo != nil {
+		creatorName = creatorInfo.Name
+	}
+
+	priority := "medium"
+
+	// Format date and time
+	dateStr := entry.Date.Format("02.01.2006")
+	timeStr := fmt.Sprintf("%s - %s", entry.StartTime.Format("15:04"), entry.EndTime.Format("15:04"))
+
+	// Get shift type name
+	shiftName := getShiftTypeName(entry.ShiftType)
+
+	message := fmt.Sprintf("%s добавил(а) вас в график \"%s\" на %s (%s, %s)",
+		creatorName, schedule.Title, dateStr, shiftName, timeStr)
+
+	notificationReq := &clients.NotificationRequest{
+		UserID:      entry.UserID,
+		Type:        "calendar",
+		Title:       "📅 Вас добавили в график",
+		Message:     message,
+		Priority:    &priority,
+		RelatedID:   &schedule.ID,
+		RelatedType: "schedule",
+		Data: map[string]interface{}{
+			"schedule_id":   schedule.ID,
+			"entry_id":      entry.ID,
+			"schedule_type": schedule.Type,
+			"date":          entry.Date,
+			"start_time":    entry.StartTime,
+			"end_time":      entry.EndTime,
+			"shift_type":    entry.ShiftType,
+			"creator_id":    creatorID,
+		},
+		Channels: []string{"in_app", "push"},
+	}
+
+	if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+		fmt.Printf("Failed to send schedule entry notification to user %d: %v\n", entry.UserID, err)
+	}
+}
+
+// sendBatchScheduleEntryNotifications sends notifications for batch entry creation
+func (u *scheduleUsecase) sendBatchScheduleEntryNotifications(schedule *models.Schedule, entries []*models.ScheduleEntry, creatorID uint) {
+	// Group entries by user to send one consolidated notification per user
+	userEntries := make(map[uint][]*models.ScheduleEntry)
+	for _, entry := range entries {
+		if entry.UserID != creatorID {
+			userEntries[entry.UserID] = append(userEntries[entry.UserID], entry)
+		}
+	}
+
+	if len(userEntries) == 0 {
+		return
+	}
+
+	// Get creator info
+	creatorInfo, err := u.userClient.GetUserByID(creatorID)
+	creatorName := "Кто-то"
+	if err == nil && creatorInfo != nil {
+		creatorName = creatorInfo.Name
+	}
+
+	priority := "medium"
+
+	for userID, userEntriesList := range userEntries {
+		var message string
+		if len(userEntriesList) == 1 {
+			entry := userEntriesList[0]
+			dateStr := entry.Date.Format("02.01.2006")
+			timeStr := fmt.Sprintf("%s - %s", entry.StartTime.Format("15:04"), entry.EndTime.Format("15:04"))
+			shiftName := getShiftTypeName(entry.ShiftType)
+			message = fmt.Sprintf("%s добавил(а) вас в график \"%s\" на %s (%s, %s)",
+				creatorName, schedule.Title, dateStr, shiftName, timeStr)
+		} else {
+			// Multiple entries - summarize
+			message = fmt.Sprintf("%s добавил(а) вас в график \"%s\" (%d смен)",
+				creatorName, schedule.Title, len(userEntriesList))
+		}
+
+		notificationReq := &clients.NotificationRequest{
+			UserID:      userID,
+			Type:        "calendar",
+			Title:       "📅 Вас добавили в график",
+			Message:     message,
+			Priority:    &priority,
+			RelatedID:   &schedule.ID,
+			RelatedType: "schedule",
+			Data: map[string]interface{}{
+				"schedule_id":  schedule.ID,
+				"entries_count": len(userEntriesList),
+				"creator_id":   creatorID,
+			},
+			Channels: []string{"in_app", "push"},
+		}
+
+		if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+			fmt.Printf("Failed to send batch schedule entry notification to user %d: %v\n", userID, err)
+		}
+	}
+}
+
+// getShiftTypeName returns Russian name for shift type
+func getShiftTypeName(shiftType models.ShiftType) string {
+	switch shiftType {
+	case models.ShiftMorning:
+		return "утренняя смена"
+	case models.ShiftEvening:
+		return "вечерняя смена"
+	case models.ShiftFullDay:
+		return "полный день"
+	case models.ShiftCustom:
+		return "особая смена"
+	default:
+		return "смена"
+	}
+}
+
 // getScheduleTypeName returns Russian name for schedule type
 func getScheduleTypeName(scheduleType models.ScheduleType) string {
 	switch scheduleType {
