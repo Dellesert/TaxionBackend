@@ -105,14 +105,17 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 
 		}
 
-		// User absences route - proxy to calendar service (must be before general users routes)
-		v1.GET("/users/:id/absences", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
-
 		// User routes - proxy to user service
+		// Note: Using explicit routes instead of wildcard to avoid conflict with /users/:id/absences
 		users := v1.Group("/users")
 		{
-			users.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
-			users.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			users.GET("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			users.POST("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			users.GET("/:id", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			users.PUT("/:id", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			users.DELETE("/:id", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			// User absences - proxy to calendar service
+			users.GET("/:id/absences", proxyRequest(proxyConfig.CalendarService.URL, proxyConfig.CalendarService.Name))
 		}
 
 		// Profile routes - proxy to user service
