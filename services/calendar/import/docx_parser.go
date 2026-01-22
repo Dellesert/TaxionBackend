@@ -521,7 +521,25 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 		// Extract names (separated by newline or comma)
 		names := p.extractNamesFromCell(namesText)
 
+		// Track all users from this row
+		for _, name := range names {
+			if name == "" {
+				continue
+			}
+			if _, exists := result.Users[name]; !exists {
+				result.Users[name] = &models.ImportedUser{
+					Name:        name,
+					IsUnmatched: true,
+				}
+			}
+		}
+
 		// Process each time slot column
+		// Logic: Each time slot column has a marker (У or В or У/В)
+		// If multiple names in the cell, they correspond to different time slots:
+		// - First name (index 0) -> first time slot column with marker
+		// - Second name (index 1) -> second time slot column with marker
+		// - If У/В in one cell, that single person works both slots
 		for colIdx := timeColStart; colIdx < len(cells) && (colIdx-timeColStart) < len(timeSlots); colIdx++ {
 			cellText := strings.ToUpper(strings.TrimSpace(cells[colIdx].GetText()))
 			if cellText == "" {
@@ -535,43 +553,28 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 			hasU := strings.Contains(cellText, "У")
 			hasV := strings.Contains(cellText, "В")
 
-			// For each name in the cell, create entry based on У/В designation
-			for nameIdx, name := range names {
-				if name == "" {
-					continue
-				}
+			if !hasU && !hasV {
+				continue
+			}
 
-				// Track user
-				if _, exists := result.Users[name]; !exists {
-					result.Users[name] = &models.ImportedUser{
-						Name:        name,
-						IsUnmatched: true,
-					}
+			// Determine which name(s) to assign to this time slot
+			if len(names) == 1 {
+				// Single name - works this slot if marked
+				name := names[0]
+				entry := &ParsedEntry{
+					UserName:  name,
+					Date:      date,
+					StartTime: timeSlot.Start,
+					EndTime:   timeSlot.End,
+					ShiftType: p.determineShiftType(timeSlot.Start, timeSlot.End),
 				}
-
-				// If there are multiple names and multiple markers, try to match them
-				// e.g., "Карпунец В.В.\nСавельева О.В." with "У" and "В" columns
-				// First name gets the designation from this slot
-				shouldAddEntry := false
-				if hasU && hasV {
-					// Cell has У/В - this person works both slots
-					shouldAddEntry = true
-				} else if len(names) > 1 {
-					// Multiple names - first name typically gets У (morning), second gets В (evening)
-					if nameIdx == 0 && hasU {
-						shouldAddEntry = true
-					} else if nameIdx == 1 && hasV {
-						shouldAddEntry = true
-					} else if hasU || hasV {
-						// If only one marker, assign to corresponding name position
-						shouldAddEntry = true
-					}
-				} else {
-					// Single name - gets whatever designation is present
-					shouldAddEntry = hasU || hasV
-				}
-
-				if shouldAddEntry {
+				result.Entries = append(result.Entries, entry)
+			} else if len(names) >= 2 {
+				// Multiple names - match by slot index
+				// slotIdx 0 (first time column, e.g., 10-14) -> names[0]
+				// slotIdx 1 (second time column, e.g., 14-18) -> names[1]
+				if slotIdx < len(names) {
+					name := names[slotIdx]
 					entry := &ParsedEntry{
 						UserName:  name,
 						Date:      date,
