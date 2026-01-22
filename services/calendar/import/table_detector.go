@@ -17,6 +17,9 @@ const (
 	FormatDesignation
 	// FormatCalendarGrid - Format 3: Calendar grid (unknown format)
 	FormatCalendarGrid
+	// FormatDesignationNumbered - Format 4: Numbered У/В designation with № п/п and Ф.И.О. columns
+	// Header: "ГРАФИК учета рабочего времени ... за январь 2026 г."
+	FormatDesignationNumbered
 	// FormatUnknown - Unknown format
 	FormatUnknown
 )
@@ -30,7 +33,8 @@ type TableDetector struct {
 // NewTableDetector creates a new table detector
 func NewTableDetector() *TableDetector {
 	return &TableDetector{
-		monthPattern: regexp.MustCompile(`(?i)(январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\s*(\d{4})`),
+		// Matches: "январь 2026", "за январь 2026 г.", "за январь 2026г."
+		monthPattern: regexp.MustCompile(`(?i)(?:за\s+)?(январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\s*(\d{4})`),
 		// Matches both "10:00-14:00" and "С 9 до 14 часов"
 		timePattern: regexp.MustCompile(`(\d{1,2}[:\.]\d{2}\s*[-–—]\s*\d{1,2}[:\.]\d{2})|([сСcC]\s*\d{1,2}\s*до\s*\d{1,2})`),
 	}
@@ -55,6 +59,12 @@ func (d *TableDetector) DetectFormat(doc *DocxDocument) (TableFormat, error) {
 			allRowsText.WriteString(" ")
 		}
 		tableText := allRowsText.String()
+
+		// Check for Format 4: Numbered designation with № п/п and Ф.И.О. columns
+		// This format has "№ п/п" and "Ф.И.О." in header
+		if d.hasNumberedDesignationHeader(table) {
+			return FormatDesignationNumbered, nil
+		}
 
 		// Check for Format 1: Time slots format (look for time patterns like "10:00-14:00")
 		if d.hasTimeSlots(tableText) {
@@ -90,6 +100,62 @@ func (d *TableDetector) DetectFormat(doc *DocxDocument) (TableFormat, error) {
 	}
 
 	return FormatUnknown, fmt.Errorf("unable to detect table format (found %d tables)", len(doc.Tables))
+}
+
+// hasNumberedDesignationHeader checks if table has numbered designation format header
+// This format has "№ п/п" in first column and "Ф.И.О." in second column
+func (d *TableDetector) hasNumberedDesignationHeader(table DocxTable) bool {
+	if len(table.Rows) < 2 {
+		return false
+	}
+
+	// Check first two rows for header pattern
+	// Row 0 or 1 should contain "№" and "Ф.И.О."
+	for i := 0; i < min(2, len(table.Rows)); i++ {
+		row := table.Rows[i]
+		if len(row.Cells) < 2 {
+			continue
+		}
+
+		rowText := strings.ToLower(d.extractRowText(row))
+
+		// Check for "№" (or "№ п/п") and "ф.и.о." pattern
+		hasNumber := strings.Contains(rowText, "№") || strings.Contains(rowText, "n п/п")
+		hasFIO := strings.Contains(rowText, "ф.и.о") || strings.Contains(rowText, "фио")
+
+		if hasNumber && hasFIO {
+			// Also verify it has date numbers in header (12, 13, 14, etc.)
+			// and possibly day names (пн, вт, ср)
+			return d.hasDateNumbersInHeader(table)
+		}
+	}
+
+	return false
+}
+
+// hasDateNumbersInHeader checks if table header contains date numbers
+func (d *TableDetector) hasDateNumbersInHeader(table DocxTable) bool {
+	if len(table.Rows) < 1 {
+		return false
+	}
+
+	// Check first row for date numbers
+	row := table.Rows[0]
+	numberCount := 0
+
+	for i := 2; i < len(row.Cells); i++ { // Skip first two columns (№ and Ф.И.О.)
+		cellText := strings.TrimSpace(row.Cells[i].GetText())
+		// Check if cell contains a number between 1-31
+		var num int
+		if _, err := fmt.Sscanf(cellText, "%d", &num); err == nil {
+			if num >= 1 && num <= 31 {
+				numberCount++
+			}
+		}
+	}
+
+	// Should have at least 5 date numbers
+	return numberCount >= 5
 }
 
 // hasTimeSlots checks if text has time slot patterns
@@ -249,6 +315,8 @@ func GetFormatName(format TableFormat) string {
 		return "У/В Designation Format"
 	case FormatCalendarGrid:
 		return "Calendar Grid Format"
+	case FormatDesignationNumbered:
+		return "Numbered У/В Designation Format"
 	default:
 		return "Unknown Format"
 	}

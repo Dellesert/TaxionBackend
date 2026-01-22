@@ -87,6 +87,8 @@ func (p *ScheduleParser) ParseDocument(content []byte) (*ParsedSchedule, error) 
 		err = p.parseDesignationFormat(doc, result)
 	case FormatCalendarGrid:
 		err = p.parseCalendarGridFormat(doc, result)
+	case FormatDesignationNumbered:
+		err = p.parseDesignationNumberedFormat(doc, result)
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", GetFormatName(format))
 	}
@@ -266,6 +268,197 @@ func (p *ScheduleParser) parseCalendarGridFormat(doc *DocxDocument, result *Pars
 	// Similar to parseDesignationFormat but with different interpretation
 	// For now, treat it as designation format
 	return p.parseDesignationFormat(doc, result)
+}
+
+// parseDesignationNumberedFormat parses Format 4: Numbered У/В designation
+// Table structure:
+// Row 0: № п/п | Ф.И.О. | 12 | 13 | 14 | ... | Итого | Подпись
+// Row 1:       |        | пн | вт | ср | ... |       |
+// Row 2: 1.    | Брежев | у  |    |    | ... |       |
+// Row 3: 2.    | Быков  |    | у  |    | ... |       |
+func (p *ScheduleParser) parseDesignationNumberedFormat(doc *DocxDocument, result *ParsedSchedule) error {
+	if len(doc.Tables) == 0 {
+		return fmt.Errorf("no tables found")
+	}
+
+	table := doc.Tables[0]
+	rows := table.Rows
+	if len(rows) < 3 {
+		return fmt.Errorf("insufficient rows in table (need at least 3 for header and data)")
+	}
+
+	// Find header row with dates (contains numbers 12, 13, 14...)
+	// Usually it's row 0, but check to be sure
+	headerRowIdx := 0
+	dataStartRowIdx := 2 // Usually data starts after header (row 0) and day names (row 1)
+
+	// Parse dates from header row
+	dates, dateColStart, dateColEnd, err := p.parseDateHeaderNumbered(rows[headerRowIdx], result.Month, result.Year)
+	if err != nil {
+		return fmt.Errorf("failed to parse date header: %w", err)
+	}
+
+	// Skip rows that are header or day names
+	// Data rows start with a number (1., 2., 3., etc.) and contain a name in column 1
+	for rowIdx := dataStartRowIdx; rowIdx < len(rows); rowIdx++ {
+		row := rows[rowIdx]
+		cells := row.Cells
+
+		if len(cells) < 3 {
+			continue
+		}
+
+		// First column should be row number (1., 2., etc.) or just number
+		firstCell := strings.TrimSpace(cells[0].GetText())
+		// Check if first cell looks like a row number
+		if !p.isRowNumber(firstCell) && firstCell != "" {
+			// If not a number and not empty, might still be data row without number
+			// Check if second column has a name
+			if len(cells) > 1 {
+				secondCell := strings.TrimSpace(cells[1].GetText())
+				if !p.looksLikeName(secondCell) {
+					continue
+				}
+			}
+		}
+
+		// Second column: name (Ф.И.О.)
+		userName := strings.TrimSpace(cells[1].GetText())
+		if userName == "" {
+			continue
+		}
+
+		// Skip if first column looks like a name (table might have different structure)
+		if !p.looksLikeName(userName) {
+			continue
+		}
+
+		// Track user
+		if _, exists := result.Users[userName]; !exists {
+			result.Users[userName] = &models.ImportedUser{
+				Name:        userName,
+				IsUnmatched: true,
+			}
+		}
+
+		// Process each date column
+		dateIdx := 0
+		for colIdx := dateColStart; colIdx <= dateColEnd && dateIdx < len(dates); colIdx++ {
+			if colIdx >= len(cells) {
+				dateIdx++
+				continue
+			}
+
+			cellText := strings.ToUpper(strings.TrimSpace(cells[colIdx].GetText()))
+			if cellText == "" {
+				dateIdx++
+				continue
+			}
+
+			date := dates[dateIdx]
+			if date.IsZero() {
+				dateIdx++
+				continue
+			}
+
+			// Parse У (morning) and/or В (evening)
+			hasU := strings.Contains(cellText, "У")
+			hasV := strings.Contains(cellText, "В")
+
+			if hasU {
+				entry := &ParsedEntry{
+					UserName:  userName,
+					Date:      date,
+					StartTime: "10:00",
+					EndTime:   "14:00",
+					ShiftType: models.ShiftMorning,
+				}
+				result.Entries = append(result.Entries, entry)
+			}
+
+			if hasV {
+				entry := &ParsedEntry{
+					UserName:  userName,
+					Date:      date,
+					StartTime: "14:00",
+					EndTime:   "18:00",
+					ShiftType: models.ShiftEvening,
+				}
+				result.Entries = append(result.Entries, entry)
+			}
+
+			dateIdx++
+		}
+	}
+
+	return nil
+}
+
+// parseDateHeaderNumbered parses dates from header row for numbered format
+// Returns dates array, start column index, end column index
+func (p *ScheduleParser) parseDateHeaderNumbered(headerRow DocxRow, month time.Month, year int) ([]time.Time, int, int, error) {
+	cells := headerRow.Cells
+	dates := make([]time.Time, 0)
+
+	dateColStart := -1
+	dateColEnd := -1
+
+	for i := 0; i < len(cells); i++ {
+		cellText := strings.TrimSpace(cells[i].GetText())
+		cellTextLower := strings.ToLower(cellText)
+
+		// Skip known non-date columns
+		if cellTextLower == "№ п/п" || cellTextLower == "№" || cellTextLower == "n" ||
+			cellTextLower == "ф.и.о." || cellTextLower == "ф.и.о" || cellTextLower == "фио" ||
+			cellTextLower == "итого" || cellTextLower == "подпись" {
+			continue
+		}
+
+		// Try to parse as day number
+		var day int
+		if n, err := fmt.Sscanf(cellText, "%d", &day); n == 1 && err == nil {
+			if day >= 1 && day <= 31 {
+				date := time.Date(year, month, day, 0, 0, 0, 0, time.Local)
+				dates = append(dates, date)
+
+				if dateColStart == -1 {
+					dateColStart = i
+				}
+				dateColEnd = i
+				continue
+			}
+		}
+
+		// If we've already started finding dates but this isn't a date,
+		// and it's not a known column, we might have reached the end
+		if dateColStart != -1 && len(dates) > 0 {
+			// Check if this might be "Итого" or "Подпись" column
+			if cellTextLower == "" || strings.Contains(cellTextLower, "итог") || strings.Contains(cellTextLower, "подпись") {
+				break
+			}
+		}
+	}
+
+	if len(dates) == 0 {
+		return nil, 0, 0, fmt.Errorf("no valid dates found in header")
+	}
+
+	return dates, dateColStart, dateColEnd, nil
+}
+
+// isRowNumber checks if text looks like a row number (1., 2., 3, etc.)
+func (p *ScheduleParser) isRowNumber(text string) bool {
+	text = strings.TrimSpace(text)
+	// Remove trailing dot
+	text = strings.TrimSuffix(text, ".")
+
+	// Check if it's a number
+	var num int
+	if n, err := fmt.Sscanf(text, "%d", &num); n == 1 && err == nil {
+		return num >= 1 && num <= 100 // Row numbers are typically 1-100
+	}
+
+	return false
 }
 
 // TimeSlot represents a time slot column
