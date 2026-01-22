@@ -235,10 +235,57 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check edit permission
+	canEdit, err := h.scheduleUsecase.CanEditSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule edit permission")
+
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to update schedule",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if !canEdit {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"user_role":   userRole,
+			"schedule_id": scheduleID,
+		}).Warn("User attempted to update schedule without permission")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на редактирование этого графика",
 			"request_id": requestID,
 		})
 		return
@@ -305,10 +352,57 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check edit permission (same as delete permission)
+	canEdit, err := h.scheduleUsecase.CanEditSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule delete permission")
+
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to delete schedule",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if !canEdit {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"user_role":   userRole,
+			"schedule_id": scheduleID,
+		}).Warn("User attempted to delete schedule without permission")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на удаление этого графика",
 			"request_id": requestID,
 		})
 		return
@@ -361,10 +455,57 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check edit permission for the schedule
+	canEdit, err := h.scheduleUsecase.CanEditSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule edit permission")
+
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to create schedule entry",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if !canEdit {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"user_role":   userRole,
+			"schedule_id": scheduleID,
+		}).Warn("User attempted to create schedule entry without permission")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на добавление записей в этот график",
 			"request_id": requestID,
 		})
 		return
@@ -540,10 +681,57 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check edit permission for the schedule
+	canEdit, err := h.scheduleUsecase.CanEditSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule edit permission")
+
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to update schedule entry",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if !canEdit {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"user_role":   userRole,
+			"schedule_id": scheduleID,
+		}).Warn("User attempted to update schedule entry without permission")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на редактирование записей этого графика",
 			"request_id": requestID,
 		})
 		return
@@ -614,10 +802,57 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check edit permission for the schedule
+	canEdit, err := h.scheduleUsecase.CanEditSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule edit permission")
+
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to delete schedule entry",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if !canEdit {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"user_role":   userRole,
+			"schedule_id": scheduleID,
+		}).Warn("User attempted to delete schedule entry without permission")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на удаление записей этого графика",
 			"request_id": requestID,
 		})
 		return
