@@ -47,6 +47,30 @@ func (h *ScheduleHandler) CreateSchedule(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check if user can create schedules (only admin, super_admin, department_head)
+	if userRole != "super_admin" && userRole != "admin" && userRole != "department_head" {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"user_role":  userRole,
+		}).Warn("User attempted to create schedule without permission")
+
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на создание графиков",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	var req models.CreateScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.WithFields(map[string]interface{}{
