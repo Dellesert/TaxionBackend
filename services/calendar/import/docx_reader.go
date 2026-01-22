@@ -160,10 +160,21 @@ func buildXMLTree(decoder *xml.Decoder) (*xmlNode, error) {
 			}
 
 		case xml.CharData:
-			text := strings.TrimSpace(string(elem))
-			if text != "" && len(stack) > 0 {
+			text := string(elem)
+			// Only trim if it's purely whitespace outside of text elements
+			// For 't' elements (w:t), preserve spaces as they may be significant
+			if len(stack) > 0 {
 				current := stack[len(stack)-1]
-				current.Text += text
+				if current.Name == "t" {
+					// Inside a text element - preserve the text as is
+					current.Text += text
+				} else {
+					// Outside text element - only add if not purely whitespace
+					trimmed := strings.TrimSpace(text)
+					if trimmed != "" {
+						current.Text += trimmed
+					}
+				}
 			}
 		}
 	}
@@ -193,6 +204,11 @@ func extractAllText(node *xmlNode) string {
 		return ""
 	}
 
+	// If this is a paragraph (p), extract text from runs with proper spacing
+	if node.Name == "p" {
+		return extractParagraphText(node)
+	}
+
 	var parts []string
 
 	// Only collect text from 't' elements (w:t in Word XML)
@@ -204,6 +220,36 @@ func extractAllText(node *xmlNode) string {
 		childText := extractAllText(child)
 		if childText != "" {
 			parts = append(parts, childText)
+		}
+	}
+
+	return strings.Join(parts, "")
+}
+
+// extractParagraphText extracts text from a paragraph node preserving spaces between runs
+func extractParagraphText(node *xmlNode) string {
+	var parts []string
+
+	for _, child := range node.Children {
+		if child.Name == "r" {
+			// Extract text from run (w:r)
+			runText := extractRunText(child)
+			if runText != "" {
+				parts = append(parts, runText)
+			}
+		}
+	}
+
+	return strings.Join(parts, "")
+}
+
+// extractRunText extracts text from a run node (w:r)
+func extractRunText(node *xmlNode) string {
+	var parts []string
+
+	for _, child := range node.Children {
+		if child.Name == "t" && child.Text != "" {
+			parts = append(parts, child.Text)
 		}
 	}
 
