@@ -20,6 +20,10 @@ const (
 	// FormatDesignationNumbered - Format 4: Numbered У/В designation with № п/п and Ф.И.О. columns
 	// Header: "ГРАФИК учета рабочего времени ... за январь 2026 г."
 	FormatDesignationNumbered
+	// FormatTimeSlotsVertical - Format 5: Vertical time slots with dates in first column
+	// Header: Дата | ФИО врача | 10-14 | 14-18
+	// Rows: 12.01. | Имя | У | В
+	FormatTimeSlotsVertical
 	// FormatUnknown - Unknown format
 	FormatUnknown
 )
@@ -33,10 +37,10 @@ type TableDetector struct {
 // NewTableDetector creates a new table detector
 func NewTableDetector() *TableDetector {
 	return &TableDetector{
-		// Matches: "январь 2026", "за январь 2026 г.", "за январь 2026г."
-		monthPattern: regexp.MustCompile(`(?i)(?:за\s+)?(январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\s*(\d{4})`),
-		// Matches both "10:00-14:00" and "С 9 до 14 часов"
-		timePattern: regexp.MustCompile(`(\d{1,2}[:\.]\d{2}\s*[-–—]\s*\d{1,2}[:\.]\d{2})|([сСcC]\s*\d{1,2}\s*до\s*\d{1,2})`),
+		// Matches: "январь 2026", "за январь 2026 г.", "за январь 2026г.", "на январь 2026 года"
+		monthPattern: regexp.MustCompile(`(?i)(?:за\s+|на\s+)?(январь|февраль|март|апрель|май|июнь|июль|август|сентябрь|октябрь|ноябрь|декабрь)\s*(\d{4})`),
+		// Matches both "10:00-14:00" and "С 9 до 14 часов" and "10-14"
+		timePattern: regexp.MustCompile(`(\d{1,2}[:\.]\d{2}\s*[-–—]\s*\d{1,2}[:\.]\d{2})|([сСcC]\s*\d{1,2}\s*до\s*\d{1,2})|(\d{1,2}\s*[-–—]\s*\d{1,2})`),
 	}
 }
 
@@ -64,6 +68,12 @@ func (d *TableDetector) DetectFormat(doc *DocxDocument) (TableFormat, error) {
 		// This format has "№ п/п" and "Ф.И.О." in header
 		if d.hasNumberedDesignationHeader(table) {
 			return FormatDesignationNumbered, nil
+		}
+
+		// Check for Format 5: Vertical time slots with dates in first column
+		// Header: Дата | ФИО врача | 10-14 | 14-18
+		if d.hasVerticalTimeSlotsHeader(table) {
+			return FormatTimeSlotsVertical, nil
 		}
 
 		// Check for Format 1: Time slots format (look for time patterns like "10:00-14:00")
@@ -156,6 +166,35 @@ func (d *TableDetector) hasDateNumbersInHeader(table DocxTable) bool {
 
 	// Should have at least 5 date numbers
 	return numberCount >= 5
+}
+
+// hasVerticalTimeSlotsHeader checks if table has vertical time slots format
+// Header: Дата | ФИО врача | 10-14 | 14-18
+func (d *TableDetector) hasVerticalTimeSlotsHeader(table DocxTable) bool {
+	if len(table.Rows) < 2 {
+		return false
+	}
+
+	headerRow := table.Rows[0]
+	if len(headerRow.Cells) < 3 {
+		return false
+	}
+
+	rowText := strings.ToLower(d.extractRowText(headerRow))
+
+	// Check for "дата" in first column and "фио" somewhere in header
+	hasDate := strings.Contains(rowText, "дата")
+	hasFIO := strings.Contains(rowText, "фио") || strings.Contains(rowText, "ф.и.о") || strings.Contains(rowText, "врач")
+
+	if !hasDate || !hasFIO {
+		return false
+	}
+
+	// Check if there are time slots in header (10-14, 14-18, etc.)
+	timeSlotPattern := regexp.MustCompile(`\d{1,2}\s*[-–—]\s*\d{1,2}`)
+	matches := timeSlotPattern.FindAllString(rowText, -1)
+
+	return len(matches) >= 1
 }
 
 // hasTimeSlots checks if text has time slot patterns
@@ -317,6 +356,8 @@ func GetFormatName(format TableFormat) string {
 		return "Calendar Grid Format"
 	case FormatDesignationNumbered:
 		return "Numbered У/В Designation Format"
+	case FormatTimeSlotsVertical:
+		return "Vertical Time Slots Format"
 	default:
 		return "Unknown Format"
 	}

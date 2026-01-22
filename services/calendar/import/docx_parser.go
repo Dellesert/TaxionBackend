@@ -89,6 +89,8 @@ func (p *ScheduleParser) ParseDocument(content []byte) (*ParsedSchedule, error) 
 		err = p.parseCalendarGridFormat(doc, result)
 	case FormatDesignationNumbered:
 		err = p.parseDesignationNumberedFormat(doc, result)
+	case FormatTimeSlotsVertical:
+		err = p.parseTimeSlotsVerticalFormat(doc, result)
 	default:
 		return nil, fmt.Errorf("unsupported format: %s", GetFormatName(format))
 	}
@@ -459,6 +461,203 @@ func (p *ScheduleParser) isRowNumber(text string) bool {
 	}
 
 	return false
+}
+
+// parseTimeSlotsVerticalFormat parses Format 5: Vertical time slots with dates in first column
+// Table structure:
+// Row 0: Дата | ФИО врача | 10-14 | 14-18
+// Row 1: 12.01. | Карпунец В.В.\nСавельева О.В. | У | В
+// Row 2: 13.01. | Орлова Д.В | У/В |
+func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result *ParsedSchedule) error {
+	if len(doc.Tables) == 0 {
+		return fmt.Errorf("no tables found")
+	}
+
+	table := doc.Tables[0]
+	rows := table.Rows
+	if len(rows) < 2 {
+		return fmt.Errorf("insufficient rows in table")
+	}
+
+	// Parse header to get time slots (columns 2+)
+	headerRow := rows[0]
+	timeSlots, timeColStart, err := p.parseTimeSlotsVerticalHeader(headerRow)
+	if err != nil {
+		return fmt.Errorf("failed to parse time slots header: %w", err)
+	}
+
+	// Parse data rows
+	for rowIdx := 1; rowIdx < len(rows); rowIdx++ {
+		row := rows[rowIdx]
+		cells := row.Cells
+
+		if len(cells) < 3 {
+			continue
+		}
+
+		// First column: date (12.01., 13.01., etc.)
+		dateText := strings.TrimSpace(cells[0].GetText())
+		if dateText == "" {
+			continue
+		}
+
+		date, ok := p.parseDate(dateText, result.Month, result.Year)
+		if !ok {
+			// Try parsing with dot at end (12.01.)
+			dateText = strings.TrimSuffix(dateText, ".")
+			date, ok = p.parseDate(dateText, result.Month, result.Year)
+			if !ok {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Invalid date: %s", dateText))
+				continue
+			}
+		}
+
+		// Second column: names (can be multiple separated by newline)
+		namesText := strings.TrimSpace(cells[1].GetText())
+		if namesText == "" {
+			continue
+		}
+
+		// Extract names (separated by newline or comma)
+		names := p.extractNamesFromCell(namesText)
+
+		// Process each time slot column
+		for colIdx := timeColStart; colIdx < len(cells) && (colIdx-timeColStart) < len(timeSlots); colIdx++ {
+			cellText := strings.ToUpper(strings.TrimSpace(cells[colIdx].GetText()))
+			if cellText == "" {
+				continue
+			}
+
+			slotIdx := colIdx - timeColStart
+			timeSlot := timeSlots[slotIdx]
+
+			// Parse У (morning slot) and/or В (evening slot) and У/В (both)
+			hasU := strings.Contains(cellText, "У")
+			hasV := strings.Contains(cellText, "В")
+
+			// For each name in the cell, create entry based on У/В designation
+			for nameIdx, name := range names {
+				if name == "" {
+					continue
+				}
+
+				// Track user
+				if _, exists := result.Users[name]; !exists {
+					result.Users[name] = &models.ImportedUser{
+						Name:        name,
+						IsUnmatched: true,
+					}
+				}
+
+				// If there are multiple names and multiple markers, try to match them
+				// e.g., "Карпунец В.В.\nСавельева О.В." with "У" and "В" columns
+				// First name gets the designation from this slot
+				shouldAddEntry := false
+				if hasU && hasV {
+					// Cell has У/В - this person works both slots
+					shouldAddEntry = true
+				} else if len(names) > 1 {
+					// Multiple names - first name typically gets У (morning), second gets В (evening)
+					if nameIdx == 0 && hasU {
+						shouldAddEntry = true
+					} else if nameIdx == 1 && hasV {
+						shouldAddEntry = true
+					} else if hasU || hasV {
+						// If only one marker, assign to corresponding name position
+						shouldAddEntry = true
+					}
+				} else {
+					// Single name - gets whatever designation is present
+					shouldAddEntry = hasU || hasV
+				}
+
+				if shouldAddEntry {
+					entry := &ParsedEntry{
+						UserName:  name,
+						Date:      date,
+						StartTime: timeSlot.Start,
+						EndTime:   timeSlot.End,
+						ShiftType: p.determineShiftType(timeSlot.Start, timeSlot.End),
+					}
+					result.Entries = append(result.Entries, entry)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// parseTimeSlotsVerticalHeader parses time slots from header row for vertical format
+// Returns time slots array and starting column index
+func (p *ScheduleParser) parseTimeSlotsVerticalHeader(headerRow DocxRow) ([]*TimeSlot, int, error) {
+	cells := headerRow.Cells
+	slots := make([]*TimeSlot, 0)
+	startCol := -1
+
+	// Pattern for time slots: "10-14", "14-18", "10:00-14:00"
+	timePattern := regexp.MustCompile(`(\d{1,2})(?:[:.](\d{2}))?\s*[-–—]\s*(\d{1,2})(?:[:.](\d{2}))?`)
+
+	for i := 0; i < len(cells); i++ {
+		cellText := strings.TrimSpace(cells[i].GetText())
+		cellTextLower := strings.ToLower(cellText)
+
+		// Skip non-time columns (Дата, ФИО)
+		if cellTextLower == "дата" || strings.Contains(cellTextLower, "фио") ||
+			strings.Contains(cellTextLower, "врач") || cellTextLower == "" {
+			continue
+		}
+
+		// Try to parse as time slot
+		if matches := timePattern.FindStringSubmatch(cellText); len(matches) >= 4 {
+			var startH, startM, endH, endM int
+			fmt.Sscanf(matches[1], "%d", &startH)
+			if matches[2] != "" {
+				fmt.Sscanf(matches[2], "%d", &startM)
+			}
+			fmt.Sscanf(matches[3], "%d", &endH)
+			if len(matches) > 4 && matches[4] != "" {
+				fmt.Sscanf(matches[4], "%d", &endM)
+			}
+
+			slot := &TimeSlot{
+				Start: fmt.Sprintf("%02d:%02d", startH, startM),
+				End:   fmt.Sprintf("%02d:%02d", endH, endM),
+			}
+			slots = append(slots, slot)
+
+			if startCol == -1 {
+				startCol = i
+			}
+		}
+	}
+
+	if len(slots) == 0 {
+		return nil, 0, fmt.Errorf("no time slots found in header")
+	}
+
+	return slots, startCol, nil
+}
+
+// extractNamesFromCell extracts names from cell text (newline or comma separated)
+func (p *ScheduleParser) extractNamesFromCell(text string) []string {
+	// Split by newline first, then by comma if no newlines
+	var parts []string
+	if strings.Contains(text, "\n") {
+		parts = strings.Split(text, "\n")
+	} else {
+		parts = strings.Split(text, ",")
+	}
+
+	names := make([]string, 0)
+	for _, part := range parts {
+		name := strings.TrimSpace(part)
+		if name != "" && p.looksLikeName(name) {
+			names = append(names, name)
+		}
+	}
+
+	return names
 }
 
 // TimeSlot represents a time slot column
