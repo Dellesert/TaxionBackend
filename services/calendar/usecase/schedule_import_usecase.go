@@ -53,6 +53,12 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 	// Extract shift times from parsed entries
 	morningStart, morningEnd, eveningStart, eveningEnd := u.extractShiftTimes(parsed)
 
+	// Determine color (use from request or default based on type)
+	color := req.Color
+	if color == "" {
+		color = getDefaultColorForType(req.Type)
+	}
+
 	// Create schedule
 	schedule := &models.Schedule{
 		Title:        req.Title,
@@ -62,6 +68,7 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		CreatedBy:    userID,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
+		Color:        color,
 		IsActive:     true,
 		ImportedFrom: &metadata.FileName,
 		MorningStart: morningStart,
@@ -130,6 +137,12 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 	// Extract shift times from parsed entries
 	morningStart, morningEnd, eveningStart, eveningEnd := u.extractShiftTimes(parsed)
 
+	// Determine color (use from request or default based on type)
+	color := req.Color
+	if color == "" {
+		color = getDefaultColorForType(req.Type)
+	}
+
 	// Create preview schedule (not saved)
 	schedule := &models.Schedule{
 		Title:        req.Title,
@@ -139,6 +152,7 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		CreatedBy:    userID,
 		StartDate:    req.StartDate,
 		EndDate:      req.EndDate,
+		Color:        color,
 		IsActive:     true,
 		MorningStart: morningStart,
 		MorningEnd:   morningEnd,
@@ -459,5 +473,23 @@ func getScheduleTypeNameForImport(scheduleType models.ScheduleType) string {
 		return "выезды"
 	default:
 		return "рабочий"
+	}
+}
+
+// getDefaultColorForType returns default color for schedule type
+func getDefaultColorForType(scheduleType models.ScheduleType) string {
+	switch scheduleType {
+	case models.ScheduleTypeOnDuty:
+		return "#EF4444" // Дежурства - красный
+	case models.ScheduleTypePaidServices:
+		return "#10B981" // Платные услуги - зелёный
+	case models.ScheduleTypeVK:
+		return "#3B82F6" // ВК - синий
+	case models.ScheduleTypeTrips:
+		return "#8B5CF6" // Выезды - фиолетовый
+	case models.ScheduleTypeWork:
+		return "#F59E0B" // Рабочий график - жёлтый
+	default:
+		return "#F59E0B" // По умолчанию жёлтый
 	}
 }

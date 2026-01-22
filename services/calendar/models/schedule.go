@@ -589,7 +589,8 @@ type ImportScheduleRequest struct {
 	Type        ScheduleType `json:"type" binding:"required" validate:"required"`
 	StartDate   time.Time    `json:"start_date" binding:"required" validate:"required"`
 	EndDate     time.Time    `json:"end_date" binding:"required" validate:"required"`
-	Preview     bool         `json:"preview"` // If true, returns preview without creating
+	Color       string       `json:"color,omitempty"` // Schedule color (hex format)
+	Preview     bool         `json:"preview"`         // If true, returns preview without creating
 }
 
 // ImportPreviewResponse represents preview of imported schedule
