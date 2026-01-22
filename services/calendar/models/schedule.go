@@ -220,13 +220,14 @@ func (st *ScheduleTemplate) BeforeCreate(tx *gorm.DB) error {
 // ScheduleTemplateEntry represents an entry in a schedule template
 type ScheduleTemplateEntry struct {
 	sharedmodels.BaseModel
-	TemplateID uint   `gorm:"not null;index" json:"template_id" validate:"required"`
-	UserID     *uint  `gorm:"index" json:"user_id,omitempty"`                              // nil = apply to all assigned users
-	DayOfWeek  int    `gorm:"not null" json:"day_of_week" validate:"required,min=0,max=6"` // 0-6 (Sunday-Saturday)
-	StartTime  string `gorm:"not null;size:5" json:"start_time" validate:"required,len=5"` // "09:00"
-	EndTime    string `gorm:"not null;size:5" json:"end_time" validate:"required,len=5"`   // "18:00"
-	Title      string `gorm:"size:255" json:"title,omitempty" validate:"omitempty,max=255"`
-	Location   string `gorm:"size:500" json:"location,omitempty" validate:"omitempty,max=500"`
+	TemplateID uint       `gorm:"not null;index" json:"template_id" validate:"required"`
+	UserID     *uint      `gorm:"index" json:"user_id,omitempty"`                              // nil = apply to all assigned users
+	DayOfWeek  int        `gorm:"not null" json:"day_of_week" validate:"required,min=0,max=6"` // 0-6 (Sunday-Saturday)
+	StartTime  string     `gorm:"not null;size:5" json:"start_time" validate:"required,len=5"` // "09:00"
+	EndTime    string     `gorm:"not null;size:5" json:"end_time" validate:"required,len=5"`   // "18:00"
+	ShiftType  *ShiftType `gorm:"size:20" json:"shift_type,omitempty"`                         // morning, evening, full_day, custom
+	Title      string     `gorm:"size:255" json:"title,omitempty" validate:"omitempty,max=255"`
+	Location   string     `gorm:"size:500" json:"location,omitempty" validate:"omitempty,max=500"`
 
 	// Associations
 	Template *ScheduleTemplate  `gorm:"foreignKey:TemplateID" json:"template,omitempty"`
@@ -481,12 +482,18 @@ type UpdateScheduleTemplateRequest struct {
 
 // CreateTemplateEntryRequest represents request for creating a template entry
 type CreateTemplateEntryRequest struct {
-	UserID    *uint  `json:"user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
-	DayOfWeek int    `json:"day_of_week" binding:"required,min=0,max=6" validate:"required,min=0,max=6"`
-	StartTime string `json:"start_time" binding:"required,len=5" validate:"required,len=5"`
-	EndTime   string `json:"end_time" binding:"required,len=5" validate:"required,len=5"`
-	Title     string `json:"title,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
-	Location  string `json:"location,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	UserID    *uint      `json:"user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	DayOfWeek int        `json:"day_of_week" binding:"required,min=0,max=6" validate:"required,min=0,max=6"`
+	StartTime string     `json:"start_time" binding:"required,len=5" validate:"required,len=5"`
+	EndTime   string     `json:"end_time" binding:"required,len=5" validate:"required,len=5"`
+	ShiftType *ShiftType `json:"shift_type,omitempty" binding:"omitempty,oneof=morning evening full_day custom" validate:"omitempty,oneof=morning evening full_day custom"`
+	Title     string     `json:"title,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
+	Location  string     `json:"location,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+}
+
+// CreateBatchTemplateEntriesRequest represents request for creating multiple template entries at once
+type CreateBatchTemplateEntriesRequest struct {
+	Entries []CreateTemplateEntryRequest `json:"entries" binding:"required,min=1,dive" validate:"required,min=1,dive"`
 }
 
 // ApplyTemplateRequest represents request for applying a template to a period
@@ -548,6 +555,7 @@ type ScheduleTemplateEntryResponse struct {
 	DayOfWeek  int                `json:"day_of_week"`
 	StartTime  string             `json:"start_time"`
 	EndTime    string             `json:"end_time"`
+	ShiftType  *ShiftType         `json:"shift_type,omitempty"`
 	Title      string             `json:"title,omitempty"`
 	Location   string             `json:"location,omitempty"`
 	CreatedAt  time.Time          `json:"created_at"`
@@ -564,6 +572,7 @@ func (ste *ScheduleTemplateEntry) ToResponse() *ScheduleTemplateEntryResponse {
 		DayOfWeek:  ste.DayOfWeek,
 		StartTime:  ste.StartTime,
 		EndTime:    ste.EndTime,
+		ShiftType:  ste.ShiftType,
 		Title:      ste.Title,
 		Location:   ste.Location,
 		CreatedAt:  ste.CreatedAt,

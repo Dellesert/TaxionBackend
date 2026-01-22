@@ -182,6 +182,7 @@ func (u *scheduleTemplateUsecase) AddTemplateEntry(userID, templateID uint, req 
 		DayOfWeek:  req.DayOfWeek,
 		StartTime:  req.StartTime,
 		EndTime:    req.EndTime,
+		ShiftType:  req.ShiftType,
 		Title:      strings.TrimSpace(req.Title),
 		Location:   strings.TrimSpace(req.Location),
 	}

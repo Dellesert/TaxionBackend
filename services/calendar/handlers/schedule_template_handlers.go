@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -273,8 +274,11 @@ func (h *ScheduleTemplateHandler) DeleteTemplate(c *gin.Context) {
 	})
 }
 
-// AddTemplateEntry handles adding an entry to a template
+// AddTemplateEntry handles adding an entry or batch of entries to a template
 // POST /api/v1/schedule-templates/:id/entries
+// Supports both single entry and batch requests:
+// - Single: { "day_of_week": 1, "start_time": "08:00", "end_time": "14:00", ... }
+// - Batch: { "entries": [{ "day_of_week": 1, ... }, { "day_of_week": 3, ... }] }
 func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 	requestID := requestid.Get(c)
 
@@ -296,8 +300,46 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 		return
 	}
 
+	// Read body once
+	bodyBytes, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Failed to read request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Try to parse as batch request first
+	var batchReq models.CreateBatchTemplateEntriesRequest
+	if err := json.Unmarshal(bodyBytes, &batchReq); err == nil && len(batchReq.Entries) > 0 {
+		// Batch request
+		var entries []*models.ScheduleTemplateEntryResponse
+		for _, entryReq := range batchReq.Entries {
+			entry, err := h.templateUsecase.AddTemplateEntry(userID, uint(templateID), &entryReq)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error":      "Failed to add template entry",
+					"details":    err.Error(),
+					"request_id": requestID,
+				})
+				return
+			}
+			entries = append(entries, entry)
+		}
+
+		c.JSON(http.StatusCreated, gin.H{
+			"message":    "Template entries added successfully",
+			"entries":    entries,
+			"count":      len(entries),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Fallback to single entry request
 	var req models.CreateTemplateEntryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid request body",
 			"details":    err.Error(),
