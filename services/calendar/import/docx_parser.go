@@ -544,7 +544,7 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 
 		// Now assign names to time slots based on markers
 		// Logic:
-		// - If single name and marker is "У/В" -> assign to both slots
+		// - If single name and marker is "У/В" -> assign to BOTH slots (morning and evening)
 		// - If single name and marker is "У" or "В" -> assign to that slot only
 		// - If multiple names -> first name gets first slot with marker, second name gets second slot with marker
 		if len(names) == 1 {
@@ -557,7 +557,34 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 				hasU := strings.Contains(marker, "У")
 				hasV := strings.Contains(marker, "В")
 
-				if hasU || hasV {
+				// If marker is "У/В" - create entries for BOTH time slots
+				if hasU && hasV {
+					// Morning slot (first time slot)
+					if len(timeSlots) > 0 {
+						morningSlot := timeSlots[0]
+						entry := &ParsedEntry{
+							UserName:  name,
+							Date:      date,
+							StartTime: morningSlot.Start,
+							EndTime:   morningSlot.End,
+							ShiftType: p.determineShiftType(morningSlot.Start, morningSlot.End),
+						}
+						result.Entries = append(result.Entries, entry)
+					}
+					// Evening slot (second time slot)
+					if len(timeSlots) > 1 {
+						eveningSlot := timeSlots[1]
+						entry := &ParsedEntry{
+							UserName:  name,
+							Date:      date,
+							StartTime: eveningSlot.Start,
+							EndTime:   eveningSlot.End,
+							ShiftType: p.determineShiftType(eveningSlot.Start, eveningSlot.End),
+						}
+						result.Entries = append(result.Entries, entry)
+					}
+				} else if hasU || hasV {
+					// Single marker - assign to this slot only
 					timeSlot := timeSlots[slotIdx]
 					entry := &ParsedEntry{
 						UserName:  name,
