@@ -5,8 +5,8 @@ package models
 // a work schedule and an on_duty schedule at the same time
 type ScheduleTypeCompatibility struct {
 	ID             uint         `gorm:"primaryKey" json:"id"`
-	ScheduleType   ScheduleType `gorm:"not null;index;size:30" json:"schedule_type" validate:"required,oneof=work paid_services on_duty shift custom"`
-	CompatibleWith ScheduleType `gorm:"not null;size:30" json:"compatible_with" validate:"required,oneof=work paid_services on_duty shift custom"`
+	ScheduleType   ScheduleType `gorm:"not null;index;size:30" json:"schedule_type" validate:"required,oneof=work paid_services on_duty vk trips"`
+	CompatibleWith ScheduleType `gorm:"not null;size:30" json:"compatible_with" validate:"required,oneof=work paid_services on_duty vk trips"`
 }
 
 // TableName returns the table name for ScheduleTypeCompatibility model

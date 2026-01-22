@@ -12,11 +12,11 @@ import (
 type ScheduleType string
 
 const (
-	ScheduleTypeWork         ScheduleType = "work"          // Рабочий график
-	ScheduleTypePaidServices ScheduleType = "paid_services" // Платные услуги
-	ScheduleTypeOnDuty       ScheduleType = "on_duty"       // Дежурства
-	ScheduleTypeShift        ScheduleType = "shift"         // Сменный график
-	ScheduleTypeCustom       ScheduleType = "custom"        // Кастомный
+	ScheduleTypeWork         ScheduleType = "work"          // Рабочий график (повторяющийся)
+	ScheduleTypePaidServices ScheduleType = "paid_services" // Платные услуги (ежемесячный)
+	ScheduleTypeOnDuty       ScheduleType = "on_duty"       // Дежурства (ежемесячный)
+	ScheduleTypeVK           ScheduleType = "vk"            // ВК (ежемесячный)
+	ScheduleTypeTrips        ScheduleType = "trips"         // Выезды (ежемесячный)
 )
 
 // ScheduleVisibility represents who can view the schedule
@@ -41,7 +41,7 @@ type Schedule struct {
 	sharedmodels.BaseModel
 	Title         string             `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description   string             `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
-	Type          ScheduleType       `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty shift custom"`
+	Type          ScheduleType       `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty vk trips"`
 	Visibility    ScheduleVisibility `gorm:"not null;default:'management';size:30" json:"visibility" validate:"required,oneof=creator_only management participants"`
 	CreatedBy     uint               `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
 	StartDate     time.Time          `gorm:"not null;index" json:"start_date" validate:"required"`
@@ -99,9 +99,10 @@ func (s *Schedule) BeforeCreate(tx *gorm.DB) error {
 	if s.Mode == "" {
 		// Set default mode based on schedule type
 		switch s.Type {
-		case ScheduleTypeWork, ScheduleTypePaidServices, ScheduleTypeShift:
+		case ScheduleTypeWork:
 			s.Mode = ScheduleModeRecurring
 		default:
+			// Платные услуги, ВК, дежурства, выезды - ежемесячные
 			s.Mode = ScheduleModeMonthly
 		}
 	}
@@ -189,7 +190,7 @@ type ScheduleTemplate struct {
 	sharedmodels.BaseModel
 	Title        string       `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description  string       `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
-	Type         ScheduleType `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty shift custom"`
+	Type         ScheduleType `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty vk trips"`
 	CreatedBy    uint         `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
 	DepartmentID *uint        `gorm:"index" json:"department_id,omitempty" validate:"omitempty,min=1"`
 	Color        string       `gorm:"size:7;default:'#4CAF50'" json:"color" validate:"omitempty,len=7"`
@@ -270,7 +271,7 @@ func (sa *ScheduleAssignment) BeforeCreate(tx *gorm.DB) error {
 type CreateScheduleRequest struct {
 	Title         string             `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description   string             `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type          ScheduleType       `json:"type" binding:"required,oneof=work paid_services on_duty shift custom" validate:"required,oneof=work paid_services on_duty shift custom"`
+	Type          ScheduleType       `json:"type" binding:"required,oneof=work paid_services on_duty vk trips" validate:"required,oneof=work paid_services on_duty vk trips"`
 	Visibility    ScheduleVisibility `json:"visibility" binding:"omitempty,oneof=creator_only management participants" validate:"omitempty,oneof=creator_only management participants"`
 	StartDate     time.Time          `json:"start_date" binding:"required" validate:"required"`
 	EndDate       time.Time          `json:"end_date" binding:"required" validate:"required"`
@@ -291,7 +292,7 @@ type CreateScheduleRequest struct {
 type UpdateScheduleRequest struct {
 	Title         *string             `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
 	Description   *string             `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type          *ScheduleType       `json:"type,omitempty" binding:"omitempty,oneof=work paid_services on_duty shift custom" validate:"omitempty,oneof=work paid_services on_duty shift custom"`
+	Type          *ScheduleType       `json:"type,omitempty" binding:"omitempty,oneof=work paid_services on_duty vk trips" validate:"omitempty,oneof=work paid_services on_duty vk trips"`
 	Visibility    *ScheduleVisibility `json:"visibility,omitempty" binding:"omitempty,oneof=creator_only management participants" validate:"omitempty,oneof=creator_only management participants"`
 	StartDate     *time.Time          `json:"start_date,omitempty"`
 	EndDate       *time.Time          `json:"end_date,omitempty"`
@@ -463,7 +464,7 @@ type ScheduleEntryListResponse struct {
 type CreateScheduleTemplateRequest struct {
 	Title        string       `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description  string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type         ScheduleType `json:"type" binding:"required,oneof=work paid_services on_duty shift custom" validate:"required,oneof=work paid_services on_duty shift custom"`
+	Type         ScheduleType `json:"type" binding:"required,oneof=work paid_services on_duty vk trips" validate:"required,oneof=work paid_services on_duty vk trips"`
 	DepartmentID *uint        `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	Color        string       `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 }
@@ -472,7 +473,7 @@ type CreateScheduleTemplateRequest struct {
 type UpdateScheduleTemplateRequest struct {
 	Title        *string       `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
 	Description  *string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type         *ScheduleType `json:"type,omitempty" binding:"omitempty,oneof=work paid_services on_duty shift custom" validate:"omitempty,oneof=work paid_services on_duty shift custom"`
+	Type         *ScheduleType `json:"type,omitempty" binding:"omitempty,oneof=work paid_services on_duty vk trips" validate:"omitempty,oneof=work paid_services on_duty vk trips"`
 	DepartmentID *uint         `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	Color        *string       `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 	IsActive     *bool         `json:"is_active,omitempty"`

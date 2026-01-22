@@ -248,10 +248,10 @@ func getScheduleTypeName(scheduleType models.ScheduleType) string {
 		return "платные услуги"
 	case models.ScheduleTypeOnDuty:
 		return "дежурство"
-	case models.ScheduleTypeShift:
-		return "сменный"
-	case models.ScheduleTypeCustom:
-		return "особый"
+	case models.ScheduleTypeVK:
+		return "ВК"
+	case models.ScheduleTypeTrips:
+		return "выезды"
 	default:
 		return "рабочий"
 	}
