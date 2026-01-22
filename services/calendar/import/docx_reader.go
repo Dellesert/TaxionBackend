@@ -36,6 +36,7 @@ type DocxCell struct {
 }
 
 // GetText returns all text from the cell
+// Paragraphs are joined with newline to preserve structure
 func (c *DocxCell) GetText() string {
 	var texts []string
 	for _, p := range c.Paragraphs {
@@ -43,7 +44,7 @@ func (c *DocxCell) GetText() string {
 			texts = append(texts, p.Text)
 		}
 	}
-	return strings.Join(texts, " ")
+	return strings.Join(texts, "\n")
 }
 
 // ReadDocx reads a DOCX file from bytes and returns a DocxDocument
