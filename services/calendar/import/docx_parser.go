@@ -534,47 +534,31 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 			}
 		}
 
-		// Process each time slot column
-		// Logic: Each time slot column has a marker (У or В or У/В)
-		// If multiple names in the cell, they correspond to different time slots:
-		// - First name (index 0) -> first time slot column with marker
-		// - Second name (index 1) -> second time slot column with marker
-		// - If У/В in one cell, that single person works both slots
+		// Collect markers from all time slot columns
+		// markers[slotIdx] = "У", "В", "У/В", or ""
+		markers := make([]string, len(timeSlots))
 		for colIdx := timeColStart; colIdx < len(cells) && (colIdx-timeColStart) < len(timeSlots); colIdx++ {
-			cellText := strings.ToUpper(strings.TrimSpace(cells[colIdx].GetText()))
-			if cellText == "" {
-				continue
-			}
-
 			slotIdx := colIdx - timeColStart
-			timeSlot := timeSlots[slotIdx]
+			markers[slotIdx] = strings.ToUpper(strings.TrimSpace(cells[colIdx].GetText()))
+		}
 
-			// Parse У (morning slot) and/or В (evening slot) and У/В (both)
-			hasU := strings.Contains(cellText, "У")
-			hasV := strings.Contains(cellText, "В")
-
-			if !hasU && !hasV {
-				continue
-			}
-
-			// Determine which name(s) to assign to this time slot
-			if len(names) == 1 {
-				// Single name - works this slot if marked
-				name := names[0]
-				entry := &ParsedEntry{
-					UserName:  name,
-					Date:      date,
-					StartTime: timeSlot.Start,
-					EndTime:   timeSlot.End,
-					ShiftType: p.determineShiftType(timeSlot.Start, timeSlot.End),
+		// Now assign names to time slots based on markers
+		// Logic:
+		// - If single name and marker is "У/В" -> assign to both slots
+		// - If single name and marker is "У" or "В" -> assign to that slot only
+		// - If multiple names -> first name gets first slot with marker, second name gets second slot with marker
+		if len(names) == 1 {
+			// Single person - check each slot
+			name := names[0]
+			for slotIdx, marker := range markers {
+				if marker == "" {
+					continue
 				}
-				result.Entries = append(result.Entries, entry)
-			} else if len(names) >= 2 {
-				// Multiple names - match by slot index
-				// slotIdx 0 (first time column, e.g., 10-14) -> names[0]
-				// slotIdx 1 (second time column, e.g., 14-18) -> names[1]
-				if slotIdx < len(names) {
-					name := names[slotIdx]
+				hasU := strings.Contains(marker, "У")
+				hasV := strings.Contains(marker, "В")
+
+				if hasU || hasV {
+					timeSlot := timeSlots[slotIdx]
 					entry := &ParsedEntry{
 						UserName:  name,
 						Date:      date,
@@ -583,6 +567,31 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 						ShiftType: p.determineShiftType(timeSlot.Start, timeSlot.End),
 					}
 					result.Entries = append(result.Entries, entry)
+				}
+			}
+		} else if len(names) >= 2 {
+			// Multiple people - assign each person to their corresponding slot
+			// Find which slots have markers and assign names in order
+			nameIdx := 0
+			for slotIdx, marker := range markers {
+				if marker == "" || nameIdx >= len(names) {
+					continue
+				}
+				hasU := strings.Contains(marker, "У")
+				hasV := strings.Contains(marker, "В")
+
+				if hasU || hasV {
+					name := names[nameIdx]
+					timeSlot := timeSlots[slotIdx]
+					entry := &ParsedEntry{
+						UserName:  name,
+						Date:      date,
+						StartTime: timeSlot.Start,
+						EndTime:   timeSlot.End,
+						ShiftType: p.determineShiftType(timeSlot.Start, timeSlot.End),
+					}
+					result.Entries = append(result.Entries, entry)
+					nameIdx++
 				}
 			}
 		}
