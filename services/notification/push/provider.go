@@ -141,6 +141,12 @@ func (b *NotificationDataBuilder) SetPollID(pollID uint) *NotificationDataBuilde
 	return b
 }
 
+// SetScheduleID sets the schedule ID for schedule notifications
+func (b *NotificationDataBuilder) SetScheduleID(scheduleID uint) *NotificationDataBuilder {
+	b.data["schedule_id"] = scheduleID
+	return b
+}
+
 // SetAction sets the action to perform when notification is tapped
 func (b *NotificationDataBuilder) SetAction(action string) *NotificationDataBuilder {
 	b.data["action"] = action

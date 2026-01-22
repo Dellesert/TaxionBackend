@@ -1492,6 +1492,7 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 		SetType(notification.Type)
 
 	// Parse notification.Data JSON and add to push payload
+	var customAction string // To store action from Data if provided
 	if len(notification.Data) > 0 {
 		var notifData map[string]interface{}
 		if err := json.Unmarshal(notification.Data, &notifData); err == nil {
@@ -1515,6 +1516,14 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 			if pollID, ok := notifData["poll_id"].(float64); ok {
 				dataBuilder.SetPollID(uint(pollID))
 			}
+			// Add schedule_id if present (for schedule notifications)
+			if scheduleID, ok := notifData["schedule_id"].(float64); ok {
+				dataBuilder.SetScheduleID(uint(scheduleID))
+			}
+			// Check for custom action from Data (takes priority over type-based action)
+			if action, ok := notifData["action"].(string); ok && action != "" {
+				customAction = action
+			}
 		}
 	}
 
@@ -1537,8 +1546,11 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 		dataBuilder.SetActionURL(notification.ActionURL)
 	}
 
-	// Determine action based on type
-	action := u.getActionForNotificationType(notification.Type)
+	// Determine action: use custom action from Data if provided, otherwise fall back to type-based action
+	action := customAction
+	if action == "" {
+		action = u.getActionForNotificationType(notification.Type)
+	}
 	if action != "" {
 		dataBuilder.SetAction(action)
 	}
