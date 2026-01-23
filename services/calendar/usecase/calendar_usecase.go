@@ -843,7 +843,7 @@ func (u *calendarUsecase) validateCreateReminderRequest(req *models.CreateRemind
 // isValidEventType checks if the event type is valid
 func (u *calendarUsecase) isValidEventType(eventType models.EventType) bool {
 	switch eventType {
-	case models.EventTypePersonal, models.EventTypeMeeting, models.EventTypeDeadline:
+	case models.EventTypePersonal, models.EventTypeMeeting, models.EventTypeDeadline, models.EventTypeSchedule, models.EventTypeAbsence:
 		return true
 	default:
 		return false

@@ -35,6 +35,10 @@ type EventRepository interface {
 	// Sync methods
 	GetDeletedEventIDsSince(since time.Time) ([]uint, error)
 	RecordDeletion(eventID uint, deletedBy *uint) error
+
+	// Absence integration methods
+	GetEventByAbsenceID(absenceID uint) (*models.Event, error)
+	DeleteEventByAbsenceID(absenceID uint) error
 }
 
 // ParticipantRepository defines the interface for participant data operations
@@ -878,4 +882,26 @@ func (r *eventRepository) RecordDeletion(eventID uint, deletedBy *uint) error {
 		DeletedBy:  deletedBy,
 	}
 	return r.db.Create(&record).Error
+}
+
+// GetEventByAbsenceID retrieves an event linked to a specific absence
+func (r *eventRepository) GetEventByAbsenceID(absenceID uint) (*models.Event, error) {
+	var event models.Event
+	err := r.db.Where("absence_id = ?", absenceID).First(&event).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // No event found for this absence
+		}
+		return nil, fmt.Errorf("failed to get event by absence ID: %w", err)
+	}
+	return &event, nil
+}
+
+// DeleteEventByAbsenceID deletes an event linked to a specific absence
+func (r *eventRepository) DeleteEventByAbsenceID(absenceID uint) error {
+	result := r.db.Where("absence_id = ?", absenceID).Delete(&models.Event{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete event by absence ID: %w", result.Error)
+	}
+	return nil
 }

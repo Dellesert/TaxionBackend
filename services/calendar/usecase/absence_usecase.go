@@ -37,13 +37,21 @@ type AbsenceFilterParams struct {
 
 // absenceUsecase implements AbsenceUsecase interface
 type absenceUsecase struct {
-	absenceRepo repository.AbsenceRepository
+	absenceRepo     repository.AbsenceRepository
+	eventRepo       repository.EventRepository
+	participantRepo repository.ParticipantRepository
 }
 
 // NewAbsenceUsecase creates a new absence usecase
-func NewAbsenceUsecase(absenceRepo repository.AbsenceRepository) AbsenceUsecase {
+func NewAbsenceUsecase(
+	absenceRepo repository.AbsenceRepository,
+	eventRepo repository.EventRepository,
+	participantRepo repository.ParticipantRepository,
+) AbsenceUsecase {
 	return &absenceUsecase{
-		absenceRepo: absenceRepo,
+		absenceRepo:     absenceRepo,
+		eventRepo:       eventRepo,
+		participantRepo: participantRepo,
 	}
 }
 
@@ -76,6 +84,12 @@ func (u *absenceUsecase) CreateAbsence(creatorID uint, req *models.CreateAbsence
 	// Save absence
 	if err := u.absenceRepo.CreateAbsence(absence); err != nil {
 		return nil, fmt.Errorf("failed to create absence: %w", err)
+	}
+
+	// Create calendar event for this absence
+	if err := u.createAbsenceEvent(absence); err != nil {
+		// Log error but don't fail the absence creation
+		fmt.Printf("Warning: failed to create calendar event for absence %d: %v\n", absence.ID, err)
 	}
 
 	// Get absence with relations
@@ -186,6 +200,12 @@ func (u *absenceUsecase) UpdateAbsence(userID, absenceID uint, req *models.Updat
 		return nil, fmt.Errorf("failed to update absence: %w", err)
 	}
 
+	// Update calendar event for this absence
+	if err := u.updateAbsenceEvent(absence); err != nil {
+		// Log error but don't fail the absence update
+		fmt.Printf("Warning: failed to update calendar event for absence %d: %v\n", absence.ID, err)
+	}
+
 	// Get updated absence with relations
 	updatedAbsence, err := u.absenceRepo.GetAbsenceByID(absence.ID)
 	if err != nil {
@@ -201,6 +221,12 @@ func (u *absenceUsecase) DeleteAbsence(userID, absenceID uint) error {
 	_, err := u.absenceRepo.GetAbsenceByID(absenceID)
 	if err != nil {
 		return err
+	}
+
+	// Delete calendar event first (before deleting absence)
+	if err := u.deleteAbsenceEvent(absenceID); err != nil {
+		// Log error but don't fail the absence deletion
+		fmt.Printf("Warning: failed to delete calendar event for absence %d: %v\n", absenceID, err)
 	}
 
 	// Delete absence
@@ -252,16 +278,126 @@ func (u *absenceUsecase) validateCreateAbsenceRequest(req *models.CreateAbsenceR
 func GetAbsenceTypeName(t models.AbsenceType) string {
 	switch t {
 	case models.AbsenceTypeVacation:
-		return "отпуск"
+		return "Отпуск"
 	case models.AbsenceTypeSickLeave:
-		return "больничный"
+		return "Больничный"
 	case models.AbsenceTypeDayOff:
-		return "отгул"
+		return "Отгул"
 	case models.AbsenceTypeBusinessTrip:
-		return "командировка"
+		return "Командировка"
 	case models.AbsenceTypeStudyLeave:
-		return "учебный отпуск"
+		return "Учебный отпуск"
 	default:
 		return string(t)
 	}
+}
+
+// getAbsenceColor returns a color for the absence event based on type
+func getAbsenceColor(t models.AbsenceType) string {
+	switch t {
+	case models.AbsenceTypeVacation:
+		return "#4CAF50" // Green
+	case models.AbsenceTypeSickLeave:
+		return "#F44336" // Red
+	case models.AbsenceTypeDayOff:
+		return "#FF9800" // Orange
+	case models.AbsenceTypeBusinessTrip:
+		return "#2196F3" // Blue
+	case models.AbsenceTypeStudyLeave:
+		return "#9C27B0" // Purple
+	default:
+		return "#757575" // Gray
+	}
+}
+
+// createAbsenceEvent creates a calendar event for an absence
+func (u *absenceUsecase) createAbsenceEvent(absence *models.Absence) error {
+	// Create event for the entire absence period (all-day event)
+	// StartTime: beginning of start date, EndTime: end of end date
+	startTime := time.Date(absence.StartDate.Year(), absence.StartDate.Month(), absence.StartDate.Day(), 0, 0, 0, 0, absence.StartDate.Location())
+	endTime := time.Date(absence.EndDate.Year(), absence.EndDate.Month(), absence.EndDate.Day(), 23, 59, 59, 0, absence.EndDate.Location())
+
+	event := &models.Event{
+		Title:       GetAbsenceTypeName(absence.Type),
+		Description: absence.Reason,
+		StartTime:   startTime,
+		EndTime:     endTime,
+		AllDay:      true,
+		Type:        models.EventTypeAbsence,
+		CreatedBy:   absence.CreatedBy,
+		Color:       getAbsenceColor(absence.Type),
+		IsPrivate:   false,
+		AbsenceID:   &absence.ID,
+	}
+
+	if err := u.eventRepo.CreateEvent(event); err != nil {
+		return fmt.Errorf("failed to create event: %w", err)
+	}
+
+	// Add the absence user as participant (accepted)
+	participant := &models.EventParticipant{
+		EventID:     event.ID,
+		UserID:      absence.UserID,
+		Status:      models.ParticipantStatusAccepted,
+		IsOrganizer: false,
+	}
+
+	if err := u.participantRepo.AddParticipant(participant); err != nil {
+		return fmt.Errorf("failed to add participant: %w", err)
+	}
+
+	// If creator is different from user, add creator as organizer
+	if absence.CreatedBy != absence.UserID {
+		creator := &models.EventParticipant{
+			EventID:     event.ID,
+			UserID:      absence.CreatedBy,
+			Status:      models.ParticipantStatusAccepted,
+			IsOrganizer: true,
+		}
+
+		if err := u.participantRepo.AddParticipant(creator); err != nil {
+			// Log but don't fail
+			fmt.Printf("Warning: failed to add creator as organizer: %v\n", err)
+		}
+	}
+
+	return nil
+}
+
+// updateAbsenceEvent updates the calendar event for an absence
+func (u *absenceUsecase) updateAbsenceEvent(absence *models.Absence) error {
+	// Find existing event
+	event, err := u.eventRepo.GetEventByAbsenceID(absence.ID)
+	if err != nil {
+		return fmt.Errorf("failed to find event: %w", err)
+	}
+
+	if event == nil {
+		// Event doesn't exist, create it
+		return u.createAbsenceEvent(absence)
+	}
+
+	// Update event fields
+	startTime := time.Date(absence.StartDate.Year(), absence.StartDate.Month(), absence.StartDate.Day(), 0, 0, 0, 0, absence.StartDate.Location())
+	endTime := time.Date(absence.EndDate.Year(), absence.EndDate.Month(), absence.EndDate.Day(), 23, 59, 59, 0, absence.EndDate.Location())
+
+	event.Title = GetAbsenceTypeName(absence.Type)
+	event.Description = absence.Reason
+	event.StartTime = startTime
+	event.EndTime = endTime
+	event.Color = getAbsenceColor(absence.Type)
+
+	if err := u.eventRepo.UpdateEvent(event); err != nil {
+		return fmt.Errorf("failed to update event: %w", err)
+	}
+
+	return nil
+}
+
+// deleteAbsenceEvent deletes the calendar event for an absence
+func (u *absenceUsecase) deleteAbsenceEvent(absenceID uint) error {
+	if err := u.eventRepo.DeleteEventByAbsenceID(absenceID); err != nil {
+		return fmt.Errorf("failed to delete event: %w", err)
+	}
+	return nil
 }

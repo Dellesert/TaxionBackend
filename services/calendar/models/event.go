@@ -16,6 +16,7 @@ const (
 	EventTypeMeeting  EventType = "meeting"
 	EventTypeDeadline EventType = "deadline"
 	EventTypeSchedule EventType = "schedule" // Schedule-related event
+	EventTypeAbsence  EventType = "absence"  // Absence-related event (vacation, sick leave, etc.)
 )
 
 // ParticipantStatus represents the participation status
@@ -46,7 +47,7 @@ type Event struct {
 	EndTime     time.Time `gorm:"not null;index" json:"end_time" validate:"required"`
 	AllDay      bool      `gorm:"not null;default:false" json:"all_day"`
 	Location    string    `gorm:"size:500" json:"location,omitempty" validate:"omitempty,max=500"`
-	Type        EventType `gorm:"not null;default:'personal';size:20" json:"type" validate:"required,oneof=personal meeting deadline schedule"`
+	Type        EventType `gorm:"not null;default:'personal';size:20" json:"type" validate:"required,oneof=personal meeting deadline schedule absence"`
 	CreatedBy   uint      `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
 
 	// Calendar organization
@@ -62,6 +63,9 @@ type Event struct {
 
 	// Schedule integration
 	ScheduleEntryID *uint `gorm:"index" json:"schedule_entry_id,omitempty" validate:"omitempty,min=1"`
+
+	// Absence integration
+	AbsenceID *uint `gorm:"index" json:"absence_id,omitempty" validate:"omitempty,min=1"`
 
 	// Associations
 	Creator      *models.User       `gorm:"foreignKey:CreatedBy" json:"creator,omitempty"`
@@ -196,7 +200,7 @@ type CreateEventRequest struct {
 	EndTime        time.Time `json:"end_time" binding:"required" validate:"required"`
 	AllDay         bool      `json:"all_day"`
 	Location       string    `json:"location,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
-	Type           EventType `json:"type" binding:"omitempty,oneof=personal meeting deadline schedule" validate:"omitempty,oneof=personal meeting deadline schedule"`
+	Type           EventType `json:"type" binding:"omitempty,oneof=personal meeting deadline schedule absence" validate:"omitempty,oneof=personal meeting deadline schedule absence"`
 	Color          string    `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 	IsPrivate      bool      `json:"is_private"`
 	IsRecurring    bool      `json:"is_recurring"`
@@ -218,7 +222,7 @@ type UpdateEventRequest struct {
 	EndTime        *time.Time `json:"end_time,omitempty"`
 	AllDay         *bool      `json:"all_day,omitempty"`
 	Location       *string    `json:"location,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
-	Type           *EventType `json:"type,omitempty" binding:"omitempty,oneof=personal meeting deadline schedule" validate:"omitempty,oneof=personal meeting deadline schedule"`
+	Type           *EventType `json:"type,omitempty" binding:"omitempty,oneof=personal meeting deadline schedule absence" validate:"omitempty,oneof=personal meeting deadline schedule absence"`
 	Color          *string    `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 	IsPrivate      *bool      `json:"is_private,omitempty"`
 	IsRecurring    *bool      `json:"is_recurring,omitempty"`
@@ -262,6 +266,7 @@ type EventResponse struct {
 	RecurrenceRule   string                      `json:"recurrence_rule,omitempty"`
 	TaskID           *uint                       `json:"task_id,omitempty"`
 	ScheduleEntryID  *uint                       `json:"schedule_entry_id,omitempty"`
+	AbsenceID        *uint                       `json:"absence_id,omitempty"`
 	ParticipantCount int                         `json:"participant_count"`
 	UserStatus       ParticipantStatus           `json:"user_status,omitempty"`
 	Participants     []*EventParticipantResponse `json:"participants,omitempty"`
@@ -289,6 +294,7 @@ func (e *Event) ToResponse() *EventResponse {
 		RecurrenceRule:   e.RecurrenceRule,
 		TaskID:           e.TaskID,
 		ScheduleEntryID:  e.ScheduleEntryID,
+		AbsenceID:        e.AbsenceID,
 		ParticipantCount: e.ParticipantCount,
 		UserStatus:       e.UserStatus,
 		CreatedAt:        e.CreatedAt,
@@ -380,7 +386,7 @@ func (er *EventReminder) ToResponse() *EventReminderResponse {
 
 // EventFilterRequest represents filtering parameters for events
 type EventFilterRequest struct {
-	Type *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline schedule"`
+	Type *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline schedule absence"`
 	// Date range filters (alternative naming)
 	Start *time.Time `form:"start" time_format:"2006-01-02T15:04:05Z07:00"` // Alias for date range start
 	End   *time.Time `form:"end" time_format:"2006-01-02T15:04:05Z07:00"`   // Alias for date range end
