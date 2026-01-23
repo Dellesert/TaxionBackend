@@ -577,9 +577,16 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		return nil, err
 	}
 
+	// Track if user changed for event update
+	userChanged := false
+	oldUserID := entry.UserID
+
 	// Update fields if provided
-	if req.UserID != nil {
+	if req.UserID != nil && *req.UserID != entry.UserID {
 		entry.UserID = *req.UserID
+		userChanged = true
+		// Clear the User relation so it will be reloaded after save
+		entry.User = nil
 	}
 	if req.Date != nil {
 		entry.Date = *req.Date
@@ -607,10 +614,13 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		entry.EndTime = endTime
 	}
 
-	// Save updated entry
-	if err := u.scheduleRepo.UpdateScheduleEntry(entry); err != nil {
+	// Save updated entry - use Select to explicitly update user_id
+	if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, userChanged); err != nil {
 		return nil, fmt.Errorf("failed to update schedule entry: %w", err)
 	}
+
+	// If user changed, update the associated event owner
+	_ = oldUserID // Will be used when we update event ownership
 
 	// Update associated event if exists
 	if entry.EventID != nil {

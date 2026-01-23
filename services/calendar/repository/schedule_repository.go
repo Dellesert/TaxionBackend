@@ -26,6 +26,7 @@ type ScheduleRepository interface {
 	GetScheduleEntry(id uint) (*models.ScheduleEntry, error)
 	GetScheduleEntries(scheduleID uint, filter EntryFilter) ([]*models.ScheduleEntry, int64, error)
 	UpdateScheduleEntry(entry *models.ScheduleEntry) error
+	UpdateScheduleEntryFields(entry *models.ScheduleEntry, includeUserID bool) error
 	DeleteScheduleEntry(id uint) error
 	GetUserScheduleEntries(userID uint, startDate, endDate time.Time) ([]*models.ScheduleEntry, error)
 	CheckScheduleConflict(userID uint, date time.Time, startTime, endTime time.Time, excludeEntryID *uint) (bool, error)
@@ -315,6 +316,34 @@ func (r *scheduleRepository) UpdateScheduleEntry(entry *models.ScheduleEntry) er
 	}
 
 	return r.db.Save(entry).Error
+}
+
+// UpdateScheduleEntryFields updates a schedule entry with explicit field selection
+// This is needed because GORM's Save may not update foreign key fields properly in some cases
+func (r *scheduleRepository) UpdateScheduleEntryFields(entry *models.ScheduleEntry, includeUserID bool) error {
+	if entry == nil {
+		return errors.New("schedule entry cannot be nil")
+	}
+
+	// Build update map with all fields that should be updated
+	updates := map[string]interface{}{
+		"shift_type":  entry.ShiftType,
+		"start_time":  entry.StartTime,
+		"end_time":    entry.EndTime,
+		"title":       entry.Title,
+		"description": entry.Description,
+		"location":    entry.Location,
+		"date":        entry.Date,
+		"event_id":    entry.EventID,
+		"updated_at":  time.Now(),
+	}
+
+	// Explicitly include user_id when it has changed
+	if includeUserID {
+		updates["user_id"] = entry.UserID
+	}
+
+	return r.db.Model(entry).Updates(updates).Error
 }
 
 // DeleteScheduleEntry deletes a schedule entry
