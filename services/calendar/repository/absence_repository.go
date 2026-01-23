@@ -37,6 +37,7 @@ type AbsenceFilter struct {
 	CreatedBy *uint
 	Limit     int
 	Offset    int
+	SortOrder string // "asc" or "desc", default "desc"
 }
 
 // absenceRepository implements AbsenceRepository interface
@@ -116,8 +117,12 @@ func (r *absenceRepository) GetAbsences(filter AbsenceFilter) ([]*models.Absence
 		query = query.Offset(filter.Offset)
 	}
 
-	// Order by start date descending
-	query = query.Order("start_date DESC")
+	// Order by start date (default DESC, or ASC if specified)
+	if filter.SortOrder == "asc" {
+		query = query.Order("start_date ASC")
+	} else {
+		query = query.Order("start_date DESC")
+	}
 
 	if err := query.Find(&absences).Error; err != nil {
 		return nil, 0, err

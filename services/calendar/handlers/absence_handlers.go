@@ -196,6 +196,11 @@ func (h *AbsenceHandler) GetAbsences(c *gin.Context) {
 		}
 	}
 
+	// Sort order (asc or desc, default desc)
+	if sortOrder := c.Query("sort_order"); sortOrder == "asc" || sortOrder == "desc" {
+		filter.SortOrder = sortOrder
+	}
+
 	result, err := h.absenceUsecase.GetAbsences(filter)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{

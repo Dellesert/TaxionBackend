@@ -32,6 +32,7 @@ type AbsenceFilterParams struct {
 	EndDate   *time.Time
 	Limit     int
 	Offset    int
+	SortOrder string // "asc" or "desc", default "desc"
 }
 
 // absenceUsecase implements AbsenceUsecase interface
@@ -106,6 +107,7 @@ func (u *absenceUsecase) GetAbsences(filter AbsenceFilterParams) (*models.Absenc
 		EndDate:   filter.EndDate,
 		Limit:     filter.Limit,
 		Offset:    filter.Offset,
+		SortOrder: filter.SortOrder,
 	}
 
 	absences, total, err := u.absenceRepo.GetAbsences(repoFilter)
