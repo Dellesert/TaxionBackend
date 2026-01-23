@@ -8,6 +8,7 @@ import (
 
 	"tachyon-messenger/services/chat/models"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -25,16 +26,40 @@ const (
 	maxMessageSize = 8192
 )
 
+// generateConnectionID creates a unique connection ID for multi-device support
+func generateConnectionID() string {
+	return uuid.New().String()
+}
+
 // NewClient creates a new WebSocket client
 func NewClient(conn *websocket.Conn, hub *Hub, userID uint) *Client {
 	return &Client{
-		conn:      conn,
-		send:      make(chan []byte, 512),
-		hub:       hub,
-		userID:    userID,
-		chatRooms: make(map[uint]bool),
-		lastSeen:  time.Now(),
-		status:    "online",
+		conn:         conn,
+		send:         make(chan []byte, 512),
+		hub:          hub,
+		userID:       userID,
+		connectionID: generateConnectionID(),
+		chatRooms:    make(map[uint]bool),
+		lastSeen:     time.Now(),
+		status:       "online",
+	}
+}
+
+// NewClientWithConnectionID creates a new WebSocket client with a specific connection ID
+// Used when client provides their own device/connection identifier
+func NewClientWithConnectionID(conn *websocket.Conn, hub *Hub, userID uint, connectionID string) *Client {
+	if connectionID == "" {
+		connectionID = generateConnectionID()
+	}
+	return &Client{
+		conn:         conn,
+		send:         make(chan []byte, 512),
+		hub:          hub,
+		userID:       userID,
+		connectionID: connectionID,
+		chatRooms:    make(map[uint]bool),
+		lastSeen:     time.Now(),
+		status:       "online",
 	}
 }
 
@@ -370,4 +395,14 @@ func (c *Client) IsInChatRoom(chatID uint) bool {
 // Close gracefully closes the client connection
 func (c *Client) Close() {
 	c.conn.Close()
+}
+
+// GetConnectionID returns the unique connection ID
+func (c *Client) GetConnectionID() string {
+	return c.connectionID
+}
+
+// GetUserID returns the user ID
+func (c *Client) GetUserID() uint {
+	return c.userID
 }

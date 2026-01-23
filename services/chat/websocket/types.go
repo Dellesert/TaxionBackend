@@ -47,6 +47,9 @@ type Client struct {
 	// User ID
 	userID uint
 
+	// Unique connection ID (for multi-device support)
+	connectionID string
+
 	// Chat rooms the client is subscribed to
 	chatRooms map[uint]bool
 
@@ -64,8 +67,9 @@ type Client struct {
 
 // Hub manages all WebSocket client connections
 type Hub struct {
-	// Registered clients mapped by user ID
-	clients map[uint]*Client
+	// Registered clients mapped by user ID -> connectionID -> Client
+	// Supports multiple connections per user (multi-device)
+	clients map[uint]map[string]*Client
 
 	// Chat rooms - maps chat ID to set of user IDs
 	// DEPRECATED: Will be removed in favor of database-backed membership

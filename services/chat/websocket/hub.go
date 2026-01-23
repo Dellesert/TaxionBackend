@@ -58,14 +58,14 @@ type UserPresence struct {
 // NewHub creates a new WebSocket hub
 func NewHub(messageUsecase usecase.MessageUsecase, redisClient *redis.Client) *Hub {
 	return &Hub{
-		clients:        make(map[uint]*Client),
+		clients:        make(map[uint]map[string]*Client), // userID -> connectionID -> Client
 		chatRooms:      make(map[uint]map[uint]bool),
 		broadcast:      make(chan *BroadcastMessage, 1024),
 		register:       make(chan *Client),
 		unregister:     make(chan *Client),
 		shutdown:       make(chan struct{}),
-		messageUsecase: messageUsecase, // ДОБАВЛЯЕМ messageUsecase
-		chatRepo:       nil,             // Will be set later via SetChatRepository
+		messageUsecase: messageUsecase,
+		chatRepo:       nil, // Will be set later via SetChatRepository
 		redisClient:    redisClient,
 		metrics: &HubMetrics{
 			Uptime: time.Now(),
@@ -116,152 +116,192 @@ func (h *Hub) Close() {
 	close(h.shutdown)
 }
 
-// registerClient registers a new client
+// registerClient registers a new client (supports multiple connections per user)
 func (h *Hub) registerClient(client *Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	// Close existing connection if user is already connected
-	if existingClient, exists := h.clients[client.userID]; exists {
-		log.Printf("Replacing existing connection for user %d", client.userID)
-		h.forceDisconnectClient(existingClient)
+	userID := client.userID
+	connID := client.connectionID
+
+	// Initialize user's connections map if not exists
+	if h.clients[userID] == nil {
+		h.clients[userID] = make(map[string]*Client)
 	}
 
-	h.clients[client.userID] = client
+	// Check if this is the first connection for this user
+	isFirstConnection := len(h.clients[userID]) == 0
+
+	// Add the new connection
+	h.clients[userID][connID] = client
 	client.status = "online"
 	client.lastSeen = time.Now()
 
-	log.Printf("Client registered: user %d (total clients: %d)", client.userID, len(h.clients))
+	totalConnections := h.getTotalConnectionsCount()
+	log.Printf("Client registered: user %d, connection %s (user has %d connections, total connections: %d)",
+		userID, connID[:8], len(h.clients[userID]), totalConnections)
 
-	// Notify about user coming online
-	h.broadcastUserPresence(client.userID, "online")
+	// Only broadcast "online" status if this is the first connection for this user
+	if isFirstConnection {
+		h.broadcastUserPresence(userID, "online")
+	}
 }
 
-// unregisterClient unregisters a client
+// getTotalConnectionsCount returns total number of active connections across all users
+func (h *Hub) getTotalConnectionsCount() int {
+	count := 0
+	for _, connections := range h.clients {
+		count += len(connections)
+	}
+	return count
+}
+
+// unregisterClient unregisters a client (supports multiple connections per user)
 func (h *Hub) unregisterClient(client *Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	if storedClient, exists := h.clients[client.userID]; exists && storedClient == client {
-		// Notify about user going offline BEFORE removing from clients map
-		userID := client.userID
+	userID := client.userID
+	connID := client.connectionID
 
-		// Update status in user-service synchronously to ensure it completes
+	// Check if user has connections and this specific connection exists
+	userConnections, userExists := h.clients[userID]
+	if !userExists {
+		return
+	}
+
+	storedClient, connExists := userConnections[connID]
+	if !connExists || storedClient != client {
+		return
+	}
+
+	// Close the send channel and remove this specific connection
+	close(client.send)
+	delete(userConnections, connID)
+
+	// Check if this was the last connection for this user
+	isLastConnection := len(userConnections) == 0
+
+	if isLastConnection {
+		// Remove user from clients map entirely
+		delete(h.clients, userID)
+
+		// Update status in user-service synchronously
 		updateUserStatus(userID, "offline")
 
-		// Broadcast offline presence to all chat rooms
-		now := time.Now()
-		presence := &UserPresence{
-			UserID:       userID,
-			Status:       "offline",
-			LastSeen:     now,
-			LastActiveAt: now,
-		}
-
-		// Get user's chat IDs from database (not just from in-memory chatRooms)
-		// This ensures we notify all chat members even if user didn't explicitly join rooms
-		var chatRoomIDs []uint
-		if h.chatRepo != nil {
-			dbChatIDs, err := h.chatRepo.GetUserChatIDs(userID)
-			if err != nil {
-				log.Printf("⚠️ Failed to get user chat IDs from DB: %v, falling back to in-memory", err)
-				// Fallback to in-memory chatRooms
-				for chatID := range client.chatRooms {
-					chatRoomIDs = append(chatRoomIDs, chatID)
-				}
-			} else {
-				chatRoomIDs = dbChatIDs
-			}
-		} else {
-			// No chatRepo available, use in-memory chatRooms
-			for chatID := range client.chatRooms {
-				chatRoomIDs = append(chatRoomIDs, chatID)
-			}
-		}
-		presence.ChatRooms = chatRoomIDs
-
-		log.Printf("📢 Broadcasting offline status for user %d to %d chat rooms", userID, len(chatRoomIDs))
-
-		// Collect all unique users across all chat rooms
-		// Use database to get members for each chat (more reliable than in-memory)
-		uniqueUsers := make(map[uint]bool)
-		for _, chatID := range chatRoomIDs {
-			var memberIDs []uint
-			if h.chatRepo != nil {
-				dbMemberIDs, err := h.chatRepo.GetChatMemberIDs(chatID)
-				if err != nil {
-					log.Printf("⚠️ Failed to get chat %d members from DB: %v", chatID, err)
-					// Fallback to in-memory
-					if users, exists := h.chatRooms[chatID]; exists {
-						for otherUserID := range users {
-							memberIDs = append(memberIDs, otherUserID)
-						}
-					}
-				} else {
-					memberIDs = dbMemberIDs
-				}
-			} else {
-				// Fallback to in-memory chatRooms
-				if users, exists := h.chatRooms[chatID]; exists {
-					for otherUserID := range users {
-						memberIDs = append(memberIDs, otherUserID)
-					}
-				}
-			}
-
-			for _, otherUserID := range memberIDs {
-				if otherUserID != userID {
-					uniqueUsers[otherUserID] = true
-				}
-			}
-		}
-
-		// Create the message once
-		message := &BroadcastMessage{
-			Type:      models.WSMessageType("user_presence"),
-			ChatID:    0, // Not specific to one chat
-			UserID:    userID,
-			Data:      presence,
-			Timestamp: time.Now(),
-		}
-
-		messageBytes, err := json.Marshal(message)
-		if err != nil {
-			log.Printf("Error marshaling offline presence message: %v", err)
-		} else {
-			// Send to each unique user only once (if they are connected)
-			sent := 0
-			for otherUserID := range uniqueUsers {
-				if otherClient, exists := h.clients[otherUserID]; exists {
-					select {
-					case otherClient.send <- messageBytes:
-						sent++
-					default:
-						log.Printf("⚠️ Client %d send channel full, skipping offline presence", otherUserID)
-					}
-				}
-			}
-
-			log.Printf("✅ Sent offline presence for user %d to %d unique users (was in %d chats, %d total members)",
-				userID, sent, len(chatRoomIDs), len(uniqueUsers))
-		}
-
-		// Now remove client
-		delete(h.clients, client.userID)
-		close(client.send)
+		// Broadcast offline presence
+		h.broadcastOfflinePresence(client, userID)
 
 		// Remove user from all in-memory chat rooms
 		for chatID := range client.chatRooms {
 			if users, exists := h.chatRooms[chatID]; exists {
-				delete(users, client.userID)
+				delete(users, userID)
 				if len(users) == 0 {
 					delete(h.chatRooms, chatID)
 				}
 			}
 		}
-
-		log.Printf("Client unregistered: user %d (remaining clients: %d)", client.userID, len(h.clients))
 	}
+
+	totalConnections := h.getTotalConnectionsCount()
+	log.Printf("Client unregistered: user %d, connection %s (user has %d remaining connections, total: %d, was last: %v)",
+		userID, connID[:8], len(userConnections), totalConnections, isLastConnection)
+}
+
+// broadcastOfflinePresence broadcasts offline presence to relevant users
+func (h *Hub) broadcastOfflinePresence(client *Client, userID uint) {
+	now := time.Now()
+	presence := &UserPresence{
+		UserID:       userID,
+		Status:       "offline",
+		LastSeen:     now,
+		LastActiveAt: now,
+	}
+
+	// Get user's chat IDs from database
+	var chatRoomIDs []uint
+	if h.chatRepo != nil {
+		dbChatIDs, err := h.chatRepo.GetUserChatIDs(userID)
+		if err != nil {
+			log.Printf("⚠️ Failed to get user chat IDs from DB: %v, falling back to in-memory", err)
+			for chatID := range client.chatRooms {
+				chatRoomIDs = append(chatRoomIDs, chatID)
+			}
+		} else {
+			chatRoomIDs = dbChatIDs
+		}
+	} else {
+		for chatID := range client.chatRooms {
+			chatRoomIDs = append(chatRoomIDs, chatID)
+		}
+	}
+	presence.ChatRooms = chatRoomIDs
+
+	log.Printf("📢 Broadcasting offline status for user %d to %d chat rooms", userID, len(chatRoomIDs))
+
+	// Collect all unique users across all chat rooms
+	uniqueUsers := make(map[uint]bool)
+	for _, chatID := range chatRoomIDs {
+		var memberIDs []uint
+		if h.chatRepo != nil {
+			dbMemberIDs, err := h.chatRepo.GetChatMemberIDs(chatID)
+			if err != nil {
+				log.Printf("⚠️ Failed to get chat %d members from DB: %v", chatID, err)
+				if users, exists := h.chatRooms[chatID]; exists {
+					for otherUserID := range users {
+						memberIDs = append(memberIDs, otherUserID)
+					}
+				}
+			} else {
+				memberIDs = dbMemberIDs
+			}
+		} else {
+			if users, exists := h.chatRooms[chatID]; exists {
+				for otherUserID := range users {
+					memberIDs = append(memberIDs, otherUserID)
+				}
+			}
+		}
+
+		for _, otherUserID := range memberIDs {
+			if otherUserID != userID {
+				uniqueUsers[otherUserID] = true
+			}
+		}
+	}
+
+	// Create the message
+	message := &BroadcastMessage{
+		Type:      models.WSMessageType("user_presence"),
+		ChatID:    0,
+		UserID:    userID,
+		Data:      presence,
+		Timestamp: time.Now(),
+	}
+
+	messageBytes, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("Error marshaling offline presence message: %v", err)
+		return
+	}
+
+	// Send to each unique user's ALL connections
+	sent := 0
+	for otherUserID := range uniqueUsers {
+		if otherConnections, exists := h.clients[otherUserID]; exists {
+			for _, otherClient := range otherConnections {
+				select {
+				case otherClient.send <- messageBytes:
+					sent++
+				default:
+					log.Printf("⚠️ Client %d send channel full, skipping offline presence", otherUserID)
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Sent offline presence for user %d to %d connections (was in %d chats, %d total members)",
+		userID, sent, len(chatRoomIDs), len(uniqueUsers))
 }
 
 // forceDisconnectClient forcefully disconnects a client
@@ -280,8 +320,7 @@ func (h *Hub) forceDisconnectClient(client *Client) {
 	}
 }
 
-// broadcastMessage broadcasts a message to relevant clients
-// NEW ARCHITECTURE: Uses user channels instead of chat rooms
+// broadcastMessage broadcasts a message to relevant clients (all connections per user)
 func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
@@ -295,8 +334,7 @@ func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 
 	sent := 0
 
-	// NEW: Get users who should receive this message based on chatID
-	// This retrieves all chat members from the database via messageUsecase
+	// Get users who should receive this message based on chatID
 	targetUserIDs := h.getChatMemberIDs(broadcastMsg.ChatID)
 
 	for _, userID := range targetUserIDs {
@@ -305,16 +343,16 @@ func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 			continue
 		}
 
-		// Send to user's personal channel if they are connected
-		if client, clientExists := h.clients[userID]; clientExists {
-			select {
-			case client.send <- message:
-				sent++
-			default:
-				// Client's send channel is full, remove client
-				log.Printf("Client %d send channel full, removing", userID)
-				close(client.send)
-				delete(h.clients, userID)
+		// Send to ALL user's connections (multi-device support)
+		if userConnections, userExists := h.clients[userID]; userExists {
+			for connID, client := range userConnections {
+				select {
+				case client.send <- message:
+					sent++
+				default:
+					// Client's send channel is full, mark for removal
+					log.Printf("Client %d connection %s send channel full", userID, connID[:8])
+				}
 			}
 		}
 	}
@@ -322,7 +360,7 @@ func (h *Hub) broadcastMessage(broadcastMsg *BroadcastMessage) {
 	h.metrics.MessagesSent += int64(sent)
 
 	if sent > 0 {
-		log.Printf("Broadcasted %s message to %d clients (chat %d)", broadcastMsg.Type, sent, broadcastMsg.ChatID)
+		log.Printf("Broadcasted %s message to %d connections (chat %d)", broadcastMsg.Type, sent, broadcastMsg.ChatID)
 	}
 }
 
@@ -461,20 +499,22 @@ func (h *Hub) broadcastUserPresence(userID uint, status string) {
 		return
 	}
 
-	// Send to each unique user only once (if they are connected)
+	// Send to each unique user's ALL connections (multi-device support)
 	sent := 0
 	for otherUserID := range uniqueUsers {
-		if client, exists := h.clients[otherUserID]; exists {
-			select {
-			case client.send <- messageBytes:
-				sent++
-			default:
-				log.Printf("Client %d send channel full, skipping presence update", otherUserID)
+		if userConnections, exists := h.clients[otherUserID]; exists {
+			for _, client := range userConnections {
+				select {
+				case client.send <- messageBytes:
+					sent++
+				default:
+					log.Printf("Client %d send channel full, skipping presence update", otherUserID)
+				}
 			}
 		}
 	}
 
-	log.Printf("✅ Sent user_presence for user %d to %d unique users (was in %d chats, %d total members)",
+	log.Printf("✅ Sent user_presence for user %d to %d connections (was in %d chats, %d total members)",
 		userID, sent, len(chatRoomIDs), len(uniqueUsers))
 }
 
@@ -540,7 +580,7 @@ func updateUserStatus(userID uint, status string) {
 	log.Printf("✅ Updated user %d status to %s in user-service", userID, status)
 }
 
-// JoinChatRoom adds a user to a chat room
+// JoinChatRoom adds a user to a chat room (updates all user connections)
 func (h *Hub) JoinChatRoom(userID, chatID uint) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -563,13 +603,16 @@ func (h *Hub) JoinChatRoom(userID, chatID uint) {
 	// Mark user active in Redis for distributed presence tracking
 	h.setUserActiveInChat(userID, chatID)
 
-	// Add chat room to client
-	if client, exists := h.clients[userID]; exists {
-		client.mutex.Lock()
-		client.chatRooms[chatID] = true
-		client.mutex.Unlock()
+	// Add chat room to ALL user's connections
+	if userConnections, exists := h.clients[userID]; exists {
+		for _, client := range userConnections {
+			client.mutex.Lock()
+			client.chatRooms[chatID] = true
+			client.mutex.Unlock()
+		}
 
-		log.Printf("User %d joined chat room %d (room has %d users)", userID, chatID, len(h.chatRooms[chatID]))
+		log.Printf("User %d joined chat room %d (room has %d users, user has %d connections)",
+			userID, chatID, len(h.chatRooms[chatID]), len(userConnections))
 
 		// Notify other users in the chat
 		joinData := map[string]interface{}{
@@ -594,7 +637,7 @@ func (h *Hub) JoinChatRoom(userID, chatID uint) {
 	}
 }
 
-// LeaveChatRoom removes a user from a chat room
+// LeaveChatRoom removes a user from a chat room (updates all user connections)
 func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -621,12 +664,14 @@ func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 		log.Printf("⚠️ [LeaveChatRoom] Chat room %d does not exist in chatRooms map", chatID)
 	}
 
-	// Remove chat room from client
-	if client, exists := h.clients[userID]; exists {
-		client.mutex.Lock()
-		delete(client.chatRooms, chatID)
-		client.mutex.Unlock()
-		log.Printf("✅ [LeaveChatRoom] Removed chat %d from client %d's chatRooms", chatID, userID)
+	// Remove chat room from ALL user's connections
+	if userConnections, exists := h.clients[userID]; exists {
+		for _, client := range userConnections {
+			client.mutex.Lock()
+			delete(client.chatRooms, chatID)
+			client.mutex.Unlock()
+		}
+		log.Printf("✅ [LeaveChatRoom] Removed chat %d from all %d connections of user %d", chatID, len(userConnections), userID)
 
 		// Notify other users in the chat
 		leaveData := map[string]interface{}{
@@ -649,7 +694,7 @@ func (h *Hub) LeaveChatRoom(userID, chatID uint) {
 			log.Println("Broadcast channel full, dropping leave message")
 		}
 	} else {
-		log.Printf("⚠️ [LeaveChatRoom] Client %d not found in h.clients", userID)
+		log.Printf("⚠️ [LeaveChatRoom] User %d not found in h.clients", userID)
 	}
 }
 
@@ -687,13 +732,13 @@ func (h *Hub) BroadcastToChatExcludeSender(chatID uint, data interface{}, msgTyp
 	}
 }
 
-// SendToUser sends a message to a specific user
+// SendToUser sends a message to ALL connections of a specific user (multi-device support)
 func (h *Hub) SendToUser(userID uint, data interface{}, msgType models.WSMessageType) {
 	h.mutex.RLock()
-	client, exists := h.clients[userID]
+	userConnections, exists := h.clients[userID]
 	h.mutex.RUnlock()
 
-	if !exists {
+	if !exists || len(userConnections) == 0 {
 		log.Printf("User %d not connected, cannot send message", userID)
 		return
 	}
@@ -710,17 +755,18 @@ func (h *Hub) SendToUser(userID uint, data interface{}, msgType models.WSMessage
 		return
 	}
 
-	select {
-	case client.send <- messageBytes:
-		log.Printf("Sent direct message to user %d", userID)
-	default:
-		// Client's send channel is full, remove client
-		h.mutex.Lock()
-		close(client.send)
-		delete(h.clients, userID)
-		h.mutex.Unlock()
-		log.Printf("User %d send channel full, client removed", userID)
+	// Send to all user's connections
+	sent := 0
+	for _, client := range userConnections {
+		select {
+		case client.send <- messageBytes:
+			sent++
+		default:
+			log.Printf("User %d connection send channel full, skipping", userID)
+		}
 	}
+
+	log.Printf("Sent direct message to user %d (%d connections)", userID, sent)
 }
 
 // BroadcastTyping broadcasts typing indicator
@@ -772,22 +818,39 @@ func (h *Hub) GetChatRoomUsers(chatID uint) []uint {
 	return []uint{}
 }
 
-// GetUserPresence returns user presence info
+// GetUserPresence returns user presence info (aggregated from all connections)
 func (h *Hub) GetUserPresence(userID uint) *UserPresence {
 	h.mutex.RLock()
 	defer h.mutex.RUnlock()
 
-	if client, exists := h.clients[userID]; exists {
-		chatRooms := make([]uint, 0, len(client.chatRooms))
-		for chatID := range client.chatRooms {
+	if userConnections, exists := h.clients[userID]; exists && len(userConnections) > 0 {
+		// Aggregate chat rooms from all connections
+		chatRoomsMap := make(map[uint]bool)
+		var latestSeen time.Time
+		status := "offline"
+
+		for _, client := range userConnections {
+			// Use the most recent lastSeen
+			if client.lastSeen.After(latestSeen) {
+				latestSeen = client.lastSeen
+				status = client.status
+			}
+			// Merge chat rooms from all connections
+			for chatID := range client.chatRooms {
+				chatRoomsMap[chatID] = true
+			}
+		}
+
+		chatRooms := make([]uint, 0, len(chatRoomsMap))
+		for chatID := range chatRoomsMap {
 			chatRooms = append(chatRooms, chatID)
 		}
 
 		return &UserPresence{
 			UserID:       userID,
-			Status:       client.status,
-			LastSeen:     client.lastSeen,
-			LastActiveAt: client.lastSeen,
+			Status:       status,
+			LastSeen:     latestSeen,
+			LastActiveAt: latestSeen,
 			ChatRooms:    chatRooms,
 		}
 	}
@@ -806,7 +869,8 @@ func (h *Hub) GetMetrics() *HubMetrics {
 	defer h.mutex.RUnlock()
 
 	metrics := *h.metrics
-	metrics.ConnectedClients = len(h.clients)
+	// ConnectedClients now represents total connections (multi-device)
+	metrics.ConnectedClients = h.getTotalConnectionsCount()
 	metrics.ActiveChatRooms = len(h.chatRooms)
 
 	return &metrics
@@ -821,7 +885,7 @@ func (h *Hub) updateMetrics() {
 		select {
 		case <-ticker.C:
 			h.mutex.Lock()
-			h.metrics.ConnectedClients = len(h.clients)
+			h.metrics.ConnectedClients = h.getTotalConnectionsCount()
 			h.metrics.ActiveChatRooms = len(h.chatRooms)
 			h.mutex.Unlock()
 
@@ -836,18 +900,22 @@ func (h *Hub) cleanup() {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	// Close all client connections
-	for userID, client := range h.clients {
-		close(client.send)
-		client.conn.Close()
-		log.Printf("Closed connection for user %d", userID)
+	// Close all client connections (multi-device)
+	totalClosed := 0
+	for userID, userConnections := range h.clients {
+		for connID, client := range userConnections {
+			close(client.send)
+			client.conn.Close()
+			log.Printf("Closed connection %s for user %d", connID[:8], userID)
+			totalClosed++
+		}
 	}
 
 	// Clear all data structures
-	h.clients = make(map[uint]*Client)
+	h.clients = make(map[uint]map[string]*Client)
 	h.chatRooms = make(map[uint]map[uint]bool)
 
-	log.Println("Hub cleanup completed")
+	log.Printf("Hub cleanup completed (%d connections closed)", totalClosed)
 }
 
 // RegisterClient registers a client with the hub
@@ -918,27 +986,35 @@ func (h *Hub) getActiveUsersFromRedis(chatID uint) []uint {
 	return userIDs
 }
 
-// refreshUserPresence refreshes a user's presence in all their active chats
+// refreshUserPresence refreshes a user's presence in all their active chats (all connections)
 func (h *Hub) refreshUserPresence(userID uint) {
 	if h.redisClient == nil {
 		return
 	}
 
-	// Get the user's active chat rooms from in-memory state
+	// Get the user's active chat rooms from all connections
 	h.mutex.RLock()
-	client, exists := h.clients[userID]
+	userConnections, exists := h.clients[userID]
 	h.mutex.RUnlock()
 
-	if !exists {
+	if !exists || len(userConnections) == 0 {
 		return
 	}
 
+	// Collect all unique chat rooms from all connections
+	chatRoomsMap := make(map[uint]bool)
+	for _, client := range userConnections {
+		client.mutex.RLock()
+		for chatID := range client.chatRooms {
+			chatRoomsMap[chatID] = true
+		}
+		client.mutex.RUnlock()
+	}
+
 	// Refresh presence in all active chat rooms
-	client.mutex.RLock()
-	for chatID := range client.chatRooms {
+	for chatID := range chatRoomsMap {
 		h.setUserActiveInChat(userID, chatID)
 	}
-	client.mutex.RUnlock()
 }
 
 // resetStuckOnlineStatuses resets all online statuses to offline on startup
