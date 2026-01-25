@@ -324,41 +324,34 @@ func (u *absenceUsecase) createAbsenceEvent(absence *models.Absence) error {
 		EndTime:     endTime,
 		AllDay:      true,
 		Type:        models.EventTypeAbsence,
-		CreatedBy:   absence.CreatedBy,
+		CreatedBy:   absence.UserID, // Event should belong to the user who is absent
 		Color:       getAbsenceColor(absence.Type),
 		IsPrivate:   false,
 		AbsenceID:   &absence.ID,
 	}
 
-	if err := u.eventRepo.CreateEvent(event); err != nil {
-		return fmt.Errorf("failed to create event: %w", err)
-	}
-
-	// Add the absence user as participant (accepted)
-	participant := &models.EventParticipant{
-		EventID:     event.ID,
-		UserID:      absence.UserID,
-		Status:      models.ParticipantStatusAccepted,
-		IsOrganizer: false,
-	}
-
-	if err := u.participantRepo.AddParticipant(participant); err != nil {
-		return fmt.Errorf("failed to add participant: %w", err)
-	}
-
-	// If creator is different from user, add creator as organizer
-	if absence.CreatedBy != absence.UserID {
-		creator := &models.EventParticipant{
-			EventID:     event.ID,
-			UserID:      absence.CreatedBy,
+	// Prepare participants list
+	participants := []*models.EventParticipant{
+		{
+			// The user who is absent - primary participant
+			UserID:      absence.UserID,
 			Status:      models.ParticipantStatusAccepted,
 			IsOrganizer: true,
-		}
+		},
+	}
 
-		if err := u.participantRepo.AddParticipant(creator); err != nil {
-			// Log but don't fail
-			fmt.Printf("Warning: failed to add creator as organizer: %v\n", err)
-		}
+	// If creator is different from user, add creator as participant too
+	if absence.CreatedBy != absence.UserID {
+		participants = append(participants, &models.EventParticipant{
+			UserID:      absence.CreatedBy,
+			Status:      models.ParticipantStatusAccepted,
+			IsOrganizer: false,
+		})
+	}
+
+	// Create event with participants in a single transaction
+	if err := u.eventRepo.CreateEventWithParticipants(event, participants); err != nil {
+		return fmt.Errorf("failed to create absence event: %w", err)
 	}
 
 	return nil

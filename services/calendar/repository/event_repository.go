@@ -39,6 +39,9 @@ type EventRepository interface {
 	// Absence integration methods
 	GetEventByAbsenceID(absenceID uint) (*models.Event, error)
 	DeleteEventByAbsenceID(absenceID uint) error
+
+	// Transactional methods
+	CreateEventWithParticipants(event *models.Event, participants []*models.EventParticipant) error
 }
 
 // ParticipantRepository defines the interface for participant data operations
@@ -904,4 +907,24 @@ func (r *eventRepository) DeleteEventByAbsenceID(absenceID uint) error {
 		return fmt.Errorf("failed to delete event by absence ID: %w", result.Error)
 	}
 	return nil
+}
+
+// CreateEventWithParticipants creates an event with participants in a single transaction
+func (r *eventRepository) CreateEventWithParticipants(event *models.Event, participants []*models.EventParticipant) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Create the event
+		if err := tx.Create(event).Error; err != nil {
+			return fmt.Errorf("failed to create event: %w", err)
+		}
+
+		// Update participants with the event ID and create them
+		for _, participant := range participants {
+			participant.EventID = event.ID
+			if err := tx.Create(participant).Error; err != nil {
+				return fmt.Errorf("failed to add participant (user_id=%d): %w", participant.UserID, err)
+			}
+		}
+
+		return nil
+	})
 }
