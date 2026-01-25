@@ -330,23 +330,14 @@ func (u *absenceUsecase) createAbsenceEvent(absence *models.Absence) error {
 		AbsenceID:   &absence.ID,
 	}
 
-	// Prepare participants list
+	// Prepare participants list - only the user who is absent
+	// Creator should NOT see the absence event in their calendar
 	participants := []*models.EventParticipant{
 		{
-			// The user who is absent - primary participant
 			UserID:      absence.UserID,
 			Status:      models.ParticipantStatusAccepted,
 			IsOrganizer: true,
 		},
-	}
-
-	// If creator is different from user, add creator as participant too
-	if absence.CreatedBy != absence.UserID {
-		participants = append(participants, &models.EventParticipant{
-			UserID:      absence.CreatedBy,
-			Status:      models.ParticipantStatusAccepted,
-			IsOrganizer: false,
-		})
 	}
 
 	// Create event with participants in a single transaction
