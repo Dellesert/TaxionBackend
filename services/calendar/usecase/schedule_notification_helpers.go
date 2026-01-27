@@ -223,6 +223,156 @@ func (u *scheduleUsecase) sendBatchScheduleEntryNotifications(schedule *models.S
 	}
 }
 
+// sendScheduleEntryUpdatedNotification sends notification when user's schedule entry is updated
+func (u *scheduleUsecase) sendScheduleEntryUpdatedNotification(schedule *models.Schedule, oldEntry, newEntry *models.ScheduleEntry, updaterID uint) {
+	// Don't notify if user updated their own entry
+	if newEntry.UserID == updaterID {
+		return
+	}
+
+	// Get updater info
+	updaterInfo, err := u.userClient.GetUserByID(updaterID)
+	updaterName := "Кто-то"
+	if err == nil && updaterInfo != nil {
+		updaterName = updaterInfo.Name
+	}
+
+	priority := "high"
+
+	// Build change description
+	var changes []string
+
+	if !oldEntry.Date.Equal(newEntry.Date) {
+		changes = append(changes, fmt.Sprintf("дата: %s → %s",
+			oldEntry.Date.Format("02.01"),
+			newEntry.Date.Format("02.01")))
+	}
+
+	if !oldEntry.StartTime.Equal(newEntry.StartTime) || !oldEntry.EndTime.Equal(newEntry.EndTime) {
+		changes = append(changes, fmt.Sprintf("время: %s-%s → %s-%s",
+			oldEntry.StartTime.Format("15:04"),
+			oldEntry.EndTime.Format("15:04"),
+			newEntry.StartTime.Format("15:04"),
+			newEntry.EndTime.Format("15:04")))
+	}
+
+	if oldEntry.ShiftType != newEntry.ShiftType {
+		changes = append(changes, fmt.Sprintf("смена: %s → %s",
+			getShiftTypeName(oldEntry.ShiftType),
+			getShiftTypeName(newEntry.ShiftType)))
+	}
+
+	if len(changes) == 0 {
+		return // No significant changes
+	}
+
+	message := fmt.Sprintf("%s изменил(а) вашу смену в графике \"%s\" на %s: %s",
+		updaterName,
+		schedule.Title,
+		newEntry.Date.Format("02.01.2006"),
+		joinChanges(changes))
+
+	notificationReq := &clients.NotificationRequest{
+		UserID:      newEntry.UserID,
+		Type:        "calendar",
+		Title:       "📅 Изменение в графике",
+		Message:     message,
+		Priority:    &priority,
+		RelatedID:   &schedule.ID,
+		RelatedType: "schedule",
+		Data: map[string]interface{}{
+			"schedule_id":    schedule.ID,
+			"schedule_type":  schedule.Type,
+			"entry_id":       newEntry.ID,
+			"old_date":       oldEntry.Date,
+			"new_date":       newEntry.Date,
+			"old_start_time": oldEntry.StartTime,
+			"new_start_time": newEntry.StartTime,
+			"updater_id":     updaterID,
+			"action":         "open_schedule",
+		},
+		Channels: []string{"in_app", "push"},
+	}
+
+	if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"user_id":     newEntry.UserID,
+			"schedule_id": schedule.ID,
+			"entry_id":    newEntry.ID,
+			"error":       err.Error(),
+		}).Error("Failed to send schedule entry updated notification")
+	}
+}
+
+// sendScheduleEntryCancelledNotification sends notification when user's shift is cancelled
+func (u *scheduleUsecase) sendScheduleEntryCancelledNotification(schedule *models.Schedule, entry *models.ScheduleEntry, cancellerID uint) {
+	// Don't notify if user cancelled their own entry
+	if entry.UserID == cancellerID {
+		return
+	}
+
+	// Get canceller info
+	cancellerInfo, err := u.userClient.GetUserByID(cancellerID)
+	cancellerName := "Кто-то"
+	if err == nil && cancellerInfo != nil {
+		cancellerName = cancellerInfo.Name
+	}
+
+	priority := "high"
+
+	message := fmt.Sprintf("%s отменил(а) вашу смену в графике \"%s\" на %s (%s)",
+		cancellerName,
+		schedule.Title,
+		entry.Date.Format("02.01.2006"),
+		entry.StartTime.Format("15:04")+"-"+entry.EndTime.Format("15:04"))
+
+	notificationReq := &clients.NotificationRequest{
+		UserID:      entry.UserID,
+		Type:        "calendar",
+		Title:       "❌ Смена отменена",
+		Message:     message,
+		Priority:    &priority,
+		RelatedID:   &schedule.ID,
+		RelatedType: "schedule",
+		Data: map[string]interface{}{
+			"schedule_id":   schedule.ID,
+			"schedule_type": schedule.Type,
+			"cancelled_date": entry.Date,
+			"cancelled_time": entry.StartTime.Format("15:04") + "-" + entry.EndTime.Format("15:04"),
+			"canceller_id":  cancellerID,
+			"action":        "open_schedule",
+		},
+		Channels: []string{"in_app", "push"},
+	}
+
+	if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"user_id":     entry.UserID,
+			"schedule_id": schedule.ID,
+			"entry_id":    entry.ID,
+			"error":       err.Error(),
+		}).Error("Failed to send schedule entry cancelled notification")
+	}
+}
+
+// joinChanges joins change descriptions with commas
+func joinChanges(changes []string) string {
+	if len(changes) == 0 {
+		return ""
+	}
+	if len(changes) == 1 {
+		return changes[0]
+	}
+	result := ""
+	for i, change := range changes {
+		if i > 0 {
+			result += ", "
+		}
+		result += change
+	}
+	return result
+}
+
 // getShiftTypeName returns Russian name for shift type
 func getShiftTypeName(shiftType models.ShiftType) string {
 	switch shiftType {

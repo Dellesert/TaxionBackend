@@ -577,6 +577,15 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		return nil, err
 	}
 
+	// Save old values for notification
+	oldEntry := &models.ScheduleEntry{
+		UserID:    entry.UserID,
+		Date:      entry.Date,
+		StartTime: entry.StartTime,
+		EndTime:   entry.EndTime,
+		ShiftType: entry.ShiftType,
+	}
+
 	// Track if user changed for event update
 	userChanged := false
 	oldUserID := entry.UserID
@@ -641,6 +650,9 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		return nil, fmt.Errorf("failed to get updated entry: %w", err)
 	}
 
+	// Send notification about the change asynchronously
+	go u.sendScheduleEntryUpdatedNotification(schedule, oldEntry, updatedEntry, userID)
+
 	return updatedEntry.ToResponse(), nil
 }
 
@@ -657,12 +669,21 @@ func (u *scheduleUsecase) DeleteScheduleEntry(userID, scheduleID, entryID uint) 
 		return errors.New("entry does not belong to this schedule")
 	}
 
+	// Get schedule for notification
+	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
+	if err != nil {
+		return err
+	}
+
 	// Delete associated event if exists
 	if entry.EventID != nil {
 		if err := u.eventRepo.DeleteEvent(*entry.EventID); err != nil {
 			// Log error but continue
 		}
 	}
+
+	// Send notification about cancellation asynchronously (before deletion)
+	go u.sendScheduleEntryCancelledNotification(schedule, entry, userID)
 
 	// Delete entry
 	if err := u.scheduleRepo.DeleteScheduleEntry(entryID); err != nil {
