@@ -22,6 +22,13 @@ type AbsenceUsecase interface {
 	// For schedule integration
 	IsUserAbsent(userID uint, date time.Time) (bool, *models.Absence, error)
 	GetAbsentUsersForPeriod(userIDs []uint, startDate, endDate time.Time) (map[uint][]*models.Absence, error)
+
+	// Substitution methods
+	GetSubstitutions(absenceID uint) ([]*models.SubstitutionResponse, error)
+	CreateSubstitution(creatorID, absenceID uint, req *models.CreateSubstitutionRequest) (*models.SubstitutionResponse, error)
+	UpdateSubstitution(userID, absenceID, subID uint, req *models.UpdateSubstitutionRequest) (*models.SubstitutionResponse, error)
+	DeleteSubstitution(userID, absenceID, subID uint) error
+	GetUserSubstitutions(userID uint, startDate, endDate time.Time) ([]*models.SubstitutionResponse, error)
 }
 
 // AbsenceFilterParams represents filtering parameters
@@ -37,9 +44,10 @@ type AbsenceFilterParams struct {
 
 // absenceUsecase implements AbsenceUsecase interface
 type absenceUsecase struct {
-	absenceRepo     repository.AbsenceRepository
-	eventRepo       repository.EventRepository
-	participantRepo repository.ParticipantRepository
+	absenceRepo      repository.AbsenceRepository
+	eventRepo        repository.EventRepository
+	participantRepo  repository.ParticipantRepository
+	substitutionRepo repository.SubstitutionRepository
 }
 
 // NewAbsenceUsecase creates a new absence usecase
@@ -47,11 +55,13 @@ func NewAbsenceUsecase(
 	absenceRepo repository.AbsenceRepository,
 	eventRepo repository.EventRepository,
 	participantRepo repository.ParticipantRepository,
+	substitutionRepo repository.SubstitutionRepository,
 ) AbsenceUsecase {
 	return &absenceUsecase{
-		absenceRepo:     absenceRepo,
-		eventRepo:       eventRepo,
-		participantRepo: participantRepo,
+		absenceRepo:      absenceRepo,
+		eventRepo:        eventRepo,
+		participantRepo:  participantRepo,
+		substitutionRepo: substitutionRepo,
 	}
 }
 
@@ -223,7 +233,13 @@ func (u *absenceUsecase) DeleteAbsence(userID, absenceID uint) error {
 		return err
 	}
 
-	// Delete calendar event first (before deleting absence)
+	// Delete all substitutions first
+	if err := u.substitutionRepo.DeleteSubstitutionsByAbsenceID(absenceID); err != nil {
+		// Log error but don't fail the absence deletion
+		fmt.Printf("Warning: failed to delete substitutions for absence %d: %v\n", absenceID, err)
+	}
+
+	// Delete calendar event (before deleting absence)
 	if err := u.deleteAbsenceEvent(absenceID); err != nil {
 		// Log error but don't fail the absence deletion
 		fmt.Printf("Warning: failed to delete calendar event for absence %d: %v\n", absenceID, err)
@@ -383,5 +399,222 @@ func (u *absenceUsecase) deleteAbsenceEvent(absenceID uint) error {
 	if err := u.eventRepo.DeleteEventByAbsenceID(absenceID); err != nil {
 		return fmt.Errorf("failed to delete event: %w", err)
 	}
+	return nil
+}
+
+// Substitution methods
+
+// GetSubstitutions retrieves all substitutions for an absence
+func (u *absenceUsecase) GetSubstitutions(absenceID uint) ([]*models.SubstitutionResponse, error) {
+	// Check if absence exists
+	_, err := u.absenceRepo.GetAbsenceByID(absenceID)
+	if err != nil {
+		return nil, err
+	}
+
+	subs, err := u.substitutionRepo.GetSubstitutionsByAbsenceID(absenceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get substitutions: %w", err)
+	}
+
+	responses := make([]*models.SubstitutionResponse, len(subs))
+	for i, sub := range subs {
+		responses[i] = sub.ToResponse()
+	}
+
+	return responses, nil
+}
+
+// CreateSubstitution creates a new substitution for an absence
+func (u *absenceUsecase) CreateSubstitution(creatorID, absenceID uint, req *models.CreateSubstitutionRequest) (*models.SubstitutionResponse, error) {
+	// Get absence to validate
+	absence, err := u.absenceRepo.GetAbsenceByID(absenceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Validate request
+	if err := u.validateCreateSubstitutionRequest(absence, req); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Check for overlapping substitutions for the same substitute
+	hasOverlap, err := u.substitutionRepo.CheckSubstitutionOverlap(absenceID, req.SubstituteID, req.StartDate, req.EndDate, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check overlap: %w", err)
+	}
+	if hasOverlap {
+		return nil, errors.New("этот сотрудник уже является замещающим на этот период")
+	}
+
+	// Create substitution model
+	sub := &models.AbsenceSubstitution{
+		AbsenceID:    absenceID,
+		SubstituteID: req.SubstituteID,
+		StartDate:    req.StartDate,
+		EndDate:      req.EndDate,
+		Note:         strings.TrimSpace(req.Note),
+		CreatedBy:    creatorID,
+	}
+
+	// Save substitution
+	if err := u.substitutionRepo.CreateSubstitution(sub); err != nil {
+		return nil, fmt.Errorf("failed to create substitution: %w", err)
+	}
+
+	// Get substitution with relations
+	createdSub, err := u.substitutionRepo.GetSubstitutionByID(sub.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get created substitution: %w", err)
+	}
+
+	return createdSub.ToResponse(), nil
+}
+
+// UpdateSubstitution updates an existing substitution
+func (u *absenceUsecase) UpdateSubstitution(userID, absenceID, subID uint, req *models.UpdateSubstitutionRequest) (*models.SubstitutionResponse, error) {
+	// Get absence to validate
+	absence, err := u.absenceRepo.GetAbsenceByID(absenceID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get existing substitution
+	sub, err := u.substitutionRepo.GetSubstitutionByID(subID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify substitution belongs to the absence
+	if sub.AbsenceID != absenceID {
+		return nil, errors.New("substitution not found")
+	}
+
+	// Update fields if provided
+	if req.SubstituteID != nil {
+		sub.SubstituteID = *req.SubstituteID
+	}
+	if req.StartDate != nil {
+		sub.StartDate = *req.StartDate
+	}
+	if req.EndDate != nil {
+		sub.EndDate = *req.EndDate
+	}
+	if req.Note != nil {
+		sub.Note = strings.TrimSpace(*req.Note)
+	}
+
+	// Validate updated substitution
+	if err := u.validateSubstitutionDates(absence, sub.StartDate, sub.EndDate, sub.SubstituteID); err != nil {
+		return nil, fmt.Errorf("validation failed: %w", err)
+	}
+
+	// Check for overlapping substitutions (excluding current)
+	hasOverlap, err := u.substitutionRepo.CheckSubstitutionOverlap(absenceID, sub.SubstituteID, sub.StartDate, sub.EndDate, &subID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check overlap: %w", err)
+	}
+	if hasOverlap {
+		return nil, errors.New("этот сотрудник уже является замещающим на этот период")
+	}
+
+	// Save updated substitution
+	if err := u.substitutionRepo.UpdateSubstitution(sub); err != nil {
+		return nil, fmt.Errorf("failed to update substitution: %w", err)
+	}
+
+	// Get updated substitution with relations
+	updatedSub, err := u.substitutionRepo.GetSubstitutionByID(sub.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated substitution: %w", err)
+	}
+
+	return updatedSub.ToResponse(), nil
+}
+
+// DeleteSubstitution deletes a substitution
+func (u *absenceUsecase) DeleteSubstitution(userID, absenceID, subID uint) error {
+	// Check if absence exists
+	_, err := u.absenceRepo.GetAbsenceByID(absenceID)
+	if err != nil {
+		return err
+	}
+
+	// Get substitution to verify it belongs to the absence
+	sub, err := u.substitutionRepo.GetSubstitutionByID(subID)
+	if err != nil {
+		return err
+	}
+
+	if sub.AbsenceID != absenceID {
+		return errors.New("substitution not found")
+	}
+
+	// Delete substitution
+	if err := u.substitutionRepo.DeleteSubstitution(subID); err != nil {
+		return fmt.Errorf("failed to delete substitution: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserSubstitutions retrieves all substitutions where user is a substitute
+func (u *absenceUsecase) GetUserSubstitutions(userID uint, startDate, endDate time.Time) ([]*models.SubstitutionResponse, error) {
+	subs, err := u.substitutionRepo.GetSubstitutionsBySubstituteID(userID, startDate, endDate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user substitutions: %w", err)
+	}
+
+	responses := make([]*models.SubstitutionResponse, len(subs))
+	for i, sub := range subs {
+		responses[i] = sub.ToResponse()
+	}
+
+	return responses, nil
+}
+
+// validateCreateSubstitutionRequest validates create substitution request
+func (u *absenceUsecase) validateCreateSubstitutionRequest(absence *models.Absence, req *models.CreateSubstitutionRequest) error {
+	if req.SubstituteID == 0 {
+		return errors.New("substitute_id is required")
+	}
+
+	if req.StartDate.IsZero() {
+		return errors.New("start_date is required")
+	}
+
+	if req.EndDate.IsZero() {
+		return errors.New("end_date is required")
+	}
+
+	return u.validateSubstitutionDates(absence, req.StartDate, req.EndDate, req.SubstituteID)
+}
+
+// validateSubstitutionDates validates substitution dates against absence dates
+func (u *absenceUsecase) validateSubstitutionDates(absence *models.Absence, startDate, endDate time.Time, substituteID uint) error {
+	// EndDate must be >= StartDate
+	if endDate.Before(startDate) {
+		return errors.New("дата окончания должна быть после даты начала")
+	}
+
+	// Substitute cannot be the same as absent user
+	if substituteID == absence.UserID {
+		return errors.New("замещающий не может быть тем же сотрудником, который отсутствует")
+	}
+
+	// Substitution dates must be within absence dates
+	absenceStart := time.Date(absence.StartDate.Year(), absence.StartDate.Month(), absence.StartDate.Day(), 0, 0, 0, 0, absence.StartDate.Location())
+	absenceEnd := time.Date(absence.EndDate.Year(), absence.EndDate.Month(), absence.EndDate.Day(), 23, 59, 59, 0, absence.EndDate.Location())
+	subStart := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, startDate.Location())
+	subEnd := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 0, endDate.Location())
+
+	if subStart.Before(absenceStart) {
+		return errors.New("дата начала замещения не может быть раньше даты начала отсутствия")
+	}
+
+	if subEnd.After(absenceEnd) {
+		return errors.New("дата окончания замещения не может быть позже даты окончания отсутствия")
+	}
+
 	return nil
 }

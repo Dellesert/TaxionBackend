@@ -64,6 +64,7 @@ func main() {
 		&models.ScheduleTemplateEntry{},
 		&models.ScheduleAssignment{},
 		&models.Absence{},
+		&models.AbsenceSubstitution{},
 		&models.ScheduleTypeCompatibility{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
@@ -106,6 +107,7 @@ func main() {
 	reminderRepo := repository.NewReminderRepository(db)
 	scheduleRepo := repository.NewScheduleRepository(db)
 	absenceRepo := repository.NewAbsenceRepository(db)
+	substitutionRepo := repository.NewSubstitutionRepository(db)
 
 	// Initialize clients
 	notificationClient := clients.NewNotificationClient()
@@ -117,7 +119,7 @@ func main() {
 	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo, absenceRepo)
 	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
 	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, eventRepo, absenceRepo, fileClient)
-	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo, eventRepo, participantRepo)
+	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo, eventRepo, participantRepo, substitutionRepo)
 
 	// Initialize notification worker
 	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient, redisClient)
@@ -128,10 +130,11 @@ func main() {
 	templateHandler := handlers.NewScheduleTemplateHandler(templateUsecase)
 	importHandler := handlers.NewScheduleImportHandler(importUsecase, userClient)
 	absenceHandler := handlers.NewAbsenceHandler(absenceUsecase)
+	substitutionHandler := handlers.NewSubstitutionHandler(absenceUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "calendar-service", startTime)
 
 	// Setup routes
-	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, importHandler, absenceHandler, metricsHandler, jwtConfig)
+	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, importHandler, absenceHandler, substitutionHandler, metricsHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -183,6 +186,7 @@ func setupRoutes(
 	templateHandler *handlers.ScheduleTemplateHandler,
 	importHandler *handlers.ScheduleImportHandler,
 	absenceHandler *handlers.AbsenceHandler,
+	substitutionHandler *handlers.SubstitutionHandler,
 	metricsHandler *handlers.MetricsHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
@@ -295,6 +299,13 @@ func setupRoutes(
 		protected.PUT("/absences/:id", absenceHandler.UpdateAbsence)
 		protected.DELETE("/absences/:id", absenceHandler.DeleteAbsence)
 		protected.GET("/users/:id/absences", absenceHandler.GetUserAbsences)
+
+		// Absence substitution endpoints
+		protected.GET("/absences/:id/substitutions", substitutionHandler.GetSubstitutions)
+		protected.POST("/absences/:id/substitutions", substitutionHandler.CreateSubstitution)
+		protected.PUT("/absences/:id/substitutions/:sub_id", substitutionHandler.UpdateSubstitution)
+		protected.DELETE("/absences/:id/substitutions/:sub_id", substitutionHandler.DeleteSubstitution)
+		protected.GET("/users/:id/substitutions", substitutionHandler.GetUserSubstitutions)
 	}
 
 	return r
