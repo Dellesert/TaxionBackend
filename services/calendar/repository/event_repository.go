@@ -40,6 +40,10 @@ type EventRepository interface {
 	GetEventByAbsenceID(absenceID uint) (*models.Event, error)
 	DeleteEventByAbsenceID(absenceID uint) error
 
+	// Substitution integration methods
+	GetEventBySubstitutionID(substitutionID uint) (*models.Event, error)
+	DeleteEventBySubstitutionID(substitutionID uint) error
+
 	// Transactional methods
 	CreateEventWithParticipants(event *models.Event, participants []*models.EventParticipant) error
 }
@@ -927,4 +931,26 @@ func (r *eventRepository) CreateEventWithParticipants(event *models.Event, parti
 
 		return nil
 	})
+}
+
+// GetEventBySubstitutionID retrieves an event linked to a specific substitution
+func (r *eventRepository) GetEventBySubstitutionID(substitutionID uint) (*models.Event, error) {
+	var event models.Event
+	err := r.db.Where("substitution_id = ?", substitutionID).First(&event).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil // No event found for this substitution
+		}
+		return nil, fmt.Errorf("failed to get event by substitution ID: %w", err)
+	}
+	return &event, nil
+}
+
+// DeleteEventBySubstitutionID deletes an event linked to a specific substitution
+func (r *eventRepository) DeleteEventBySubstitutionID(substitutionID uint) error {
+	result := r.db.Where("substitution_id = ?", substitutionID).Delete(&models.Event{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete event by substitution ID: %w", result.Error)
+	}
+	return nil
 }

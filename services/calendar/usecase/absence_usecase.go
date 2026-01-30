@@ -489,6 +489,12 @@ func (u *absenceUsecase) CreateSubstitution(creatorID, absenceID uint, req *mode
 		return nil, fmt.Errorf("failed to create substitution: %w", err)
 	}
 
+	// Create calendar event for the substitute
+	if err := u.createSubstitutionEvent(sub, absence); err != nil {
+		// Log error but don't fail the substitution creation
+		fmt.Printf("Warning: failed to create calendar event for substitution %d: %v\n", sub.ID, err)
+	}
+
 	// Get substitution with relations
 	createdSub, err := u.substitutionRepo.GetSubstitutionByID(sub.ID)
 	if err != nil {
@@ -550,6 +556,12 @@ func (u *absenceUsecase) UpdateSubstitution(userID, absenceID, subID uint, req *
 		return nil, fmt.Errorf("failed to update substitution: %w", err)
 	}
 
+	// Update calendar event for the substitution
+	if err := u.updateSubstitutionEvent(sub, absence); err != nil {
+		// Log error but don't fail the substitution update
+		fmt.Printf("Warning: failed to update calendar event for substitution %d: %v\n", sub.ID, err)
+	}
+
 	// Get updated substitution with relations
 	updatedSub, err := u.substitutionRepo.GetSubstitutionByID(sub.ID)
 	if err != nil {
@@ -575,6 +587,12 @@ func (u *absenceUsecase) DeleteSubstitution(userID, absenceID, subID uint) error
 
 	if sub.AbsenceID != absenceID {
 		return errors.New("substitution not found")
+	}
+
+	// Delete calendar event first
+	if err := u.deleteSubstitutionEvent(subID); err != nil {
+		// Log error but don't fail the substitution deletion
+		fmt.Printf("Warning: failed to delete calendar event for substitution %d: %v\n", subID, err)
 	}
 
 	// Delete substitution
@@ -643,5 +661,97 @@ func (u *absenceUsecase) validateSubstitutionDates(absence *models.Absence, star
 		return errors.New("дата окончания замещения не может быть позже даты окончания отсутствия")
 	}
 
+	return nil
+}
+
+// Substitution event helper functions
+
+// createSubstitutionEvent creates a calendar event for a substitution
+func (u *absenceUsecase) createSubstitutionEvent(sub *models.AbsenceSubstitution, absence *models.Absence) error {
+	// Create event for the substitution period (all-day event)
+	startTime := time.Date(sub.StartDate.Year(), sub.StartDate.Month(), sub.StartDate.Day(), 0, 0, 0, 0, sub.StartDate.Location())
+	endTime := time.Date(sub.EndDate.Year(), sub.EndDate.Month(), sub.EndDate.Day(), 23, 59, 59, 0, sub.EndDate.Location())
+
+	// Build title with absent user name if available
+	title := fmt.Sprintf("Замещение: %s", GetAbsenceTypeName(absence.Type))
+	if absence.User != nil && absence.User.Name != "" {
+		title = fmt.Sprintf("Замещение за %s (%s)", absence.User.Name, GetAbsenceTypeName(absence.Type))
+	}
+
+	description := sub.Note
+	if description == "" && absence.Reason != "" {
+		description = fmt.Sprintf("Причина отсутствия: %s", absence.Reason)
+	}
+
+	event := &models.Event{
+		Title:          title,
+		Description:    description,
+		StartTime:      startTime,
+		EndTime:        endTime,
+		AllDay:         true,
+		Type:           models.EventTypeSubstitution,
+		CreatedBy:      sub.SubstituteID, // Event belongs to the substitute
+		Color:          "#607D8B",        // Blue-grey color for substitutions
+		IsPrivate:      false,
+		SubstitutionID: &sub.ID,
+	}
+
+	// Prepare participants list - only the substitute user
+	participants := []*models.EventParticipant{
+		{
+			UserID:      sub.SubstituteID,
+			Status:      models.ParticipantStatusAccepted,
+			IsOrganizer: true,
+		},
+	}
+
+	// Create event with participants in a single transaction
+	if err := u.eventRepo.CreateEventWithParticipants(event, participants); err != nil {
+		return fmt.Errorf("failed to create substitution event: %w", err)
+	}
+
+	return nil
+}
+
+// updateSubstitutionEvent updates the calendar event for a substitution
+func (u *absenceUsecase) updateSubstitutionEvent(sub *models.AbsenceSubstitution, absence *models.Absence) error {
+	// Find existing event
+	event, err := u.eventRepo.GetEventBySubstitutionID(sub.ID)
+	if err != nil {
+		return fmt.Errorf("failed to find event: %w", err)
+	}
+
+	if event == nil {
+		// Event doesn't exist, create it
+		return u.createSubstitutionEvent(sub, absence)
+	}
+
+	// Update event fields
+	startTime := time.Date(sub.StartDate.Year(), sub.StartDate.Month(), sub.StartDate.Day(), 0, 0, 0, 0, sub.StartDate.Location())
+	endTime := time.Date(sub.EndDate.Year(), sub.EndDate.Month(), sub.EndDate.Day(), 23, 59, 59, 0, sub.EndDate.Location())
+
+	// Build title with absent user name if available
+	title := fmt.Sprintf("Замещение: %s", GetAbsenceTypeName(absence.Type))
+	if absence.User != nil && absence.User.Name != "" {
+		title = fmt.Sprintf("Замещение за %s (%s)", absence.User.Name, GetAbsenceTypeName(absence.Type))
+	}
+
+	event.Title = title
+	event.Description = sub.Note
+	event.StartTime = startTime
+	event.EndTime = endTime
+
+	if err := u.eventRepo.UpdateEvent(event); err != nil {
+		return fmt.Errorf("failed to update event: %w", err)
+	}
+
+	return nil
+}
+
+// deleteSubstitutionEvent deletes the calendar event for a substitution
+func (u *absenceUsecase) deleteSubstitutionEvent(substitutionID uint) error {
+	if err := u.eventRepo.DeleteEventBySubstitutionID(substitutionID); err != nil {
+		return fmt.Errorf("failed to delete event: %w", err)
+	}
 	return nil
 }
