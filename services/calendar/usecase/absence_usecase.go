@@ -118,7 +118,18 @@ func (u *absenceUsecase) GetAbsence(id uint) (*models.AbsenceResponse, error) {
 		return nil, err
 	}
 
-	return absence.ToResponse(), nil
+	response := absence.ToResponse()
+
+	// Load substitutions
+	subs, err := u.substitutionRepo.GetSubstitutionsByAbsenceID(id)
+	if err == nil && len(subs) > 0 {
+		response.Substitutions = make([]*models.SubstitutionResponse, len(subs))
+		for i, sub := range subs {
+			response.Substitutions[i] = sub.ToResponse()
+		}
+	}
+
+	return response, nil
 }
 
 // GetAbsences retrieves absences with filtering
@@ -139,10 +150,18 @@ func (u *absenceUsecase) GetAbsences(filter AbsenceFilterParams) (*models.Absenc
 		return nil, fmt.Errorf("failed to get absences: %w", err)
 	}
 
-	// Convert to responses
+	// Convert to responses and load substitutions
 	responses := make([]*models.AbsenceResponse, len(absences))
 	for i, absence := range absences {
 		responses[i] = absence.ToResponse()
+		// Load substitutions for each absence
+		subs, err := u.substitutionRepo.GetSubstitutionsByAbsenceID(absence.ID)
+		if err == nil && len(subs) > 0 {
+			responses[i].Substitutions = make([]*models.SubstitutionResponse, len(subs))
+			for j, sub := range subs {
+				responses[i].Substitutions[j] = sub.ToResponse()
+			}
+		}
 	}
 
 	return &models.AbsenceListResponse{
@@ -160,10 +179,18 @@ func (u *absenceUsecase) GetUserAbsences(userID uint, startDate, endDate time.Ti
 		return nil, fmt.Errorf("failed to get user absences: %w", err)
 	}
 
-	// Convert to responses
+	// Convert to responses and load substitutions
 	responses := make([]*models.AbsenceResponse, len(absences))
 	for i, absence := range absences {
 		responses[i] = absence.ToResponse()
+		// Load substitutions for each absence
+		subs, err := u.substitutionRepo.GetSubstitutionsByAbsenceID(absence.ID)
+		if err == nil && len(subs) > 0 {
+			responses[i].Substitutions = make([]*models.SubstitutionResponse, len(subs))
+			for j, sub := range subs {
+				responses[i].Substitutions[j] = sub.ToResponse()
+			}
+		}
 	}
 
 	return responses, nil

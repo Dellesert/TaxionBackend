@@ -78,17 +78,18 @@ type UpdateAbsenceRequest struct {
 
 // AbsenceResponse represents an absence in API responses
 type AbsenceResponse struct {
-	ID        uint               `json:"id"`
-	UserID    uint               `json:"user_id"`
-	User      *sharedmodels.User `json:"user,omitempty"`
-	Type      AbsenceType        `json:"type"`
-	StartDate time.Time          `json:"start_date"`
-	EndDate   time.Time          `json:"end_date"`
-	Reason    string             `json:"reason,omitempty"`
-	CreatedBy uint               `json:"created_by"`
-	Creator   *sharedmodels.User `json:"creator,omitempty"`
-	CreatedAt time.Time          `json:"created_at"`
-	UpdatedAt time.Time          `json:"updated_at"`
+	ID            uint                    `json:"id"`
+	UserID        uint                    `json:"user_id"`
+	User          *sharedmodels.User      `json:"user,omitempty"`
+	Type          AbsenceType             `json:"type"`
+	StartDate     time.Time               `json:"start_date"`
+	EndDate       time.Time               `json:"end_date"`
+	Reason        string                  `json:"reason,omitempty"`
+	CreatedBy     uint                    `json:"created_by"`
+	Creator       *sharedmodels.User      `json:"creator,omitempty"`
+	CreatedAt     time.Time               `json:"created_at"`
+	UpdatedAt     time.Time               `json:"updated_at"`
+	Substitutions []*SubstitutionResponse `json:"substitutions,omitempty"`
 }
 
 // ToResponse converts Absence model to AbsenceResponse
