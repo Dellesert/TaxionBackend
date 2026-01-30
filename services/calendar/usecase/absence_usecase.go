@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
 )
@@ -44,10 +45,12 @@ type AbsenceFilterParams struct {
 
 // absenceUsecase implements AbsenceUsecase interface
 type absenceUsecase struct {
-	absenceRepo      repository.AbsenceRepository
-	eventRepo        repository.EventRepository
-	participantRepo  repository.ParticipantRepository
-	substitutionRepo repository.SubstitutionRepository
+	absenceRepo        repository.AbsenceRepository
+	eventRepo          repository.EventRepository
+	participantRepo    repository.ParticipantRepository
+	substitutionRepo   repository.SubstitutionRepository
+	notificationClient *clients.NotificationClient
+	userClient         *clients.UserClient
 }
 
 // NewAbsenceUsecase creates a new absence usecase
@@ -56,12 +59,16 @@ func NewAbsenceUsecase(
 	eventRepo repository.EventRepository,
 	participantRepo repository.ParticipantRepository,
 	substitutionRepo repository.SubstitutionRepository,
+	notificationClient *clients.NotificationClient,
+	userClient *clients.UserClient,
 ) AbsenceUsecase {
 	return &absenceUsecase{
-		absenceRepo:      absenceRepo,
-		eventRepo:        eventRepo,
-		participantRepo:  participantRepo,
-		substitutionRepo: substitutionRepo,
+		absenceRepo:        absenceRepo,
+		eventRepo:          eventRepo,
+		participantRepo:    participantRepo,
+		substitutionRepo:   substitutionRepo,
+		notificationClient: notificationClient,
+		userClient:         userClient,
 	}
 }
 
@@ -495,6 +502,9 @@ func (u *absenceUsecase) CreateSubstitution(creatorID, absenceID uint, req *mode
 		fmt.Printf("Warning: failed to create calendar event for substitution %d: %v\n", sub.ID, err)
 	}
 
+	// Send notification to the substitute
+	go u.sendSubstitutionAssignedNotification(sub, absence, creatorID)
+
 	// Get substitution with relations
 	createdSub, err := u.substitutionRepo.GetSubstitutionByID(sub.ID)
 	if err != nil {
@@ -754,4 +764,68 @@ func (u *absenceUsecase) deleteSubstitutionEvent(substitutionID uint) error {
 		return fmt.Errorf("failed to delete event: %w", err)
 	}
 	return nil
+}
+
+// sendSubstitutionAssignedNotification sends notification when user is assigned as substitute
+func (u *absenceUsecase) sendSubstitutionAssignedNotification(sub *models.AbsenceSubstitution, absence *models.Absence, creatorID uint) {
+	if u.notificationClient == nil {
+		return
+	}
+
+	// Get creator name
+	creatorName := "Кто-то"
+	if u.userClient != nil {
+		creatorInfo, err := u.userClient.GetUserByID(creatorID)
+		if err == nil && creatorInfo != nil {
+			creatorName = creatorInfo.Name
+		}
+	}
+
+	// Get absent user name
+	absentUserName := "сотрудника"
+	if absence.User != nil && absence.User.Name != "" {
+		absentUserName = absence.User.Name
+	} else if u.userClient != nil {
+		absentInfo, err := u.userClient.GetUserByID(absence.UserID)
+		if err == nil && absentInfo != nil {
+			absentUserName = absentInfo.Name
+		}
+	}
+
+	// Format dates
+	startDateStr := sub.StartDate.Format("02.01.2006")
+	endDateStr := sub.EndDate.Format("02.01.2006")
+	dateRange := startDateStr
+	if startDateStr != endDateStr {
+		dateRange = fmt.Sprintf("%s - %s", startDateStr, endDateStr)
+	}
+
+	absenceTypeName := GetAbsenceTypeName(absence.Type)
+	message := fmt.Sprintf("%s назначил(а) вас замещать %s (%s) на период: %s", creatorName, absentUserName, absenceTypeName, dateRange)
+
+	priority := "high"
+	notificationReq := &clients.NotificationRequest{
+		UserID:      sub.SubstituteID,
+		Type:        "calendar",
+		Title:       "🔄 Вас назначили замещающим",
+		Message:     message,
+		Priority:    &priority,
+		RelatedID:   &sub.ID,
+		RelatedType: "substitution",
+		Data: map[string]interface{}{
+			"substitution_id":  sub.ID,
+			"absence_id":       absence.ID,
+			"absent_user_id":   absence.UserID,
+			"absent_user_name": absentUserName,
+			"absence_type":     absence.Type,
+			"start_date":       sub.StartDate,
+			"end_date":         sub.EndDate,
+			"assigned_by":      creatorID,
+		},
+		Channels: []string{"in_app", "email", "push"},
+	}
+
+	if err := u.notificationClient.SendNotification(notificationReq); err != nil {
+		fmt.Printf("Failed to send substitution assigned notification to user %d: %v\n", sub.SubstituteID, err)
+	}
 }

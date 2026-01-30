@@ -119,7 +119,7 @@ func main() {
 	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo, absenceRepo)
 	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
 	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, eventRepo, absenceRepo, fileClient)
-	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo, eventRepo, participantRepo, substitutionRepo)
+	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo, eventRepo, participantRepo, substitutionRepo, notificationClient, userClient)
 
 	// Initialize notification worker
 	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient, redisClient)
