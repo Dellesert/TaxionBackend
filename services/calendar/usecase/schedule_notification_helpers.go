@@ -225,6 +225,15 @@ func (u *scheduleUsecase) sendBatchScheduleEntryNotifications(schedule *models.S
 
 // sendScheduleEntryUpdatedNotification sends notification when user's schedule entry is updated
 func (u *scheduleUsecase) sendScheduleEntryUpdatedNotification(schedule *models.Schedule, oldEntry, newEntry *models.ScheduleEntry, updaterID uint) {
+	logger.WithFields(map[string]interface{}{
+		"old_user_id":  oldEntry.UserID,
+		"new_user_id":  newEntry.UserID,
+		"schedule_id":  schedule.ID,
+		"entry_id":     newEntry.ID,
+		"updater_id":   updaterID,
+		"user_changed": oldEntry.UserID != newEntry.UserID,
+	}).Info("sendScheduleEntryUpdatedNotification called")
+
 	// Get updater info
 	updaterInfo, err := u.userClient.GetUserByID(updaterID)
 	updaterName := "Кто-то"
@@ -322,6 +331,18 @@ func (u *scheduleUsecase) sendScheduleEntryUpdatedNotification(schedule *models.
 
 // sendUserRemovedFromScheduleNotification sends notification when user is removed from schedule (replaced by another user)
 func (u *scheduleUsecase) sendUserRemovedFromScheduleNotification(schedule *models.Schedule, entry *models.ScheduleEntry, updaterName string, updaterID uint) {
+	logger.WithFields(map[string]interface{}{
+		"user_id":      entry.UserID,
+		"schedule_id":  schedule.ID,
+		"updater_id":   updaterID,
+		"updater_name": updaterName,
+	}).Info("Sending user removed from schedule notification")
+
+	if u.notificationClient == nil {
+		logger.Error("notificationClient is nil, cannot send notification")
+		return
+	}
+
 	priority := "high"
 
 	message := fmt.Sprintf("%s снял(а) вас со смены в графике \"%s\" на %s (%s-%s)",
@@ -355,11 +376,29 @@ func (u *scheduleUsecase) sendUserRemovedFromScheduleNotification(schedule *mode
 			"schedule_id": schedule.ID,
 			"error":       err.Error(),
 		}).Error("Failed to send user removed from schedule notification")
+	} else {
+		logger.WithFields(map[string]interface{}{
+			"user_id":     entry.UserID,
+			"schedule_id": schedule.ID,
+		}).Info("Successfully sent user removed from schedule notification")
 	}
 }
 
 // sendUserAddedToScheduleNotification sends notification when user is added to schedule (replacing another user)
 func (u *scheduleUsecase) sendUserAddedToScheduleNotification(schedule *models.Schedule, entry *models.ScheduleEntry, updaterName string, updaterID uint) {
+	logger.WithFields(map[string]interface{}{
+		"user_id":      entry.UserID,
+		"schedule_id":  schedule.ID,
+		"entry_id":     entry.ID,
+		"updater_id":   updaterID,
+		"updater_name": updaterName,
+	}).Info("Sending user added to schedule notification")
+
+	if u.notificationClient == nil {
+		logger.Error("notificationClient is nil, cannot send notification")
+		return
+	}
+
 	priority := "high"
 
 	message := fmt.Sprintf("%s добавил(а) вас на смену в график \"%s\" на %s (%s-%s)",
@@ -397,6 +436,12 @@ func (u *scheduleUsecase) sendUserAddedToScheduleNotification(schedule *models.S
 			"entry_id":    entry.ID,
 			"error":       err.Error(),
 		}).Error("Failed to send user added to schedule notification")
+	} else {
+		logger.WithFields(map[string]interface{}{
+			"user_id":     entry.UserID,
+			"schedule_id": schedule.ID,
+			"entry_id":    entry.ID,
+		}).Info("Successfully sent user added to schedule notification")
 	}
 }
 
