@@ -85,6 +85,7 @@ func (u *userUsecase) CreateUser(req *models.CreateUserRequest) (*models.UserRes
 		SubdepartmentID:   req.SubdepartmentID,
 		Position:          req.Position,
 		Phone:             req.Phone,
+		Color:             req.Color,
 	}
 
 	// Set role if provided, otherwise use default
@@ -277,6 +278,9 @@ func (u *userUsecase) UpdateUser(id uint, req *models.UpdateUserRequest) (*model
 	}
 	if req.Position != nil {
 		updates["position"] = *req.Position
+	}
+	if req.Color != nil {
+		updates["color"] = *req.Color
 	}
 	if req.DepartmentID != nil {
 		if *req.DepartmentID == 0 {

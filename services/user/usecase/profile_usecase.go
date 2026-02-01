@@ -119,6 +119,9 @@ func (p *profileUsecase) UpdateProfile(id uint, req *models.UpdateProfileRequest
 	if req.Position != nil {
 		user.Position = strings.TrimSpace(*req.Position)
 	}
+	if req.Color != nil {
+		user.Color = strings.TrimSpace(*req.Color)
+	}
 	if req.DepartmentID != nil {
 		// Validate department exists
 		if *req.DepartmentID > 0 {
