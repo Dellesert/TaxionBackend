@@ -48,6 +48,7 @@ type User struct {
 	Phone           string     `json:"phone,omitempty"`
 	Department      string     `json:"department,omitempty"`
 	Position        string     `json:"position,omitempty"`
+	Color           string     `json:"color,omitempty"`
 	LastActiveAt    *time.Time `json:"last_active_at,omitempty"`
 	IsActive        bool       `gorm:"not null;default:true" json:"is_active"`
 }
