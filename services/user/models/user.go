@@ -57,6 +57,7 @@ type User struct {
 	AvatarThumbnail    string            `gorm:"size:500" json:"avatar_thumbnail,omitempty" validate:"omitempty,url,max=500"`
 	Phone              string            `gorm:"size:20" json:"phone,omitempty" validate:"omitempty,e164,max=20"`
 	Position           string            `gorm:"size:100" json:"position,omitempty" validate:"omitempty,max=100"`
+	Color              string            `gorm:"size:7" json:"color,omitempty" validate:"omitempty,max=7"`
 	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
 	IsActive           bool              `gorm:"not null" json:"is_active"`
 	MustChangePassword bool              `gorm:"not null;default:false" json:"must_change_password"`
@@ -171,6 +172,7 @@ type CreateUserRequest struct {
 	SubdepartmentID *uint      `json:"subdepartment_id,omitempty"`
 	Phone           string     `json:"phone,omitempty" binding:"omitempty,e164,max=20" validate:"omitempty,e164,max=20"`
 	Position        string     `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	Color           string     `json:"color,omitempty" binding:"omitempty,max=7" validate:"omitempty,max=7"`
 }
 
 // UpdateUserRequest represents request for updating a user's profile information
@@ -189,6 +191,7 @@ type UpdateUserRequest struct {
 	DepartmentID    *uint              `json:"department_id,omitempty"`
 	SubdepartmentID *uint              `json:"subdepartment_id,omitempty"`
 	Status          *models.UserStatus `json:"status,omitempty" binding:"omitempty,oneof=online offline away busy" validate:"omitempty,oneof=online offline away busy"` // Allow status updates for presence tracking
+	Color           *string            `json:"color,omitempty" binding:"omitempty,max=7" validate:"omitempty,max=7"`
 }
 
 // DepartmentResponse represents department response
@@ -232,6 +235,7 @@ type UserResponse struct {
 	AvatarThumbnail       string                 `json:"avatar_thumbnail,omitempty"`
 	Phone                 string                 `json:"phone,omitempty"`
 	Position              string                 `json:"position,omitempty"`
+	Color                 string                 `json:"color,omitempty"`
 	LastActiveAt          *time.Time             `json:"last_active_at,omitempty"`
 	IsActive              bool                   `json:"is_active"`
 	MustChangePassword    bool                   `json:"must_change_password"`
@@ -268,6 +272,7 @@ func (u *User) ToResponse() *UserResponse {
 		AvatarThumbnail:       u.AvatarThumbnail,
 		Phone:                 u.Phone,
 		Position:              u.Position,
+		Color:                 u.Color,
 		LastActiveAt:          u.LastActiveAt,
 		IsActive:              u.IsActive,
 		MustChangePassword:    u.MustChangePassword,
@@ -353,6 +358,7 @@ type UpdateProfileRequest struct {
 	AvatarThumbnail *string `json:"avatar_thumbnail,omitempty" binding:"omitempty,url,max=500" validate:"omitempty,url,max=500"`
 	Phone           *string `json:"phone,omitempty" binding:"omitempty,max=20" validate:"omitempty,max=20"`
 	Position        *string `json:"position,omitempty" binding:"omitempty,max=100" validate:"omitempty,max=100"`
+	Color           *string `json:"color,omitempty" binding:"omitempty,max=7" validate:"omitempty,max=7"`
 	DepartmentID    *uint   `json:"department_id,omitempty" validate:"omitempty,min=0"`
 	SubdepartmentID *uint   `json:"subdepartment_id,omitempty" validate:"omitempty,min=0"`
 }
