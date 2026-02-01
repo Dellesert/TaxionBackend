@@ -63,6 +63,8 @@ func main() {
 		&models.ScheduleTemplate{},
 		&models.ScheduleTemplateEntry{},
 		&models.ScheduleAssignment{},
+		&models.ScheduleViewer{},
+		&models.ScheduleEditor{},
 		&models.Absence{},
 		&models.AbsenceSubstitution{},
 		&models.ScheduleTypeCompatibility{},

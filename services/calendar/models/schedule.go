@@ -23,9 +23,21 @@ const (
 type ScheduleVisibility string
 
 const (
-	VisibilityCreatorOnly  ScheduleVisibility = "creator_only" // Только создатель
-	VisibilityManagement   ScheduleVisibility = "management"   // Руководство
-	VisibilityParticipants ScheduleVisibility = "participants" // Участники
+	VisibilityCreatorOnly   ScheduleVisibility = "creator_only"   // Только создатель
+	VisibilityManagement    ScheduleVisibility = "management"     // Руководство (DepartmentHead+)
+	VisibilityParticipants  ScheduleVisibility = "participants"   // Участники (назначенные в график)
+	VisibilitySpecificUsers ScheduleVisibility = "specific_users" // Конкретные пользователи
+	VisibilityAll           ScheduleVisibility = "all"            // Все
+)
+
+// ScheduleEditPermission represents who can edit the schedule
+type ScheduleEditPermission string
+
+const (
+	EditPermissionCreatorOnly   ScheduleEditPermission = "creator_only"   // Только создатель
+	EditPermissionManagement    ScheduleEditPermission = "management"     // Руководители (DepartmentHead+)
+	EditPermissionSpecificUsers ScheduleEditPermission = "specific_users" // Конкретные пользователи
+	EditPermissionAll           ScheduleEditPermission = "all"            // Все
 )
 
 // ScheduleMode represents whether schedule is recurring or monthly
@@ -41,9 +53,10 @@ type Schedule struct {
 	sharedmodels.BaseModel
 	Title         string             `gorm:"not null;size:255" json:"title" validate:"required,min=1,max=255"`
 	Description   string             `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
-	Type          ScheduleType       `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty vk trips"`
-	Visibility    ScheduleVisibility `gorm:"not null;default:'management';size:30" json:"visibility" validate:"required,oneof=creator_only management participants"`
-	CreatedBy     uint               `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
+	Type           ScheduleType           `gorm:"not null;default:'work';size:30" json:"type" validate:"required,oneof=work paid_services on_duty vk trips"`
+	Visibility     ScheduleVisibility     `gorm:"not null;default:'management';size:30" json:"visibility" validate:"required,oneof=creator_only management participants specific_users all"`
+	EditPermission ScheduleEditPermission `gorm:"not null;default:'creator_only';size:30" json:"edit_permission" validate:"required,oneof=creator_only management specific_users all"`
+	CreatedBy      uint                   `gorm:"not null;index" json:"created_by" validate:"required,min=1"`
 	StartDate     time.Time          `gorm:"not null;index" json:"start_date" validate:"required"`
 	EndDate       time.Time          `gorm:"not null;index" json:"end_date" validate:"required"`
 	IsForAllUsers bool               `gorm:"not null;default:false" json:"is_for_all_users"`
@@ -65,6 +78,8 @@ type Schedule struct {
 	Entries     []ScheduleEntry      `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"entries,omitempty"`
 	Assignments []ScheduleAssignment `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"assignments,omitempty"`
 	Template    *ScheduleTemplate    `gorm:"foreignKey:TemplateID" json:"template,omitempty"`
+	Viewers     []ScheduleViewer     `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"viewers,omitempty"`
+	Editors     []ScheduleEditor     `gorm:"foreignKey:ScheduleID;constraint:OnDelete:CASCADE" json:"editors,omitempty"`
 }
 
 // TableName returns the table name for Schedule model
@@ -80,6 +95,9 @@ func (s *Schedule) BeforeCreate(tx *gorm.DB) error {
 	}
 	if s.Visibility == "" {
 		s.Visibility = VisibilityManagement
+	}
+	if s.EditPermission == "" {
+		s.EditPermission = EditPermissionCreatorOnly
 	}
 	if s.Color == "" {
 		s.Color = "#4CAF50"
@@ -266,21 +284,58 @@ func (sa *ScheduleAssignment) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// ScheduleViewer represents a user who can view a schedule (for specific_users visibility)
+type ScheduleViewer struct {
+	sharedmodels.BaseModel
+	ScheduleID uint `gorm:"not null;uniqueIndex:idx_schedule_viewer" json:"schedule_id" validate:"required"`
+	UserID     uint `gorm:"not null;uniqueIndex:idx_schedule_viewer" json:"user_id" validate:"required"`
+
+	// Associations
+	Schedule *Schedule          `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
+	User     *sharedmodels.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+// TableName returns the table name for ScheduleViewer model
+func (ScheduleViewer) TableName() string {
+	return "schedule_viewers"
+}
+
+// ScheduleEditor represents a user who can edit a schedule (for specific_users edit_permission)
+type ScheduleEditor struct {
+	sharedmodels.BaseModel
+	ScheduleID uint `gorm:"not null;uniqueIndex:idx_schedule_editor" json:"schedule_id" validate:"required"`
+	UserID     uint `gorm:"not null;uniqueIndex:idx_schedule_editor" json:"user_id" validate:"required"`
+
+	// Associations
+	Schedule *Schedule          `gorm:"foreignKey:ScheduleID" json:"schedule,omitempty"`
+	User     *sharedmodels.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+// TableName returns the table name for ScheduleEditor model
+func (ScheduleEditor) TableName() string {
+	return "schedule_editors"
+}
+
 // Request/Response Models
 
 // CreateScheduleRequest represents request for creating a schedule
 type CreateScheduleRequest struct {
-	Title         string             `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
-	Description   string             `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type          ScheduleType       `json:"type" binding:"required,oneof=work paid_services on_duty vk trips" validate:"required,oneof=work paid_services on_duty vk trips"`
-	Visibility    ScheduleVisibility `json:"visibility" binding:"omitempty,oneof=creator_only management participants" validate:"omitempty,oneof=creator_only management participants"`
-	StartDate     time.Time          `json:"start_date" binding:"required" validate:"required"`
-	EndDate       time.Time          `json:"end_date" binding:"required" validate:"required"`
-	IsForAllUsers bool               `json:"is_for_all_users"`
-	DepartmentID  *uint              `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
-	Color         string             `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
-	Mode          *ScheduleMode      `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
-	TemplateID    *uint              `json:"template_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	Title          string                 `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
+	Description    string                 `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Type           ScheduleType           `json:"type" binding:"required,oneof=work paid_services on_duty vk trips" validate:"required,oneof=work paid_services on_duty vk trips"`
+	Visibility     ScheduleVisibility     `json:"visibility" binding:"omitempty,oneof=creator_only management participants specific_users all" validate:"omitempty,oneof=creator_only management participants specific_users all"`
+	EditPermission ScheduleEditPermission `json:"edit_permission" binding:"omitempty,oneof=creator_only management specific_users all" validate:"omitempty,oneof=creator_only management specific_users all"`
+	StartDate      time.Time              `json:"start_date" binding:"required" validate:"required"`
+	EndDate        time.Time              `json:"end_date" binding:"required" validate:"required"`
+	IsForAllUsers  bool                   `json:"is_for_all_users"`
+	DepartmentID   *uint                  `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	Color          string                 `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
+	Mode           *ScheduleMode          `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
+	TemplateID     *uint                  `json:"template_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+
+	// Permission lists (for specific_users visibility/edit_permission)
+	ViewerIDs []uint `json:"viewer_ids,omitempty" binding:"omitempty,dive,min=1" validate:"omitempty,dive,min=1"`
+	EditorIDs []uint `json:"editor_ids,omitempty" binding:"omitempty,dive,min=1" validate:"omitempty,dive,min=1"`
 
 	// Default shift times
 	MorningStart string `json:"morning_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
@@ -291,21 +346,27 @@ type CreateScheduleRequest struct {
 
 // UpdateScheduleRequest represents request for updating a schedule
 type UpdateScheduleRequest struct {
-	Title         *string             `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
-	Description   *string             `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type          *ScheduleType       `json:"type,omitempty" binding:"omitempty,oneof=work paid_services on_duty vk trips" validate:"omitempty,oneof=work paid_services on_duty vk trips"`
-	Visibility    *ScheduleVisibility `json:"visibility,omitempty" binding:"omitempty,oneof=creator_only management participants" validate:"omitempty,oneof=creator_only management participants"`
-	StartDate     *time.Time          `json:"start_date,omitempty"`
-	EndDate       *time.Time          `json:"end_date,omitempty"`
-	IsForAllUsers *bool               `json:"is_for_all_users,omitempty"`
-	DepartmentID  *uint               `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
-	Color         *string             `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
-	IsActive      *bool               `json:"is_active,omitempty"`
-	Mode          *ScheduleMode       `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
-	MorningStart  *string             `json:"morning_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
-	MorningEnd    *string             `json:"morning_end,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
-	EveningStart  *string             `json:"evening_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
-	EveningEnd    *string             `json:"evening_end,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
+	Title          *string                 `json:"title,omitempty" binding:"omitempty,min=1,max=255" validate:"omitempty,min=1,max=255"`
+	Description    *string                 `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Type           *ScheduleType           `json:"type,omitempty" binding:"omitempty,oneof=work paid_services on_duty vk trips" validate:"omitempty,oneof=work paid_services on_duty vk trips"`
+	Visibility     *ScheduleVisibility     `json:"visibility,omitempty" binding:"omitempty,oneof=creator_only management participants specific_users all" validate:"omitempty,oneof=creator_only management participants specific_users all"`
+	EditPermission *ScheduleEditPermission `json:"edit_permission,omitempty" binding:"omitempty,oneof=creator_only management specific_users all" validate:"omitempty,oneof=creator_only management specific_users all"`
+	StartDate      *time.Time              `json:"start_date,omitempty"`
+	EndDate        *time.Time              `json:"end_date,omitempty"`
+	IsForAllUsers  *bool                   `json:"is_for_all_users,omitempty"`
+	DepartmentID   *uint                   `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	Color          *string                 `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
+	IsActive       *bool                   `json:"is_active,omitempty"`
+	Mode           *ScheduleMode           `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
+
+	// Permission lists (for specific_users visibility/edit_permission)
+	ViewerIDs *[]uint `json:"viewer_ids,omitempty"`
+	EditorIDs *[]uint `json:"editor_ids,omitempty"`
+
+	MorningStart *string `json:"morning_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
+	MorningEnd   *string `json:"morning_end,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
+	EveningStart *string `json:"evening_start,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
+	EveningEnd   *string `json:"evening_end,omitempty" binding:"omitempty,len=5" validate:"omitempty,len=5"`
 }
 
 // CreateScheduleEntryRequest represents request for creating a schedule entry
@@ -339,63 +400,83 @@ type UpdateScheduleEntryRequest struct {
 
 // ScheduleResponse represents a schedule in API responses
 type ScheduleResponse struct {
-	ID            uint                      `json:"id"`
-	Title         string                    `json:"title"`
-	Description   string                    `json:"description,omitempty"`
-	Type          ScheduleType              `json:"type"`
-	Visibility    ScheduleVisibility        `json:"visibility"`
-	CreatedBy     uint                      `json:"created_by"`
-	Creator       *sharedmodels.User        `json:"creator,omitempty"`
-	StartDate     time.Time                 `json:"start_date"`
-	EndDate       time.Time                 `json:"end_date"`
-	IsForAllUsers bool                      `json:"is_for_all_users"`
-	DepartmentID  *uint                     `json:"department_id,omitempty"`
-	Color         string                    `json:"color"`
-	IsActive      bool                      `json:"is_active"`
-	Mode          ScheduleMode              `json:"mode"`
-	TemplateID    *uint                     `json:"template_id,omitempty"`
-	Template      *ScheduleTemplateResponse `json:"template,omitempty"`
-	ImportedFrom  *string                   `json:"imported_from,omitempty"`
-	MorningStart  string                    `json:"morning_start"`
-	MorningEnd    string                    `json:"morning_end"`
-	EveningStart  string                    `json:"evening_start"`
-	EveningEnd    string                    `json:"evening_end"`
-	EntryCount    int                       `json:"entry_count,omitempty"`
-	CreatedAt     time.Time                 `json:"created_at"`
-	UpdatedAt     time.Time                 `json:"updated_at"`
+	ID             uint                      `json:"id"`
+	Title          string                    `json:"title"`
+	Description    string                    `json:"description,omitempty"`
+	Type           ScheduleType              `json:"type"`
+	Visibility     ScheduleVisibility        `json:"visibility"`
+	EditPermission ScheduleEditPermission    `json:"edit_permission"`
+	CreatedBy      uint                      `json:"created_by"`
+	Creator        *sharedmodels.User        `json:"creator,omitempty"`
+	StartDate      time.Time                 `json:"start_date"`
+	EndDate        time.Time                 `json:"end_date"`
+	IsForAllUsers  bool                      `json:"is_for_all_users"`
+	DepartmentID   *uint                     `json:"department_id,omitempty"`
+	Color          string                    `json:"color"`
+	IsActive       bool                      `json:"is_active"`
+	Mode           ScheduleMode              `json:"mode"`
+	TemplateID     *uint                     `json:"template_id,omitempty"`
+	Template       *ScheduleTemplateResponse `json:"template,omitempty"`
+	ImportedFrom   *string                   `json:"imported_from,omitempty"`
+	MorningStart   string                    `json:"morning_start"`
+	MorningEnd     string                    `json:"morning_end"`
+	EveningStart   string                    `json:"evening_start"`
+	EveningEnd     string                    `json:"evening_end"`
+	EntryCount     int                       `json:"entry_count,omitempty"`
+	ViewerIDs      []uint                    `json:"viewer_ids,omitempty"`
+	EditorIDs      []uint                    `json:"editor_ids,omitempty"`
+	CreatedAt      time.Time                 `json:"created_at"`
+	UpdatedAt      time.Time                 `json:"updated_at"`
 }
 
 // ToResponse converts Schedule model to ScheduleResponse
 func (s *Schedule) ToResponse() *ScheduleResponse {
 	resp := &ScheduleResponse{
-		ID:            s.ID,
-		Title:         s.Title,
-		Description:   s.Description,
-		Type:          s.Type,
-		Visibility:    s.Visibility,
-		CreatedBy:     s.CreatedBy,
-		Creator:       s.Creator,
-		StartDate:     s.StartDate,
-		EndDate:       s.EndDate,
-		IsForAllUsers: s.IsForAllUsers,
-		DepartmentID:  s.DepartmentID,
-		Color:         s.Color,
-		IsActive:      s.IsActive,
-		Mode:          s.Mode,
-		TemplateID:    s.TemplateID,
-		ImportedFrom:  s.ImportedFrom,
-		MorningStart:  s.MorningStart,
-		MorningEnd:    s.MorningEnd,
-		EveningStart:  s.EveningStart,
-		EveningEnd:    s.EveningEnd,
-		EntryCount:    len(s.Entries),
-		CreatedAt:     s.CreatedAt,
-		UpdatedAt:     s.UpdatedAt,
+		ID:             s.ID,
+		Title:          s.Title,
+		Description:    s.Description,
+		Type:           s.Type,
+		Visibility:     s.Visibility,
+		EditPermission: s.EditPermission,
+		CreatedBy:      s.CreatedBy,
+		Creator:        s.Creator,
+		StartDate:      s.StartDate,
+		EndDate:        s.EndDate,
+		IsForAllUsers:  s.IsForAllUsers,
+		DepartmentID:   s.DepartmentID,
+		Color:          s.Color,
+		IsActive:       s.IsActive,
+		Mode:           s.Mode,
+		TemplateID:     s.TemplateID,
+		ImportedFrom:   s.ImportedFrom,
+		MorningStart:   s.MorningStart,
+		MorningEnd:     s.MorningEnd,
+		EveningStart:   s.EveningStart,
+		EveningEnd:     s.EveningEnd,
+		EntryCount:     len(s.Entries),
+		CreatedAt:      s.CreatedAt,
+		UpdatedAt:      s.UpdatedAt,
 	}
 
 	// Include template for recurring schedules
 	if s.Template != nil {
 		resp.Template = s.Template.ToResponse()
+	}
+
+	// Include viewer IDs if loaded
+	if len(s.Viewers) > 0 {
+		resp.ViewerIDs = make([]uint, len(s.Viewers))
+		for i, v := range s.Viewers {
+			resp.ViewerIDs[i] = v.UserID
+		}
+	}
+
+	// Include editor IDs if loaded
+	if len(s.Editors) > 0 {
+		resp.EditorIDs = make([]uint, len(s.Editors))
+		for i, e := range s.Editors {
+			resp.EditorIDs[i] = e.UserID
+		}
 	}
 
 	return resp

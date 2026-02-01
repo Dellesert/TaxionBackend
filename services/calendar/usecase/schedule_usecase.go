@@ -107,6 +107,13 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 		schedule.Visibility = models.VisibilityManagement
 	}
 
+	// Set edit permission (default to creator_only)
+	if req.EditPermission != "" {
+		schedule.EditPermission = req.EditPermission
+	} else {
+		schedule.EditPermission = models.EditPermissionCreatorOnly
+	}
+
 	// Set color (default if not provided)
 	if req.Color != "" {
 		schedule.Color = req.Color
@@ -136,6 +143,20 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 	// Save schedule
 	if err := u.scheduleRepo.CreateSchedule(schedule); err != nil {
 		return nil, fmt.Errorf("failed to create schedule: %w", err)
+	}
+
+	// Set viewers if provided (for specific_users visibility)
+	if len(req.ViewerIDs) > 0 {
+		if err := u.scheduleRepo.SetScheduleViewers(schedule.ID, req.ViewerIDs); err != nil {
+			return nil, fmt.Errorf("failed to set schedule viewers: %w", err)
+		}
+	}
+
+	// Set editors if provided (for specific_users edit_permission)
+	if len(req.EditorIDs) > 0 {
+		if err := u.scheduleRepo.SetScheduleEditors(schedule.ID, req.EditorIDs); err != nil {
+			return nil, fmt.Errorf("failed to set schedule editors: %w", err)
+		}
 	}
 
 	// For recurring schedules, auto-create a template if not provided
@@ -172,7 +193,7 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 
 // GetScheduleByID retrieves a schedule by ID with permission check
 func (u *scheduleUsecase) GetScheduleByID(userID, scheduleID uint) (*models.ScheduleResponse, error) {
-	schedule, err := u.scheduleRepo.GetScheduleWithEntries(scheduleID)
+	schedule, err := u.scheduleRepo.GetScheduleWithPermissions(scheduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -253,6 +274,9 @@ func (u *scheduleUsecase) UpdateSchedule(userID, scheduleID uint, req *models.Up
 	if req.Visibility != nil {
 		schedule.Visibility = *req.Visibility
 	}
+	if req.EditPermission != nil {
+		schedule.EditPermission = *req.EditPermission
+	}
 	if req.StartDate != nil {
 		schedule.StartDate = *req.StartDate
 	}
@@ -292,8 +316,22 @@ func (u *scheduleUsecase) UpdateSchedule(userID, scheduleID uint, req *models.Up
 		return nil, fmt.Errorf("failed to update schedule: %w", err)
 	}
 
-	// Get updated schedule with creator info
-	updatedSchedule, err := u.scheduleRepo.GetScheduleByID(schedule.ID)
+	// Update viewers if provided
+	if req.ViewerIDs != nil {
+		if err := u.scheduleRepo.SetScheduleViewers(scheduleID, *req.ViewerIDs); err != nil {
+			return nil, fmt.Errorf("failed to update schedule viewers: %w", err)
+		}
+	}
+
+	// Update editors if provided
+	if req.EditorIDs != nil {
+		if err := u.scheduleRepo.SetScheduleEditors(scheduleID, *req.EditorIDs); err != nil {
+			return nil, fmt.Errorf("failed to update schedule editors: %w", err)
+		}
+	}
+
+	// Get updated schedule with creator info and permissions
+	updatedSchedule, err := u.scheduleRepo.GetScheduleWithPermissions(schedule.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get updated schedule: %w", err)
 	}
@@ -1011,6 +1049,13 @@ func (u *scheduleUsecase) validateCreateScheduleRequest(req *models.CreateSchedu
 
 // Permission checking methods
 
+// isManagement checks if user role is DepartmentHead or higher
+func isManagement(role sharedmodels.Role) bool {
+	return role == sharedmodels.RoleSuperAdmin ||
+		role == sharedmodels.RoleAdmin ||
+		role == sharedmodels.RoleDepartmentHead
+}
+
 // CanViewSchedule checks if user can view a schedule
 func (u *scheduleUsecase) CanViewSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error) {
 	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
@@ -1028,23 +1073,40 @@ func (u *scheduleUsecase) CanViewSchedule(userID, scheduleID uint, userRole shar
 		return true, nil
 	}
 
-	// Department head can view department schedules
-	if userRole == sharedmodels.RoleDepartmentHead && schedule.DepartmentID != nil {
-		// TODO: Check if user is head of this department
-		return true, nil
-	}
+	// Check visibility based on setting
+	switch schedule.Visibility {
+	case models.VisibilityCreatorOnly:
+		// Only creator can view (already checked above)
+		return false, nil
 
-	// Check visibility
-	if schedule.Visibility == models.VisibilityParticipants {
+	case models.VisibilityManagement:
+		// DepartmentHead and above can view
+		return isManagement(userRole), nil
+
+	case models.VisibilityParticipants:
 		// Check if user is assigned to this schedule
 		isAssigned, err := u.scheduleRepo.IsUserAssignedToSchedule(scheduleID, userID)
 		if err != nil {
 			return false, err
 		}
 		return isAssigned, nil
-	}
 
-	return false, nil
+	case models.VisibilitySpecificUsers:
+		// Check if user is in the viewers list
+		isViewer, err := u.scheduleRepo.IsUserScheduleViewer(scheduleID, userID)
+		if err != nil {
+			return false, err
+		}
+		return isViewer, nil
+
+	case models.VisibilityAll:
+		// Everyone can view
+		return true, nil
+
+	default:
+		// Default to management visibility for backwards compatibility
+		return isManagement(userRole), nil
+	}
 }
 
 // CanEditSchedule checks if user can edit a schedule
@@ -1059,16 +1121,36 @@ func (u *scheduleUsecase) CanEditSchedule(userID, scheduleID uint, userRole shar
 		return true, nil
 	}
 
-	// Creator can edit
-	if schedule.CreatedBy == userID {
-		return true, nil
-	}
+	// Check edit permission based on setting
+	switch schedule.EditPermission {
+	case models.EditPermissionCreatorOnly:
+		// Only creator can edit
+		return schedule.CreatedBy == userID, nil
 
-	// Department head can edit department schedules
-	if userRole == sharedmodels.RoleDepartmentHead && schedule.DepartmentID != nil {
-		// TODO: Check if user is head of this department
-		return true, nil
-	}
+	case models.EditPermissionManagement:
+		// Creator + DepartmentHead and above can edit
+		if schedule.CreatedBy == userID {
+			return true, nil
+		}
+		return isManagement(userRole), nil
 
-	return false, nil
+	case models.EditPermissionSpecificUsers:
+		// Creator + specific users can edit
+		if schedule.CreatedBy == userID {
+			return true, nil
+		}
+		isEditor, err := u.scheduleRepo.IsUserScheduleEditor(scheduleID, userID)
+		if err != nil {
+			return false, err
+		}
+		return isEditor, nil
+
+	case models.EditPermissionAll:
+		// Everyone can edit
+		return true, nil
+
+	default:
+		// Default to creator only for backwards compatibility
+		return schedule.CreatedBy == userID, nil
+	}
 }

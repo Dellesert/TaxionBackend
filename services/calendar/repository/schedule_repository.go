@@ -37,6 +37,19 @@ type ScheduleRepository interface {
 	GetScheduleAssignments(scheduleID uint) ([]*models.ScheduleAssignment, error)
 	IsUserAssignedToSchedule(scheduleID, userID uint) (bool, error)
 
+	// Schedule Viewers (for specific_users visibility)
+	SetScheduleViewers(scheduleID uint, userIDs []uint) error
+	GetScheduleViewerIDs(scheduleID uint) ([]uint, error)
+	IsUserScheduleViewer(scheduleID, userID uint) (bool, error)
+
+	// Schedule Editors (for specific_users edit_permission)
+	SetScheduleEditors(scheduleID uint, userIDs []uint) error
+	GetScheduleEditorIDs(scheduleID uint) ([]uint, error)
+	IsUserScheduleEditor(scheduleID, userID uint) (bool, error)
+
+	// Schedule with Viewers/Editors
+	GetScheduleWithPermissions(id uint) (*models.Schedule, error)
+
 	// Schedule Template CRUD
 	CreateScheduleTemplate(template *models.ScheduleTemplate) error
 	GetScheduleTemplate(id uint) (*models.ScheduleTemplate, error)
@@ -216,6 +229,8 @@ func (r *scheduleRepository) GetScheduleWithEntries(id uint) (*models.Schedule, 
 		Preload("Template").
 		Preload("Template.Entries").
 		Preload("Template.Entries.User").
+		Preload("Viewers").
+		Preload("Editors").
 		First(&schedule, id).Error
 
 	if err != nil {
@@ -446,6 +461,134 @@ func (r *scheduleRepository) IsUserAssignedToSchedule(scheduleID, userID uint) (
 	}
 
 	return count > 0, nil
+}
+
+// SetScheduleViewers replaces all viewers for a schedule
+func (r *scheduleRepository) SetScheduleViewers(scheduleID uint, userIDs []uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete existing viewers
+		if err := tx.Where("schedule_id = ?", scheduleID).Delete(&models.ScheduleViewer{}).Error; err != nil {
+			return err
+		}
+
+		// Add new viewers
+		if len(userIDs) > 0 {
+			viewers := make([]models.ScheduleViewer, len(userIDs))
+			for i, userID := range userIDs {
+				viewers[i] = models.ScheduleViewer{
+					ScheduleID: scheduleID,
+					UserID:     userID,
+				}
+			}
+			if err := tx.Create(&viewers).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+// GetScheduleViewerIDs returns all viewer user IDs for a schedule
+func (r *scheduleRepository) GetScheduleViewerIDs(scheduleID uint) ([]uint, error) {
+	var userIDs []uint
+	err := r.db.Model(&models.ScheduleViewer{}).
+		Where("schedule_id = ?", scheduleID).
+		Pluck("user_id", &userIDs).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return userIDs, nil
+}
+
+// IsUserScheduleViewer checks if a user is a viewer of a schedule
+func (r *scheduleRepository) IsUserScheduleViewer(scheduleID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.ScheduleViewer{}).
+		Where("schedule_id = ? AND user_id = ?", scheduleID, userID).
+		Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// SetScheduleEditors replaces all editors for a schedule
+func (r *scheduleRepository) SetScheduleEditors(scheduleID uint, userIDs []uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete existing editors
+		if err := tx.Where("schedule_id = ?", scheduleID).Delete(&models.ScheduleEditor{}).Error; err != nil {
+			return err
+		}
+
+		// Add new editors
+		if len(userIDs) > 0 {
+			editors := make([]models.ScheduleEditor, len(userIDs))
+			for i, userID := range userIDs {
+				editors[i] = models.ScheduleEditor{
+					ScheduleID: scheduleID,
+					UserID:     userID,
+				}
+			}
+			if err := tx.Create(&editors).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+}
+
+// GetScheduleEditorIDs returns all editor user IDs for a schedule
+func (r *scheduleRepository) GetScheduleEditorIDs(scheduleID uint) ([]uint, error) {
+	var userIDs []uint
+	err := r.db.Model(&models.ScheduleEditor{}).
+		Where("schedule_id = ?", scheduleID).
+		Pluck("user_id", &userIDs).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return userIDs, nil
+}
+
+// IsUserScheduleEditor checks if a user is an editor of a schedule
+func (r *scheduleRepository) IsUserScheduleEditor(scheduleID, userID uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.ScheduleEditor{}).
+		Where("schedule_id = ? AND user_id = ?", scheduleID, userID).
+		Count(&count).Error
+
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// GetScheduleWithPermissions retrieves a schedule with viewers and editors
+func (r *scheduleRepository) GetScheduleWithPermissions(id uint) (*models.Schedule, error) {
+	var schedule models.Schedule
+	err := r.db.
+		Preload("Creator").
+		Preload("Template").
+		Preload("Template.Entries").
+		Preload("Template.Entries.User").
+		Preload("Viewers").
+		Preload("Editors").
+		First(&schedule, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("schedule not found")
+		}
+		return nil, err
+	}
+	return &schedule, nil
 }
 
 // CreateScheduleTemplate creates a new schedule template
