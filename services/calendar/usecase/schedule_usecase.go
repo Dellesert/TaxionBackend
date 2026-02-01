@@ -628,11 +628,25 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		return nil, fmt.Errorf("failed to update schedule entry: %w", err)
 	}
 
-	// If user changed, update the associated event owner
-	_ = oldUserID // Will be used when we update event ownership
+	// If user changed, recreate the event for the new user
+	if userChanged && entry.EventID != nil {
+		// Delete old event (it belonged to the old user)
+		if err := u.eventRepo.DeleteEvent(*entry.EventID); err != nil {
+			// Log error but continue
+		}
+		entry.EventID = nil
 
-	// Update associated event if exists
-	if entry.EventID != nil {
+		// Create new event for the new user
+		newEvent, err := u.createEventForScheduleEntry(schedule, entry)
+		if err == nil && newEvent != nil {
+			entry.EventID = &newEvent.ID
+			// Update entry with new event ID
+			if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, false); err != nil {
+				// Log error but continue
+			}
+		}
+	} else if entry.EventID != nil {
+		// Regular update - just update existing event
 		event, err := u.eventRepo.GetEventByID(*entry.EventID)
 		if err == nil {
 			event.StartTime = entry.StartTime
@@ -642,7 +656,19 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 			event.Location = entry.Location
 			u.eventRepo.UpdateEvent(event)
 		}
+	} else if userChanged {
+		// User changed but there was no event - create one for the new user
+		newEvent, err := u.createEventForScheduleEntry(schedule, entry)
+		if err == nil && newEvent != nil {
+			entry.EventID = &newEvent.ID
+			// Update entry with new event ID
+			if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, false); err != nil {
+				// Log error but continue
+			}
+		}
 	}
+
+	_ = oldUserID // Used in notification
 
 	// Get updated entry with relations
 	updatedEntry, err := u.scheduleRepo.GetScheduleEntry(entry.ID)
