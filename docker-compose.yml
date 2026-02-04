@@ -91,6 +91,7 @@ services:
       retries: 3
     volumes:
       - ./logs:/app/logs
+      - app_versions:/app/storage/app-versions
     labels:
       - "com.tachyon.service=user-service"
       - "com.tachyon.version=1.0.0"
@@ -531,6 +532,12 @@ volumes:
     name: tachyon_backup_data
     labels:
       - "com.tachyon.volume=backups"
+
+  app_versions:
+    driver: local
+    name: tachyon_app_versions
+    labels:
+      - "com.tachyon.volume=app-versions"
 
 # ==============================================
 # Networks

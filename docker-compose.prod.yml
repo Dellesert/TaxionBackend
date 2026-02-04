@@ -110,6 +110,7 @@ services:
       retries: 3
     volumes:
       - ./logs/user:/app/logs
+      - app_versions_prod:/app/storage/app-versions
     deploy:
       resources:
         limits:
@@ -587,6 +588,10 @@ volumes:
   backup_data_prod:
     driver: local
     name: tachyon_backup_data_prod
+
+  app_versions_prod:
+    driver: local
+    name: tachyon_app_versions_prod
 
 # ==============================================
 # Networks
