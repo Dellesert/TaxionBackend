@@ -139,9 +139,11 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 		isMultipart := strings.HasPrefix(contentType, "multipart/form-data")
 
 		var bodyReader io.Reader
+		var contentLength int64 = -1
 		if isMultipart {
-			// For multipart, forward the body directly
+			// For multipart, forward the body directly and preserve content length
 			bodyReader = c.Request.Body
+			contentLength = c.Request.ContentLength
 		} else {
 			// For other content types, read and buffer the body
 			var bodyBytes []byte
@@ -181,6 +183,11 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 			return
 		}
 
+		// Set content length for multipart requests to avoid chunked encoding
+		if contentLength > 0 {
+			proxyReq.ContentLength = contentLength
+		}
+
 		// Copy headers from original request
 		copyHeaders(c.Request.Header, proxyReq.Header)
 
@@ -199,9 +206,15 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 			"client_ip":  c.ClientIP(),
 		}).Info("Proxying request to service")
 
+		// Use longer timeout for multipart/file uploads
+		timeout := 30 * time.Second
+		if isMultipart {
+			timeout = 10 * time.Minute
+		}
+
 		// Make the request
 		client := &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: timeout,
 		}
 
 		resp, err := client.Do(proxyReq)
