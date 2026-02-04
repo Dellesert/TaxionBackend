@@ -63,6 +63,9 @@ COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 # Copy the binary from builder stage
 COPY --from=builder /build/services/user/user-service .
 
+# Create storage directory for app versions
+RUN mkdir -p /app/storage/app-versions
+
 # Change ownership of the application to non-root user
 RUN chown -R appuser:appgroup /app
 
