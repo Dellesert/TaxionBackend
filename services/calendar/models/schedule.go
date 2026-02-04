@@ -669,6 +669,43 @@ type ScheduleTemplateListResponse struct {
 	Offset    int                         `json:"offset"`
 }
 
+// Daily Summary Models
+
+// DailySummaryResponse represents a daily summary of all schedules
+type DailySummaryResponse struct {
+	Date      time.Time                    `json:"date"`
+	Schedules []*DailySummaryScheduleGroup `json:"schedules"`
+	Absences  []*DailySummaryAbsence       `json:"absences"`
+}
+
+// DailySummaryScheduleGroup represents entries grouped by schedule
+type DailySummaryScheduleGroup struct {
+	ScheduleID   uint                      `json:"schedule_id"`
+	ScheduleTitle string                   `json:"schedule_title"`
+	ScheduleType ScheduleType              `json:"schedule_type"`
+	Color        string                    `json:"color"`
+	Users        []*DailySummaryUserEntry  `json:"users"`
+}
+
+// DailySummaryUserEntry represents a user's entry in the daily summary
+type DailySummaryUserEntry struct {
+	UserID    uint               `json:"user_id"`
+	User      *sharedmodels.User `json:"user,omitempty"`
+	ShiftType ShiftType          `json:"shift_type"`
+	StartTime time.Time          `json:"start_time"`
+	EndTime   time.Time          `json:"end_time"`
+	Title     string             `json:"title,omitempty"`
+	Location  string             `json:"location,omitempty"`
+}
+
+// DailySummaryAbsence represents an absent user in the daily summary
+type DailySummaryAbsence struct {
+	UserID  uint               `json:"user_id"`
+	User    *sharedmodels.User `json:"user,omitempty"`
+	Type    AbsenceType        `json:"type"`
+	Reason  string             `json:"reason,omitempty"`
+}
+
 // Import Models
 
 // ImportScheduleRequest represents request for importing schedule from file

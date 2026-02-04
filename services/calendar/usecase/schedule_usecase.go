@@ -29,6 +29,9 @@ type ScheduleUsecase interface {
 	DeleteScheduleEntry(userID, scheduleID, entryID uint) error
 	GetMyScheduleEntries(userID uint, startDate, endDate time.Time) ([]*models.ScheduleEntryResponse, error)
 
+	// Daily summary
+	GetDailySummary(date time.Time) (*models.DailySummaryResponse, error)
+
 	// Permission check
 	CanViewSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error)
 	CanEditSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error)
@@ -795,6 +798,89 @@ func (u *scheduleUsecase) GetMyScheduleEntries(userID uint, startDate, endDate t
 	}
 
 	return responses, nil
+}
+
+// GetDailySummary returns a summary of all schedule entries and absences for a specific date
+func (u *scheduleUsecase) GetDailySummary(date time.Time) (*models.DailySummaryResponse, error) {
+	// Get all schedule entries for the date
+	entries, err := u.scheduleRepo.GetAllEntriesForDate(date)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schedule entries for date: %w", err)
+	}
+
+	// Get all absences for the date
+	absences, err := u.absenceRepo.GetAbsencesForDate(date)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get absences for date: %w", err)
+	}
+
+	// Build set of absent user IDs to filter them out from schedule entries
+	absentUserIDs := make(map[uint]bool)
+	for _, absence := range absences {
+		absentUserIDs[absence.UserID] = true
+	}
+
+	// Group entries by schedule, filtering out absent users
+	scheduleGroups := make(map[uint]*models.DailySummaryScheduleGroup)
+	scheduleOrder := make([]uint, 0)
+
+	for _, entry := range entries {
+		if absentUserIDs[entry.UserID] {
+			continue
+		}
+
+		group, exists := scheduleGroups[entry.ScheduleID]
+		if !exists {
+			group = &models.DailySummaryScheduleGroup{
+				ScheduleID:    entry.ScheduleID,
+				ScheduleTitle: "",
+				ScheduleType:  "",
+				Color:         "",
+				Users:         make([]*models.DailySummaryUserEntry, 0),
+			}
+			if entry.Schedule != nil {
+				group.ScheduleTitle = entry.Schedule.Title
+				group.ScheduleType = entry.Schedule.Type
+				group.Color = entry.Schedule.Color
+			}
+			scheduleGroups[entry.ScheduleID] = group
+			scheduleOrder = append(scheduleOrder, entry.ScheduleID)
+		}
+
+		userEntry := &models.DailySummaryUserEntry{
+			UserID:    entry.UserID,
+			User:      entry.User,
+			ShiftType: entry.ShiftType,
+			StartTime: entry.StartTime,
+			EndTime:   entry.EndTime,
+			Title:     entry.Title,
+			Location:  entry.Location,
+		}
+		group.Users = append(group.Users, userEntry)
+	}
+
+	// Build ordered schedule groups list
+	scheduleGroupsList := make([]*models.DailySummaryScheduleGroup, 0, len(scheduleOrder))
+	for _, scheduleID := range scheduleOrder {
+		scheduleGroupsList = append(scheduleGroupsList, scheduleGroups[scheduleID])
+	}
+
+	// Build absences list
+	absencesList := make([]*models.DailySummaryAbsence, 0, len(absences))
+	for _, absence := range absences {
+		absencesList = append(absencesList, &models.DailySummaryAbsence{
+			UserID: absence.UserID,
+			User:   absence.User,
+			Type:   absence.Type,
+			Reason: absence.Reason,
+		})
+	}
+
+	return &models.DailySummaryResponse{
+		Date:      date,
+		Schedules: scheduleGroupsList,
+		Absences:  absencesList,
+	}, nil
 }
 
 // ensureEntriesGenerated ensures that entries exist for a recurring schedule in the given period

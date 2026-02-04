@@ -263,6 +263,7 @@ func setupRoutes(
 
 		// Schedule endpoints
 		protected.GET("/schedules", scheduleHandler.GetSchedules)
+		protected.GET("/schedules/daily-summary", scheduleHandler.GetDailySummary)
 		protected.GET("/schedules/my-entries", scheduleHandler.GetMyScheduleEntries)
 		protected.GET("/schedules/:id", scheduleHandler.GetSchedule)
 		protected.POST("/schedules", scheduleHandler.CreateSchedule)

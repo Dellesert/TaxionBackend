@@ -73,6 +73,9 @@ type ScheduleRepository interface {
 	// Schedule type compatibility
 	AreScheduleTypesCompatible(type1, type2 models.ScheduleType) (bool, error)
 	GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]*models.ScheduleEntry, error)
+
+	// Daily summary
+	GetAllEntriesForDate(date time.Time) ([]*models.ScheduleEntry, error)
 }
 
 // ScheduleFilter defines filtering parameters for schedules
@@ -850,6 +853,25 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 
 	var entries []*models.ScheduleEntry
 	if err := query.Find(&entries).Error; err != nil {
+		return nil, err
+	}
+
+	return entries, nil
+}
+
+// GetAllEntriesForDate retrieves all schedule entries for a specific date across all active schedules
+func (r *scheduleRepository) GetAllEntriesForDate(date time.Time) ([]*models.ScheduleEntry, error) {
+	var entries []*models.ScheduleEntry
+
+	err := r.db.
+		Preload("User").
+		Preload("Schedule").
+		Joins("JOIN schedules ON schedules.id = schedule_entries.schedule_id AND schedules.deleted_at IS NULL AND schedules.is_active = ?", true).
+		Where("schedule_entries.date = ?", date).
+		Order("schedules.type ASC, schedule_entries.start_time ASC").
+		Find(&entries).Error
+
+	if err != nil {
 		return nil, err
 	}
 

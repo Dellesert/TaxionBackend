@@ -26,6 +26,9 @@ type AbsenceRepository interface {
 	// Integration with schedules
 	IsUserAbsent(userID uint, date time.Time) (bool, *models.Absence, error)
 	GetAbsentUsersForPeriod(userIDs []uint, startDate, endDate time.Time) (map[uint][]*models.Absence, error)
+
+	// Daily summary
+	GetAbsencesForDate(date time.Time) ([]*models.Absence, error)
 }
 
 // AbsenceFilter defines filtering parameters for absences
@@ -229,4 +232,21 @@ func (r *absenceRepository) GetAbsentUsersForPeriod(userIDs []uint, startDate, e
 	}
 
 	return result, nil
+}
+
+// GetAbsencesForDate retrieves all absences that cover a specific date
+func (r *absenceRepository) GetAbsencesForDate(date time.Time) ([]*models.Absence, error) {
+	var absences []*models.Absence
+
+	err := r.db.
+		Preload("User").
+		Where("start_date <= ? AND end_date >= ?", date, date).
+		Order("user_id ASC").
+		Find(&absences).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return absences, nil
 }

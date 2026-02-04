@@ -979,6 +979,53 @@ func (h *ScheduleHandler) GetMyScheduleEntries(c *gin.Context) {
 	})
 }
 
+// GetDailySummary handles retrieving daily schedule summary
+// GET /api/v1/schedules/daily-summary?date=2024-01-15
+func (h *ScheduleHandler) GetDailySummary(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	_, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse date parameter (default to today)
+	dateStr := c.DefaultQuery("date", time.Now().Format("2006-01-02"))
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Неверный формат даты (ожидается YYYY-MM-DD)",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	summary, err := h.scheduleUsecase.GetDailySummary(date)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"date":       dateStr,
+			"error":      err.Error(),
+		}).Error("Failed to get daily summary")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Не удалось получить сводку за день",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"summary":    summary,
+		"request_id": requestID,
+	})
+}
+
 // Helper functions from calendar_handlers.go
 func containsNotFoundError(errMsg string) bool {
 	return contains(errMsg, "not found")
