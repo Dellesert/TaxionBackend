@@ -119,6 +119,7 @@ type Session struct {
 	DepartmentID *uint     `json:"department_id,omitempty" redis:"department_id"`
 	IPAddress    string    `json:"ip_address" redis:"ip_address"`
 	UserAgent    string    `json:"user_agent" redis:"user_agent"`
+	CustomName   string    `json:"custom_name,omitempty" redis:"custom_name"`
 	CreatedAt    time.Time `json:"created_at" redis:"created_at"`
 	ExpiresAt    time.Time `json:"expires_at" redis:"expires_at"`
 	LastActiveAt time.Time `json:"last_active_at" redis:"last_active_at"`

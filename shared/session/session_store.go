@@ -247,6 +247,34 @@ func (s *SessionStore) limitUserSessions(ctx context.Context, userID uint) {
 	}
 }
 
+// UpdateSessionName updates the custom name of a session
+func (s *SessionStore) UpdateSessionName(ctx context.Context, sessionID string, customName string) error {
+	session, err := s.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+
+	session.CustomName = customName
+
+	sessionKey := sessionKey(sessionID)
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session: %w", err)
+	}
+
+	ttl := time.Until(session.ExpiresAt)
+	if ttl <= 0 {
+		return fmt.Errorf("session expired")
+	}
+
+	err = s.client.Set(ctx, sessionKey, sessionData, ttl).Err()
+	if err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	return nil
+}
+
 // sessionKey generates Redis key for a session
 func sessionKey(sessionID string) string {
 	return fmt.Sprintf("session:%s", sessionID)

@@ -302,6 +302,96 @@ func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
 	})
 }
 
+// RenameSession updates the custom name of a session
+// PATCH /api/v1/sessions/:session_id/name
+func (h *SessionHandler) RenameSession(c *gin.Context) {
+	requestID := requestid.Get(c)
+	userID := c.GetUint("user_id")
+	sessionID := c.Param("session_id")
+
+	if sessionID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Session ID is required",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req struct {
+		CustomName string `json:"custom_name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if len(req.CustomName) > 100 {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Custom name must be 100 characters or less",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	authConfig := middleware.GetAuthConfig()
+	if authConfig == nil || authConfig.SessionStore == nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Session management not available",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Verify the session belongs to the user
+	session, err := authConfig.SessionStore.GetSession(c.Request.Context(), sessionID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":      "Session not found",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if session.UserID != userID {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "You can only rename your own sessions",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if err := authConfig.SessionStore.UpdateSessionName(c.Request.Context(), sessionID, req.CustomName); err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"session_id": sessionID,
+			"error":      err.Error(),
+		}).Error("Failed to rename session")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to rename session",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":  requestID,
+		"user_id":     userID,
+		"session_id":  sessionID,
+		"custom_name": req.CustomName,
+	}).Info("Session renamed successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Session renamed successfully",
+		"custom_name": req.CustomName,
+		"request_id":  requestID,
+	})
+}
+
 // TerminateSessionInternal terminates any session (for internal/admin use)
 // DELETE /internal/sessions/:session_id
 func (h *SessionHandler) TerminateSessionInternal(c *gin.Context) {

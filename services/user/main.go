@@ -492,9 +492,10 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		sessions := v1.Group("/sessions")
 		sessions.Use(middleware.AuthMiddleware())
 		{
-			sessions.GET("", sessionHandler.GetActiveSessions)            // GET /api/v1/sessions - get all active sessions
-			sessions.DELETE("", sessionHandler.DeleteAllSessions)         // DELETE /api/v1/sessions - delete all other sessions
-			sessions.DELETE("/:session_id", sessionHandler.DeleteSession) // DELETE /api/v1/sessions/:id - delete specific session
+			sessions.GET("", sessionHandler.GetActiveSessions)                // GET /api/v1/sessions - get all active sessions
+			sessions.DELETE("", sessionHandler.DeleteAllSessions)             // DELETE /api/v1/sessions - delete all other sessions
+			sessions.DELETE("/:session_id", sessionHandler.DeleteSession)     // DELETE /api/v1/sessions/:id - delete specific session
+			sessions.PATCH("/:session_id/name", sessionHandler.RenameSession) // PATCH /api/v1/sessions/:id/name - rename session
 		}
 
 		// Department management routes
