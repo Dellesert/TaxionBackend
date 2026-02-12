@@ -154,7 +154,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 	}
 
 	// Create new WebSocket client
-	client := websocket.NewClient(conn, h.hub, userID)
+	client := websocket.NewClient(conn, h.hub, userID, sessionID)
 
 	// Add client to hub
 	h.hub.RegisterClient(client)

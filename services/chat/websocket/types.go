@@ -47,6 +47,9 @@ type Client struct {
 	// User ID
 	userID uint
 
+	// Session ID (for session-based auth, used to disconnect on session revoke)
+	sessionID string
+
 	// Unique connection ID (for multi-device support)
 	connectionID string
 

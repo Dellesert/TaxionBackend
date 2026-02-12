@@ -918,6 +918,65 @@ func (h *Hub) cleanup() {
 	log.Printf("Hub cleanup completed (%d connections closed)", totalClosed)
 }
 
+// DisconnectBySessionID finds the WebSocket client connected with the given sessionID,
+// sends a "session_revoked" message, and closes the connection with code 4001.
+func (h *Hub) DisconnectBySessionID(sessionID string) bool {
+	if sessionID == "" {
+		return false
+	}
+
+	h.mutex.RLock()
+	var targetClient *Client
+	for _, userConnections := range h.clients {
+		for _, client := range userConnections {
+			if client.sessionID == sessionID {
+				targetClient = client
+				break
+			}
+		}
+		if targetClient != nil {
+			break
+		}
+	}
+	h.mutex.RUnlock()
+
+	if targetClient == nil {
+		log.Printf("No WebSocket client found for session %s", sessionID)
+		return false
+	}
+
+	log.Printf("Disconnecting WebSocket client for session %s (user %d, conn %s)",
+		sessionID, targetClient.userID, targetClient.connectionID[:8])
+
+	// Send session_revoked message
+	revokeMsg, _ := json.Marshal(map[string]interface{}{
+		"type": "session_revoked",
+		"data": map[string]string{
+			"reason": "session_deleted",
+		},
+		"timestamp": time.Now(),
+	})
+
+	select {
+	case targetClient.send <- revokeMsg:
+	default:
+		log.Printf("Could not send session_revoked message to user %d (channel full)", targetClient.userID)
+	}
+
+	// Close with code 4001 after a short delay to allow the message to be sent
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		targetClient.conn.WriteControl(
+			websocket.CloseMessage,
+			websocket.FormatCloseMessage(4001, "session revoked"),
+			time.Now().Add(writeWait),
+		)
+		targetClient.conn.Close()
+	}()
+
+	return true
+}
+
 // RegisterClient registers a client with the hub
 func (h *Hub) RegisterClient(client *Client) {
 	h.register <- client

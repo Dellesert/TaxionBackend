@@ -32,12 +32,13 @@ func generateConnectionID() string {
 }
 
 // NewClient creates a new WebSocket client
-func NewClient(conn *websocket.Conn, hub *Hub, userID uint) *Client {
+func NewClient(conn *websocket.Conn, hub *Hub, userID uint, sessionID string) *Client {
 	return &Client{
 		conn:         conn,
 		send:         make(chan []byte, 512),
 		hub:          hub,
 		userID:       userID,
+		sessionID:    sessionID,
 		connectionID: generateConnectionID(),
 		chatRooms:    make(map[uint]bool),
 		lastSeen:     time.Now(),
@@ -47,7 +48,7 @@ func NewClient(conn *websocket.Conn, hub *Hub, userID uint) *Client {
 
 // NewClientWithConnectionID creates a new WebSocket client with a specific connection ID
 // Used when client provides their own device/connection identifier
-func NewClientWithConnectionID(conn *websocket.Conn, hub *Hub, userID uint, connectionID string) *Client {
+func NewClientWithConnectionID(conn *websocket.Conn, hub *Hub, userID uint, sessionID string, connectionID string) *Client {
 	if connectionID == "" {
 		connectionID = generateConnectionID()
 	}
@@ -56,6 +57,7 @@ func NewClientWithConnectionID(conn *websocket.Conn, hub *Hub, userID uint, conn
 		send:         make(chan []byte, 512),
 		hub:          hub,
 		userID:       userID,
+		sessionID:    sessionID,
 		connectionID: connectionID,
 		chatRooms:    make(map[uint]bool),
 		lastSeen:     time.Now(),
@@ -405,4 +407,9 @@ func (c *Client) GetConnectionID() string {
 // GetUserID returns the user ID
 func (c *Client) GetUserID() uint {
 	return c.userID
+}
+
+// GetSessionID returns the session ID
+func (c *Client) GetSessionID() string {
+	return c.sessionID
 }

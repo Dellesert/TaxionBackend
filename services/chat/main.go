@@ -206,6 +206,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 		ws := internal.Group("/ws")
 		{
 			ws.POST("/broadcast/user", internalHandler.BroadcastToUser)
+			ws.POST("/disconnect-session", internalHandler.DisconnectSession)
 		}
 	}
 

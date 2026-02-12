@@ -1,7 +1,13 @@
 package handlers
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"time"
 
 	"tachyon-messenger/shared/analytics"
 	"tachyon-messenger/shared/logger"
@@ -21,6 +27,52 @@ func NewSessionHandler(analyticsClient *analytics.Client) *SessionHandler {
 	return &SessionHandler{
 		analyticsClient: analyticsClient,
 	}
+}
+
+// notifyWebSocketDisconnect sends an async request to chat-service to disconnect
+// the WebSocket connection associated with the given sessionID.
+func notifyWebSocketDisconnect(sessionID string) {
+	go func() {
+		chatServiceURL := os.Getenv("CHAT_SERVICE_URL")
+		if chatServiceURL == "" {
+			chatServiceURL = "http://chat-service:8082"
+		}
+
+		payload, _ := json.Marshal(map[string]string{
+			"session_id": sessionID,
+		})
+
+		url := fmt.Sprintf("%s/api/v1/internal/ws/disconnect-session", chatServiceURL)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(payload))
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"session_id": sessionID,
+				"error":      err.Error(),
+			}).Warn("Failed to create WebSocket disconnect request")
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 3 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"session_id": sessionID,
+				"error":      err.Error(),
+			}).Warn("Failed to notify chat-service about session disconnect")
+			return
+		}
+		defer resp.Body.Close()
+
+		logger.WithFields(map[string]interface{}{
+			"session_id":  sessionID,
+			"status_code": resp.StatusCode,
+		}).Info("Notified chat-service to disconnect WebSocket for session")
+	}()
 }
 
 // GetActiveSessions returns all active sessions for the current user
@@ -148,6 +200,9 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		return
 	}
 
+	// Disconnect WebSocket connection for this session
+	notifyWebSocketDisconnect(sessionID)
+
 	// Deactivate session in analytics
 	if h.analyticsClient != nil {
 		h.analyticsClient.DeactivateSessionAsync(sessionID)
@@ -222,6 +277,9 @@ func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
 				continue
 			}
 
+			// Disconnect WebSocket connection for this session
+			notifyWebSocketDisconnect(session.SessionID)
+
 			// Deactivate session in analytics
 			if h.analyticsClient != nil {
 				h.analyticsClient.DeactivateSessionAsync(session.SessionID)
@@ -291,6 +349,9 @@ func (h *SessionHandler) TerminateSessionInternal(c *gin.Context) {
 		})
 		return
 	}
+
+	// Disconnect WebSocket connection for this session
+	notifyWebSocketDisconnect(sessionID)
 
 	// Deactivate session in analytics (async)
 	go func() {
