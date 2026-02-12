@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.dellesert.tachyonmessenger",
+      "sha256_cert_fingerprints": [
+        "4D:73:1B:48:0C:77:3C:84:D9:24:70:B8:77:FC:55:33:02:70:BD:47:5F:95:45:31:FB:03:B2:AB:EF:57:BB:EA"
+      ]
+    }
+  }
+]
