@@ -234,7 +234,7 @@ func (r *messageRepository) Update(message *models.Message) error {
 	// This prevents clearing read_receipts, reactions, etc.
 	// Note: updated_at will be automatically updated by GORM
 	result := r.db.Model(message).
-		Select("content", "is_edited", "edited_at", "is_pinned", "is_deleted", "status").
+		Select("content", "is_edited", "edited_at", "is_pinned", "is_deleted", "status", "link_preview").
 		Updates(message)
 
 	if result.Error != nil {
