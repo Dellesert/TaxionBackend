@@ -758,6 +758,9 @@ func (u *notificationUsecase) UpdateUserPreference(userID uint, req *models.User
 	if req.QuietHoursEnd != nil {
 		preference.QuietHoursEnd = req.QuietHoursEnd
 	}
+	if req.Timezone != nil {
+		preference.Timezone = *req.Timezone
+	}
 	if req.WeekendEnabled != nil {
 		preference.WeekendEnabled = *req.WeekendEnabled
 	}
@@ -1002,8 +1005,8 @@ func (u *notificationUsecase) checkUserPreferences(userID uint, notificationType
 		return false, nil, nil
 	}
 
-	// Check weekend preferences
-	if !preference.WeekendEnabled && u.isWeekend() {
+	// Check weekend preferences (using user's timezone)
+	if !preference.WeekendEnabled && u.isWeekendForUser(preference) {
 		return false, nil, nil
 	}
 
@@ -1046,13 +1049,27 @@ func (u *notificationUsecase) checkUserPreferences(userID uint, notificationType
 	return true, finalChannels, nil
 }
 
+// getUserLocalTime returns current time in user's timezone
+func (u *notificationUsecase) getUserLocalTime(preference *models.UserNotificationPreference) time.Time {
+	if preference.Timezone != "" {
+		if loc, err := time.LoadLocation(preference.Timezone); err == nil {
+			return time.Now().In(loc)
+		}
+		logger.WithFields(map[string]interface{}{
+			"user_id":  preference.UserID,
+			"timezone": preference.Timezone,
+		}).Warn("Invalid timezone in user preferences, falling back to UTC")
+	}
+	return time.Now().UTC()
+}
+
 // isInQuietHours checks if current time is within user's quiet hours
 func (u *notificationUsecase) isInQuietHours(preference *models.UserNotificationPreference) bool {
 	if preference.QuietHoursStart == nil || preference.QuietHoursEnd == nil {
 		return false
 	}
 
-	now := time.Now()
+	now := u.getUserLocalTime(preference)
 	currentHour := now.Hour()
 
 	start := *preference.QuietHoursStart
@@ -1066,9 +1083,9 @@ func (u *notificationUsecase) isInQuietHours(preference *models.UserNotification
 	return currentHour >= start && currentHour < end
 }
 
-// isWeekend checks if current time is weekend
-func (u *notificationUsecase) isWeekend() bool {
-	now := time.Now()
+// isWeekend checks if current time is weekend in user's timezone
+func (u *notificationUsecase) isWeekendForUser(preference *models.UserNotificationPreference) bool {
+	now := u.getUserLocalTime(preference)
 	weekday := now.Weekday()
 	return weekday == time.Saturday || weekday == time.Sunday
 }
@@ -1449,6 +1466,13 @@ func (u *notificationUsecase) validateUserPreferenceRequest(req *models.UserPref
 	if req.QuietHoursEnd != nil {
 		if *req.QuietHoursEnd < 0 || *req.QuietHoursEnd > 23 {
 			return fmt.Errorf("quiet hours end must be between 0 and 23")
+		}
+	}
+
+	// Validate timezone
+	if req.Timezone != nil && *req.Timezone != "" {
+		if _, err := time.LoadLocation(*req.Timezone); err != nil {
+			return fmt.Errorf("invalid timezone: %s", *req.Timezone)
 		}
 	}
 

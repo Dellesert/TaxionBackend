@@ -681,6 +681,7 @@ func (r *notificationRepository) UpsertUserPreference(preference *models.UserNot
 		"min_priority":      preference.MinPriority,
 		"quiet_hours_start": preference.QuietHoursStart,
 		"quiet_hours_end":   preference.QuietHoursEnd,
+		"timezone":          preference.Timezone,
 		"weekend_enabled":   preference.WeekendEnabled,
 		"digest_enabled":    preference.DigestEnabled,
 		"digest_frequency":  preference.DigestFrequency,

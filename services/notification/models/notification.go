@@ -137,9 +137,10 @@ type UserNotificationPreference struct {
 	MinPriority NotificationPriority `gorm:"not null;default:'low';size:20" json:"min_priority" validate:"required,oneof=low medium high critical"`
 
 	// Time preferences
-	QuietHoursStart *int `json:"quiet_hours_start,omitempty" validate:"omitempty,min=0,max=23"` // Час начала тихого времени (0-23)
-	QuietHoursEnd   *int `json:"quiet_hours_end,omitempty" validate:"omitempty,min=0,max=23"`   // Час окончания тихого времени (0-23)
-	WeekendEnabled  bool `gorm:"not null;default:true" json:"weekend_enabled"`
+	QuietHoursStart *int   `json:"quiet_hours_start,omitempty" validate:"omitempty,min=0,max=23"` // Час начала тихого времени (0-23)
+	QuietHoursEnd   *int   `json:"quiet_hours_end,omitempty" validate:"omitempty,min=0,max=23"`   // Час окончания тихого времени (0-23)
+	Timezone        string `gorm:"size:50;default:'UTC'" json:"timezone,omitempty"`                // IANA timezone (например "Europe/Moscow")
+	WeekendEnabled  bool   `gorm:"not null;default:true" json:"weekend_enabled"`
 
 	// Frequency limits
 	DigestEnabled   bool `gorm:"not null;default:false" json:"digest_enabled"`                    // Группировка уведомлений
@@ -312,6 +313,7 @@ type UserPreferenceRequest struct {
 	MinPriority      *NotificationPriority `json:"min_priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
 	QuietHoursStart  *int                  `json:"quiet_hours_start,omitempty" binding:"omitempty,min=0,max=23" validate:"omitempty,min=0,max=23"`
 	QuietHoursEnd    *int                  `json:"quiet_hours_end,omitempty" binding:"omitempty,min=0,max=23" validate:"omitempty,min=0,max=23"`
+	Timezone         *string               `json:"timezone,omitempty" binding:"omitempty,max=50" validate:"omitempty,max=50"`
 	WeekendEnabled   *bool                 `json:"weekend_enabled"`
 	DigestEnabled    *bool                 `json:"digest_enabled"`
 	DigestFrequency  *int                  `json:"digest_frequency,omitempty" binding:"omitempty,min=15,max=1440" validate:"omitempty,min=15,max=1440"`
