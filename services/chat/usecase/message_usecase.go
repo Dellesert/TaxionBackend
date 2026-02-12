@@ -478,13 +478,24 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 	}
 
 	// Update message
-	message.Content = strings.TrimSpace(req.Content)
+	newContent := strings.TrimSpace(req.Content)
+	message.Content = newContent
 	message.IsEdited = true
 	now := time.Now()
 	message.EditedAt = &now
 
+	// Clear old link preview — will be re-fetched if new content has a URL
+	message.LinkPreviewData = ""
+
 	if err := uc.messageRepo.Update(message); err != nil {
 		return nil, fmt.Errorf("failed to update message: %w", err)
+	}
+
+	// Async link preview fetch if edited content has a URL
+	if message.Type == models.MessageTypeText && newContent != "" {
+		if firstURL := chatutils.ExtractFirstURL(newContent); firstURL != "" {
+			go uc.fetchAndSaveLinkPreview(message.ID, message.ChatID, userID, firstURL)
+		}
 	}
 
 	// Get updated message with relations
