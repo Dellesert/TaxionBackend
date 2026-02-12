@@ -313,6 +313,7 @@ type UserPreferenceRequest struct {
 	MinPriority      *NotificationPriority `json:"min_priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
 	QuietHoursStart  *int                  `json:"quiet_hours_start,omitempty" binding:"omitempty,min=0,max=23" validate:"omitempty,min=0,max=23"`
 	QuietHoursEnd    *int                  `json:"quiet_hours_end,omitempty" binding:"omitempty,min=0,max=23" validate:"omitempty,min=0,max=23"`
+	ResetQuietHours  *bool                 `json:"reset_quiet_hours,omitempty"` // Если true — сбросить тихие часы
 	Timezone         *string               `json:"timezone,omitempty" binding:"omitempty,max=50" validate:"omitempty,max=50"`
 	WeekendEnabled   *bool                 `json:"weekend_enabled"`
 	DigestEnabled    *bool                 `json:"digest_enabled"`

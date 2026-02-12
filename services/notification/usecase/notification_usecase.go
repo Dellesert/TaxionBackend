@@ -752,11 +752,17 @@ func (u *notificationUsecase) UpdateUserPreference(userID uint, req *models.User
 	if req.MinPriority != nil {
 		preference.MinPriority = *req.MinPriority
 	}
-	if req.QuietHoursStart != nil {
-		preference.QuietHoursStart = req.QuietHoursStart
-	}
-	if req.QuietHoursEnd != nil {
-		preference.QuietHoursEnd = req.QuietHoursEnd
+	if req.ResetQuietHours != nil && *req.ResetQuietHours {
+		// Явный сброс тихих часов
+		preference.QuietHoursStart = nil
+		preference.QuietHoursEnd = nil
+	} else {
+		if req.QuietHoursStart != nil {
+			preference.QuietHoursStart = req.QuietHoursStart
+		}
+		if req.QuietHoursEnd != nil {
+			preference.QuietHoursEnd = req.QuietHoursEnd
+		}
 	}
 	if req.Timezone != nil {
 		preference.Timezone = *req.Timezone
