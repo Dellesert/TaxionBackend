@@ -1151,6 +1151,15 @@ func (uc *messageUsecase) MarkChatAsRead(userID, chatID uint) error {
 		fmt.Printf("📬 Chat %d: %d messages marked as read by user %d, broadcasts sent\n", chatID, len(messageIDs), userID)
 	}
 
+	// Mark related message notifications as read (async, don't block on errors)
+	if uc.notificationClient != nil {
+		go func() {
+			if err := uc.notificationClient.MarkNotificationsReadByChatID(userID, chatID); err != nil {
+				fmt.Printf("⚠️ Failed to mark notifications as read for chat %d, user %d: %v\n", chatID, userID, err)
+			}
+		}()
+	}
+
 	return nil
 }
 

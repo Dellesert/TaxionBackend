@@ -406,6 +406,7 @@ func setupRoutes(
 		internal.POST("/notifications/task", createAddTaskHandler(notificationWorker))            // POST /api/v1/internal/notifications/task
 		internal.POST("/notifications/poll", createAddTaskHandler(notificationWorker))            // POST /api/v1/internal/notifications/poll
 		internal.POST("/notifications/scheduled", createScheduledTaskHandler(notificationWorker)) // POST /api/v1/internal/notifications/scheduled
+		internal.POST("/notifications/mark-read-by-chat", createMarkReadByChatHandler(notificationUC)) // POST /api/v1/internal/notifications/mark-read-by-chat
 	}
 }
 
@@ -853,6 +854,35 @@ func createScheduledTaskHandler(w *worker.Worker) gin.HandlerFunc {
 			"message":      "Notification scheduled successfully",
 			"task_id":      task.ID,
 			"scheduled_at": req.ScheduledAt.Format(time.RFC3339),
+		})
+	}
+}
+
+func createMarkReadByChatHandler(notificationUC usecase.NotificationUsecase) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req struct {
+			UserID uint `json:"user_id" binding:"required,min=1"`
+			ChatID uint `json:"chat_id" binding:"required,min=1"`
+		}
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Invalid request",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		count, err := notificationUC.MarkAsReadByChatID(req.UserID, req.ChatID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error":   "Failed to mark notifications as read",
+				"details": err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"marked_count": count,
 		})
 	}
 }

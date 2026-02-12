@@ -32,6 +32,7 @@ type NotificationRepository interface {
 	MarkMultipleAsRead(notificationIDs []uint, userID uint) error
 	MarkAllAsRead(userID uint) error
 	MarkAllAsReadByType(userID uint, notificationType models.NotificationType) error
+	MarkAsReadByChatID(userID, chatID uint) (int64, error)
 
 	// Scheduled notifications
 	GetScheduledNotifications(before time.Time, limit int) ([]*models.Notification, error)
@@ -282,6 +283,25 @@ func (r *notificationRepository) MarkAllAsReadByType(userID uint, notificationTy
 	}
 
 	return nil
+}
+
+// MarkAsReadByChatID marks all unread message notifications for a specific chat as read
+func (r *notificationRepository) MarkAsReadByChatID(userID, chatID uint) (int64, error) {
+	now := time.Now()
+	chatIDStr := fmt.Sprintf("%d", chatID)
+	result := r.db.Model(&models.Notification{}).
+		Where("user_id = ? AND type = ? AND is_read = ? AND data->>'chat_id' = ?",
+			userID, models.NotificationTypeMessage, false, chatIDStr).
+		Updates(map[string]interface{}{
+			"is_read": true,
+			"read_at": now,
+		})
+
+	if result.Error != nil {
+		return 0, fmt.Errorf("failed to mark notifications as read by chat ID: %w", result.Error)
+	}
+
+	return result.RowsAffected, nil
 }
 
 // Scheduled notifications

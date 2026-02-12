@@ -239,3 +239,35 @@ func (c *NotificationClient) getNotificationTTL(notificationType string) time.Du
 		return 10 * time.Minute // Default: 10 minutes
 	}
 }
+
+// MarkNotificationsReadByChatID marks all message notifications for a chat as read
+func (c *NotificationClient) MarkNotificationsReadByChatID(userID, chatID uint) error {
+	url := fmt.Sprintf("%s/api/v1/internal/notifications/mark-read-by-chat", c.baseURL)
+
+	payload, err := json.Marshal(map[string]uint{
+		"user_id": userID,
+		"chat_id": chatID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return fmt.Errorf("failed to call notification-service: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("notification-service returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}

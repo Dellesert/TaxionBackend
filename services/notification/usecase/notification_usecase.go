@@ -37,6 +37,7 @@ type NotificationUsecase interface {
 	MarkAsRead(userID uint, req *models.MarkAsReadRequest) error
 	MarkAllAsRead(userID uint) error
 	MarkAllAsReadByType(userID uint, notificationType models.NotificationType) error
+	MarkAsReadByChatID(userID, chatID uint) (int64, error)
 
 	// Search and filtering
 	SearchNotifications(userID uint, query string, filter *models.NotificationFilterRequest) (*NotificationListResponse, error)
@@ -585,6 +586,24 @@ func (u *notificationUsecase) MarkAllAsReadByType(userID uint, notificationType 
 	}).Info("Notifications marked as read by type")
 
 	return nil
+}
+
+// MarkAsReadByChatID marks all message notifications for a specific chat as read
+func (u *notificationUsecase) MarkAsReadByChatID(userID, chatID uint) (int64, error) {
+	count, err := u.notificationRepo.MarkAsReadByChatID(userID, chatID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to mark notifications as read by chat ID: %w", err)
+	}
+
+	if count > 0 {
+		logger.WithFields(map[string]interface{}{
+			"user_id": userID,
+			"chat_id": chatID,
+			"count":   count,
+		}).Info("Notifications marked as read by chat ID")
+	}
+
+	return count, nil
 }
 
 // Search and filtering
