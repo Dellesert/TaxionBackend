@@ -1,12 +1,22 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
 )
+
+// LinkPreview represents Open Graph metadata for a URL found in message content
+type LinkPreview struct {
+	URL         string `json:"url"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+	Image       string `json:"image,omitempty"`
+	SiteName    string `json:"site_name,omitempty"`
+}
 
 // MessageType represents the type of message
 type MessageType string
@@ -62,6 +72,9 @@ type Message struct {
 
 	// Poll-related field - stored as JSON
 	PollData string `gorm:"type:text" json:"poll_data,omitempty"`
+
+	// Link preview - stored as JSON
+	LinkPreviewData string `gorm:"type:text;column:link_preview" json:"link_preview_data,omitempty"`
 
 	// Forward-related fields
 	ForwardedFromMessageID *uint  `gorm:"index" json:"forwarded_from_message_id,omitempty"`
@@ -323,6 +336,7 @@ type MessageResponse struct {
 	Longitude    *float64                       `json:"longitude,omitempty"`
 	SystemData   string                         `json:"system_data,omitempty"`
 	PollData     string                         `json:"poll_data,omitempty"`
+	LinkPreview  *LinkPreview                   `json:"link_preview,omitempty"`
 	Reactions    []MessageReactionResponse      `json:"reactions"`
 	ReadReceipts []MessageReadReceiptResponse   `json:"read_receipts"`
 	ReadBy       []uint                         `json:"read_by"` // Array of user IDs who read the message
@@ -412,6 +426,14 @@ func (m *Message) toResponse(viewerUserID uint, baseURL ...string) *MessageRespo
 		// Initialize arrays to prevent undefined in JSON
 		Reactions:    []MessageReactionResponse{},
 		ReadReceipts: []MessageReadReceiptResponse{},
+	}
+
+	// Deserialize link preview if present
+	if m.LinkPreviewData != "" {
+		var lp LinkPreview
+		if err := json.Unmarshal([]byte(m.LinkPreviewData), &lp); err == nil {
+			response.LinkPreview = &lp
+		}
 	}
 
 	// Include reply-to message if loaded

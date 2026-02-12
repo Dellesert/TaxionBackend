@@ -11,6 +11,7 @@ import (
 	"tachyon-messenger/services/chat/client"
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/repository"
+	chatutils "tachyon-messenger/services/chat/utils"
 
 	"gorm.io/gorm"
 )
@@ -297,7 +298,53 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		}
 	}()
 
+	// Async link preview fetch for text messages with URLs
+	if message.Type == models.MessageTypeText && strings.TrimSpace(message.Content) != "" {
+		if firstURL := chatutils.ExtractFirstURL(message.Content); firstURL != "" {
+			go uc.fetchAndSaveLinkPreview(message.ID, req.ChatID, userID, firstURL)
+		}
+	}
+
 	return response, nil
+}
+
+// fetchAndSaveLinkPreview fetches Open Graph metadata for a URL and updates the message
+func (uc *messageUsecase) fetchAndSaveLinkPreview(messageID, chatID, senderID uint, url string) {
+	preview, err := chatutils.FetchLinkPreview(url)
+	if err != nil {
+		fmt.Printf("🔗 Link preview fetch failed for %s: %v\n", url, err)
+		return
+	}
+
+	previewJSON, err := json.Marshal(preview)
+	if err != nil {
+		fmt.Printf("🔗 Failed to marshal link preview: %v\n", err)
+		return
+	}
+
+	// Update message with link preview data
+	msg, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		fmt.Printf("🔗 Failed to get message %d for link preview update: %v\n", messageID, err)
+		return
+	}
+
+	msg.LinkPreviewData = string(previewJSON)
+	if err := uc.messageRepo.Update(msg); err != nil {
+		fmt.Printf("🔗 Failed to save link preview for message %d: %v\n", messageID, err)
+		return
+	}
+
+	fmt.Printf("🔗 Link preview saved for message %d: %s\n", messageID, preview.Title)
+
+	// Notify clients via WebSocket about the updated message
+	if uc.wsHub != nil {
+		updatedMsg, err := uc.messageRepo.GetWithReactions(messageID)
+		if err == nil {
+			broadcastResponse := updatedMsg.ToResponse(uc.baseURL)
+			uc.wsHub.BroadcastToChat(chatID, broadcastResponse, models.WSMessageTypeMessageEdit, senderID)
+		}
+	}
 }
 
 // GetMessages retrieves messages with filters
