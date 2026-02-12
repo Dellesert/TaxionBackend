@@ -495,6 +495,15 @@ type MessageListResponse struct {
 	HasMore  bool              `json:"has_more"`
 }
 
+// ChatLinkResponse represents a link found in a chat message
+type ChatLinkResponse struct {
+	MessageID   uint         `json:"message_id"`
+	SenderID    uint         `json:"sender_id"`
+	Sender      *models.User `json:"sender,omitempty"`
+	LinkPreview *LinkPreview `json:"link_preview"`
+	CreatedAt   time.Time    `json:"created_at"`
+}
+
 // WebSocket message types for real-time communication
 type WSMessageType string
 

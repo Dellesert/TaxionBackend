@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -41,6 +42,7 @@ type ChatUsecase interface {
 	GetOrCreateTaskChat(userID, taskID uint) (*models.ChatResponse, error)
 	GetOrCreateSavedChat(userID uint) (*models.ChatResponse, error)
 	GetChatAttachments(userID, chatID uint, limit, offset int) ([]*models.MessageAttachmentResponse, int64, error)
+	GetChatLinks(userID, chatID uint, limit, offset int) ([]*models.ChatLinkResponse, int64, error)
 	GetTotalUnreadCount(userID uint) (int64, error)
 	SetWebSocketHub(hub ChatWebSocketHub)
 
@@ -1025,6 +1027,50 @@ func (uc *chatUsecase) GetChatAttachments(userID, chatID uint, limit, offset int
 	responses := make([]*models.MessageAttachmentResponse, len(attachments))
 	for i, attachment := range attachments {
 		responses[i] = attachment.ToResponse(uc.baseURL)
+	}
+
+	return responses, total, nil
+}
+
+// GetChatLinks retrieves all messages with link previews for a chat with pagination
+func (uc *chatUsecase) GetChatLinks(userID, chatID uint, limit, offset int) ([]*models.ChatLinkResponse, int64, error) {
+	// Verify user is a member of the chat
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to check chat membership: %w", err)
+	}
+	if !isMember {
+		return nil, 0, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Set default pagination values
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	// Get messages with link previews from repository
+	messages, total, err := uc.messageRepo.GetChatLinks(chatID, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get chat links: %w", err)
+	}
+
+	// Convert to response format
+	responses := make([]*models.ChatLinkResponse, 0, len(messages))
+	for _, msg := range messages {
+		var lp models.LinkPreview
+		if err := json.Unmarshal([]byte(msg.LinkPreviewData), &lp); err != nil {
+			continue
+		}
+		responses = append(responses, &models.ChatLinkResponse{
+			MessageID:   msg.ID,
+			SenderID:    msg.SenderID,
+			Sender:      msg.Sender,
+			LinkPreview: &lp,
+			CreatedAt:   msg.CreatedAt,
+		})
 	}
 
 	return responses, total, nil

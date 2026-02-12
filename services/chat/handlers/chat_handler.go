@@ -1342,6 +1342,74 @@ func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
 	})
 }
 
+// GetChatLinks handles getting all link previews for a chat
+func (h *ChatHandler) GetChatLinks(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	limitStr := c.DefaultQuery("limit", "50")
+	offsetStr := c.DefaultQuery("offset", "0")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 0 {
+		limit = 50
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	offset, err := strconv.Atoi(offsetStr)
+	if err != nil || offset < 0 {
+		offset = 0
+	}
+
+	links, total, err := h.chatUsecase.GetChatLinks(userID, uint(chatID), limit, offset)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get links"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "You are not a member of this chat"
+		} else if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Chat not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"links":      links,
+		"total":      total,
+		"limit":      limit,
+		"offset":     offset,
+		"request_id": requestID,
+	})
+}
+
 // GetTotalUnreadCount handles getting total unread messages count for the user across all chats
 func (h *ChatHandler) GetTotalUnreadCount(c *gin.Context) {
 	requestID := requestid.Get(c)

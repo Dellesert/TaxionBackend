@@ -57,6 +57,7 @@ type MessageRepository interface {
 	// Attachment operations
 	CreateAttachment(attachment *models.MessageAttachment) error
 	GetChatAttachments(chatID uint, limit, offset int) ([]*models.MessageAttachment, int64, error)
+	GetChatLinks(chatID uint, limit, offset int) ([]*models.Message, int64, error)
 
 	// New cursor-based pagination methods for refactored API
 	GetLatestMessages(chatID, userID uint, limit int) ([]*models.Message, int64, error)
@@ -1067,6 +1068,36 @@ func (r *messageRepository) GetChatAttachments(chatID uint, limit, offset int) (
 	}
 
 	return attachments, total, nil
+}
+
+// GetChatLinks retrieves messages with link previews for a chat with pagination
+func (r *messageRepository) GetChatLinks(chatID uint, limit, offset int) ([]*models.Message, int64, error) {
+	var messages []*models.Message
+	var total int64
+
+	// Count total messages with link previews in this chat
+	err := r.db.Model(&models.Message{}).
+		Where("chat_id = ? AND is_deleted = ? AND link_preview IS NOT NULL AND link_preview != ''", chatID, false).
+		Count(&total).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count links: %w", err)
+	}
+
+	// Get messages with link previews
+	err = r.db.
+		Preload("Sender").
+		Where("chat_id = ? AND is_deleted = ? AND link_preview IS NOT NULL AND link_preview != ''", chatID, false).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&messages).Error
+
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get links: %w", err)
+	}
+
+	return messages, total, nil
 }
 
 // New cursor-based pagination methods for refactored API
