@@ -122,6 +122,7 @@ func main() {
 	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
 	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, eventRepo, absenceRepo, fileClient)
 	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo, eventRepo, participantRepo, substitutionRepo, notificationClient, userClient)
+	holidayUsecase := usecase.NewHolidayUsecase(redisClient)
 
 	// Initialize notification worker
 	notificationWorker := worker.NewNotificationWorker(eventRepo, participantRepo, notificationClient, userClient, redisClient)
@@ -134,9 +135,10 @@ func main() {
 	absenceHandler := handlers.NewAbsenceHandler(absenceUsecase)
 	substitutionHandler := handlers.NewSubstitutionHandler(absenceUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "calendar-service", startTime)
+	holidayHandler := handlers.NewHolidayHandler(holidayUsecase)
 
 	// Setup routes
-	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, importHandler, absenceHandler, substitutionHandler, metricsHandler, jwtConfig)
+	r := setupRoutes(calendarHandler, scheduleHandler, templateHandler, importHandler, absenceHandler, substitutionHandler, metricsHandler, holidayHandler, jwtConfig)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -190,6 +192,7 @@ func setupRoutes(
 	absenceHandler *handlers.AbsenceHandler,
 	substitutionHandler *handlers.SubstitutionHandler,
 	metricsHandler *handlers.MetricsHandler,
+	holidayHandler *handlers.HolidayHandler,
 	jwtConfig *middleware.JWTConfig,
 ) *gin.Engine {
 	r := gin.New()
@@ -309,6 +312,9 @@ func setupRoutes(
 		protected.PUT("/absences/:id/substitutions/:sub_id", substitutionHandler.UpdateSubstitution)
 		protected.DELETE("/absences/:id/substitutions/:sub_id", substitutionHandler.DeleteSubstitution)
 		protected.GET("/users/:id/substitutions", substitutionHandler.GetUserSubstitutions)
+
+		// Holiday endpoints (production calendar)
+		protected.GET("/calendar/holidays", holidayHandler.GetHolidays)
 	}
 
 	return r
