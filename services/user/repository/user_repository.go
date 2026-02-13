@@ -743,3 +743,219 @@ func (r *userRepository) CleanupDisconnectedStatuses(connectedUserIDs []uint) (i
 
 	return result.RowsAffected, nil
 }
+
+// ============= User Group Repository =============
+
+// UserGroupRepository defines the interface for user group data operations
+type UserGroupRepository interface {
+	Create(group *models.UserGroup) error
+	GetByID(id uint) (*models.UserGroup, error)
+	GetAll() ([]*models.UserGroup, error)
+	GetByCreatorID(creatorID uint) ([]*models.UserGroup, error)
+	Update(group *models.UserGroup) error
+	Delete(id uint) error
+	AddMembers(groupID uint, userIDs []uint) error
+	RemoveMembers(groupID uint, userIDs []uint) error
+	SetMembers(groupID uint, userIDs []uint) error
+	GetMembers(groupID uint) ([]*models.User, error)
+	GetGroupsForUser(userID uint) ([]*models.UserGroup, error)
+	GetAllWithMemberCount() ([]*models.UserGroup, []int64, error)
+	CountMembers(groupID uint) (int64, error)
+}
+
+// userGroupRepository implements UserGroupRepository interface
+type userGroupRepository struct {
+	db *database.DB
+}
+
+// NewUserGroupRepository creates a new user group repository
+func NewUserGroupRepository(db *database.DB) UserGroupRepository {
+	return &userGroupRepository{db: db}
+}
+
+// Create creates a new user group
+func (r *userGroupRepository) Create(group *models.UserGroup) error {
+	if err := r.db.Create(group).Error; err != nil {
+		return fmt.Errorf("failed to create user group: %w", err)
+	}
+	return nil
+}
+
+// GetByID retrieves a user group by ID
+func (r *userGroupRepository) GetByID(id uint) (*models.UserGroup, error) {
+	var group models.UserGroup
+	err := r.db.First(&group, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("user group not found")
+		}
+		return nil, fmt.Errorf("failed to get user group: %w", err)
+	}
+	return &group, nil
+}
+
+// GetAll retrieves all user groups
+func (r *userGroupRepository) GetAll() ([]*models.UserGroup, error) {
+	var groups []*models.UserGroup
+	err := r.db.Order("name ASC").Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user groups: %w", err)
+	}
+	return groups, nil
+}
+
+// GetByCreatorID retrieves all user groups created by a specific user
+func (r *userGroupRepository) GetByCreatorID(creatorID uint) ([]*models.UserGroup, error) {
+	var groups []*models.UserGroup
+	err := r.db.Where("creator_id = ?", creatorID).Order("name ASC").Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user groups by creator: %w", err)
+	}
+	return groups, nil
+}
+
+// Update updates an existing user group
+func (r *userGroupRepository) Update(group *models.UserGroup) error {
+	result := r.db.Save(group)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update user group: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("user group not found")
+	}
+	return nil
+}
+
+// Delete soft deletes a user group and its members
+func (r *userGroupRepository) Delete(id uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete members first
+		if err := tx.Where("group_id = ?", id).Delete(&models.UserGroupMember{}).Error; err != nil {
+			return fmt.Errorf("failed to delete user group members: %w", err)
+		}
+		// Delete group
+		result := tx.Delete(&models.UserGroup{}, id)
+		if result.Error != nil {
+			return fmt.Errorf("failed to delete user group: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("user group not found")
+		}
+		return nil
+	})
+}
+
+// AddMembers adds users to a group
+func (r *userGroupRepository) AddMembers(groupID uint, userIDs []uint) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for _, userID := range userIDs {
+			member := models.UserGroupMember{
+				GroupID: groupID,
+				UserID:  userID,
+			}
+			// Use FirstOrCreate to avoid duplicate errors
+			result := tx.Where("group_id = ? AND user_id = ?", groupID, userID).FirstOrCreate(&member)
+			if result.Error != nil {
+				return fmt.Errorf("failed to add member %d to group: %w", userID, result.Error)
+			}
+		}
+		return nil
+	})
+}
+
+// RemoveMembers removes users from a group
+func (r *userGroupRepository) RemoveMembers(groupID uint, userIDs []uint) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+	result := r.db.Where("group_id = ? AND user_id IN ?", groupID, userIDs).Delete(&models.UserGroupMember{})
+	if result.Error != nil {
+		return fmt.Errorf("failed to remove members from group: %w", result.Error)
+	}
+	return nil
+}
+
+// SetMembers replaces all members of a group with the given user IDs
+func (r *userGroupRepository) SetMembers(groupID uint, userIDs []uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Remove all existing members
+		if err := tx.Where("group_id = ?", groupID).Delete(&models.UserGroupMember{}).Error; err != nil {
+			return fmt.Errorf("failed to clear group members: %w", err)
+		}
+		// Add new members
+		for _, userID := range userIDs {
+			member := models.UserGroupMember{
+				GroupID: groupID,
+				UserID:  userID,
+			}
+			if err := tx.Create(&member).Error; err != nil {
+				return fmt.Errorf("failed to add member %d to group: %w", userID, err)
+			}
+		}
+		return nil
+	})
+}
+
+// GetMembers retrieves all users in a group with department info
+func (r *userGroupRepository) GetMembers(groupID uint) ([]*models.User, error) {
+	var users []*models.User
+	err := r.db.
+		Joins("JOIN user_group_members ON user_group_members.user_id = users.id").
+		Where("user_group_members.group_id = ? AND user_group_members.deleted_at IS NULL", groupID).
+		Preload("Department").
+		Preload("Subdepartment").
+		Order("users.name ASC").
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group members: %w", err)
+	}
+	return users, nil
+}
+
+// GetGroupsForUser retrieves all groups a user belongs to
+func (r *userGroupRepository) GetGroupsForUser(userID uint) ([]*models.UserGroup, error) {
+	var groups []*models.UserGroup
+	err := r.db.
+		Joins("JOIN user_group_members ON user_group_members.group_id = user_groups.id").
+		Where("user_group_members.user_id = ? AND user_group_members.deleted_at IS NULL", userID).
+		Order("user_groups.name ASC").
+		Find(&groups).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get groups for user: %w", err)
+	}
+	return groups, nil
+}
+
+// GetAllWithMemberCount retrieves all groups with their member counts
+func (r *userGroupRepository) GetAllWithMemberCount() ([]*models.UserGroup, []int64, error) {
+	var groups []*models.UserGroup
+	err := r.db.Order("name ASC").Find(&groups).Error
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get user groups: %w", err)
+	}
+
+	counts := make([]int64, len(groups))
+	for i, group := range groups {
+		var count int64
+		err := r.db.Model(&models.UserGroupMember{}).Where("group_id = ?", group.ID).Count(&count).Error
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to count members for group %d: %w", group.ID, err)
+		}
+		counts[i] = count
+	}
+
+	return groups, counts, nil
+}
+
+// CountMembers counts the number of members in a group
+func (r *userGroupRepository) CountMembers(groupID uint) (int64, error) {
+	var count int64
+	err := r.db.Model(&models.UserGroupMember{}).Where("group_id = ?", groupID).Count(&count).Error
+	if err != nil {
+		return 0, fmt.Errorf("failed to count group members: %w", err)
+	}
+	return count, nil
+}

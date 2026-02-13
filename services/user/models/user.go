@@ -437,3 +437,102 @@ type ImportError struct {
 	Email   string `json:"email,omitempty"`
 	Message string `json:"message"`
 }
+
+// ============= User Groups =============
+
+// UserGroup represents a custom group of users (cross-department)
+type UserGroup struct {
+	models.BaseModel
+	Name        string            `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
+	Description string            `gorm:"size:500" json:"description,omitempty" validate:"omitempty,max=500"`
+	CreatorID   uint              `gorm:"not null;index" json:"creator_id"`
+	Creator     *User             `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
+	Members     []UserGroupMember `gorm:"foreignKey:GroupID" json:"members,omitempty"`
+}
+
+// UserGroupMember represents a user's membership in a group
+type UserGroupMember struct {
+	models.BaseModel
+	GroupID uint       `gorm:"not null;uniqueIndex:idx_group_user" json:"group_id"`
+	UserID  uint       `gorm:"not null;uniqueIndex:idx_group_user" json:"user_id"`
+	Group   *UserGroup `gorm:"foreignKey:GroupID" json:"group,omitempty"`
+	User    *User      `gorm:"foreignKey:UserID" json:"user,omitempty"`
+}
+
+// TableName returns the table name for UserGroup model
+func (UserGroup) TableName() string { return "user_groups" }
+
+// TableName returns the table name for UserGroupMember model
+func (UserGroupMember) TableName() string { return "user_group_members" }
+
+// CreateUserGroupRequest represents request for creating a user group
+type CreateUserGroupRequest struct {
+	Name        string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
+	Description string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	UserIDs     []uint `json:"user_ids,omitempty"`
+}
+
+// UpdateUserGroupRequest represents request for updating a user group
+type UpdateUserGroupRequest struct {
+	Name        *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
+	Description *string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+}
+
+// UpdateUserGroupMembersRequest represents request for setting group members
+type UpdateUserGroupMembersRequest struct {
+	UserIDs []uint `json:"user_ids" binding:"required" validate:"required"`
+}
+
+// AddRemoveUserGroupMembersRequest represents request for adding/removing group members
+type AddRemoveUserGroupMembersRequest struct {
+	UserIDs []uint `json:"user_ids" binding:"required" validate:"required"`
+}
+
+// UserGroupResponse represents a user group response
+type UserGroupResponse struct {
+	ID          uint      `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	CreatorID   uint      `json:"creator_id"`
+	MemberCount int       `json:"member_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// UserGroupWithMembersResponse represents a user group response with members
+type UserGroupWithMembersResponse struct {
+	ID          uint            `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description,omitempty"`
+	CreatorID   uint            `json:"creator_id"`
+	Members     []*UserResponse `json:"members"`
+	MemberCount int             `json:"member_count"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+}
+
+// ToResponse converts UserGroup to UserGroupResponse
+func (g *UserGroup) ToResponse() *UserGroupResponse {
+	return &UserGroupResponse{
+		ID:          g.ID,
+		Name:        g.Name,
+		Description: g.Description,
+		CreatorID:   g.CreatorID,
+		MemberCount: len(g.Members),
+		CreatedAt:   g.CreatedAt,
+		UpdatedAt:   g.UpdatedAt,
+	}
+}
+
+// ToResponseWithMemberCount converts UserGroup to UserGroupResponse with a specific member count
+func (g *UserGroup) ToResponseWithMemberCount(count int) *UserGroupResponse {
+	return &UserGroupResponse{
+		ID:          g.ID,
+		Name:        g.Name,
+		Description: g.Description,
+		CreatorID:   g.CreatorID,
+		MemberCount: count,
+		CreatedAt:   g.CreatedAt,
+		UpdatedAt:   g.UpdatedAt,
+	}
+}

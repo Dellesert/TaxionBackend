@@ -120,6 +120,8 @@ func main() {
 		&models.PasswordReset{},
 		&models.SMTPSettings{},
 		&models.AppVersion{},
+		&models.UserGroup{},
+		&models.UserGroupMember{},
 	); err != nil {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
@@ -214,6 +216,9 @@ func main() {
 		log.Fatalf("Failed to initialize WebAuthn service: %v", err)
 	}
 
+	// Initialize user group repository
+	userGroupRepo := repository.NewUserGroupRepository(db)
+
 	// Initialize usecases
 	userUsecase := usecase.NewUserUsecase(userRepo, settingsRepo)
 	authUsecase := usecase.NewAuthUsecase(userRepo, departmentRepo, settingsRepo, jwtConfig)
@@ -229,6 +234,7 @@ func main() {
 	passwordResetUsecase := usecase.NewPasswordResetUsecase(passwordResetRepo, userRepo, emailService, authUsecase)
 	smtpUsecase := usecase.NewSMTPUsecase(smtpRepo)
 	appVersionUsecase := usecase.NewAppVersionUsecase(appVersionRepo, userRepo)
+	userGroupUsecase := usecase.NewUserGroupUsecase(userGroupRepo, userRepo)
 
 	// Initialize super admin if not exists
 	if err := initUsecase.InitializeSuperAdmin(); err != nil {
@@ -253,6 +259,7 @@ func main() {
 	appVersionHandler := handlers.NewAppVersionHandler(appVersionUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "user-service", startTime)
 	quickStartHandler := handlers.NewQuickStartHandler(departmentUsecase, subdepartmentUsecase, userUsecase)
+	userGroupHandler := handlers.NewUserGroupHandler(userGroupUsecase)
 
 	// Create Gin router
 	router := gin.New()
@@ -267,7 +274,7 @@ func main() {
 	router.Use(metricsHandler.MetricsMiddleware())
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, appVersionHandler, metricsHandler, quickStartHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, appVersionHandler, metricsHandler, quickStartHandler, userGroupHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -302,7 +309,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, appVersionHandler *handlers.AppVersionHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, appVersionHandler *handlers.AppVersionHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, userGroupHandler *handlers.UserGroupHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -521,6 +528,20 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			subdepartments.DELETE("/:id", middleware.RequireAdminRole(), subdepartmentHandler.DeleteSubdepartment) // DELETE /api/v1/subdepartments/:id - delete subdepartment (admin only)
 		}
 
+		// User Groups management routes
+		userGroups := v1.Group("/user-groups")
+		userGroups.Use(middleware.AuthMiddleware())
+		{
+			userGroups.GET("", userGroupHandler.GetGroups)                                                                       // GET /api/v1/user-groups - list all groups (any authenticated user)
+			userGroups.GET("/:id", userGroupHandler.GetGroup)                                                                    // GET /api/v1/user-groups/:id - get group with members
+			userGroups.POST("", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.CreateGroup)                          // POST /api/v1/user-groups - create group (dept head+)
+			userGroups.PUT("/:id", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.UpdateGroup)                       // PUT /api/v1/user-groups/:id - update group (dept head+)
+			userGroups.DELETE("/:id", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.DeleteGroup)                    // DELETE /api/v1/user-groups/:id - delete group (dept head+)
+			userGroups.PUT("/:id/members", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.UpdateMembers)             // PUT /api/v1/user-groups/:id/members - replace members (dept head+)
+			userGroups.POST("/:id/members", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.AddMembers)               // POST /api/v1/user-groups/:id/members - add members (dept head+)
+			userGroups.DELETE("/:id/members", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.RemoveMembers)          // DELETE /api/v1/user-groups/:id/members - remove members (dept head+)
+		}
+
 		// Admin routes within /api/v1 for gateway compatibility
 		v1Admin := v1.Group("/admin")
 		v1Admin.Use(middleware.AuthMiddleware()) // Use unified auth
@@ -565,6 +586,19 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			{
 				v1AdminSubdepartments.POST("/import", middleware.LogAdminAction("import_subdepartments"), subdepartmentHandler.ImportSubdepartments)
 				v1AdminSubdepartments.POST("/bulk-delete", middleware.LogAdminAction("bulk_delete_subdepartments"), subdepartmentHandler.BulkDeleteSubdepartments)
+			}
+
+			// User Group management for admins
+			v1AdminUserGroups := v1Admin.Group("/user-groups")
+			{
+				v1AdminUserGroups.GET("", middleware.LogAdminAction("list_user_groups"), userGroupHandler.GetGroups)
+				v1AdminUserGroups.POST("", middleware.LogAdminAction("create_user_group"), userGroupHandler.CreateGroup)
+				v1AdminUserGroups.GET("/:id", middleware.LogAdminAction("get_user_group"), userGroupHandler.GetGroup)
+				v1AdminUserGroups.PUT("/:id", middleware.LogAdminAction("update_user_group"), userGroupHandler.UpdateGroup)
+				v1AdminUserGroups.DELETE("/:id", middleware.LogAdminAction("delete_user_group"), userGroupHandler.DeleteGroup)
+				v1AdminUserGroups.PUT("/:id/members", middleware.LogAdminAction("update_user_group_members"), userGroupHandler.UpdateMembers)
+				v1AdminUserGroups.POST("/:id/members", middleware.LogAdminAction("add_user_group_members"), userGroupHandler.AddMembers)
+				v1AdminUserGroups.DELETE("/:id/members", middleware.LogAdminAction("remove_user_group_members"), userGroupHandler.RemoveMembers)
 			}
 
 			// Quick Start import endpoint (admin only)

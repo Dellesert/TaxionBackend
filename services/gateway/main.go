@@ -153,6 +153,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			subdepartments.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 		}
 
+		// User Groups routes - proxy to user service
+		userGroups := v1.Group("/user-groups")
+		{
+			userGroups.Any("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			userGroups.Any("/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+		}
+
 		// Chat routes - proxy to chat service
 		chats := v1.Group("/chats")
 		{
@@ -312,6 +319,8 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			admin.Any("/departments/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/subdepartments", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/subdepartments/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/user-groups", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			admin.Any("/user-groups/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/quick-start", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/quick-start/*path", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			admin.Any("/invitations", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
