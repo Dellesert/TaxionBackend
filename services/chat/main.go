@@ -258,6 +258,8 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			messages.POST("/:id/restore", messageHandler.RestoreMessage) // POST /api/v1/messages/:id/restore
 			messages.POST("/:id/pin", messageHandler.PinMessage)         // POST /api/v1/messages/:id/pin
 			messages.POST("/:id/unpin", messageHandler.UnpinMessage)     // POST /api/v1/messages/:id/unpin
+			messages.POST("/:id/reactions", messageHandler.AddReaction)       // POST /api/v1/messages/:id/reactions
+			messages.DELETE("/:id/reactions", messageHandler.RemoveReaction)  // DELETE /api/v1/messages/:id/reactions?emoji=...
 
 			// Message by chat (DEPRECATED - use new endpoints below)
 			messages.GET("/chat/:chatId", messageHandler.GetMessagesByChat)         // GET /api/v1/messages/chat/:chatId (DEPRECATED)
