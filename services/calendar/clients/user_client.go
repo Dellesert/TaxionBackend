@@ -161,6 +161,45 @@ func (c *UserClient) GetAllUsers() ([]*sharedmodels.User, error) {
 	return users, nil
 }
 
+// UserGroupMember represents a user group member from user-service
+type UserGroupMember struct {
+	ID        uint   `json:"id"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Avatar    string `json:"avatar,omitempty"`
+	Position  string `json:"position,omitempty"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
+}
+
+// GetUserGroupMembers retrieves members of a user group by group ID
+func (c *UserClient) GetUserGroupMembers(groupID uint) ([]*UserGroupMember, error) {
+	url := fmt.Sprintf("%s/internal/user-groups/%d/members", c.baseURL, groupID)
+
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to request user group members: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("user service returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var response struct {
+		Group struct {
+			Members []*UserGroupMember `json:"members"`
+		} `json:"group"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return response.Group.Members, nil
+}
+
 // GetUsersByDepartment retrieves all users from a specific department
 func (c *UserClient) GetUsersByDepartment(departmentID uint) ([]*UserInfo, error) {
 	url := fmt.Sprintf("%s/internal/users/department/%d", c.baseURL, departmentID)

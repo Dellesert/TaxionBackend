@@ -32,6 +32,9 @@ type ScheduleUsecase interface {
 	// Daily summary
 	GetDailySummary(date time.Time) (*models.DailySummaryResponse, error)
 
+	// Group members
+	GetScheduleGroupMembers(scheduleID uint) ([]*clients.UserGroupMember, error)
+
 	// Permission check
 	CanViewSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error)
 	CanEditSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error)
@@ -99,6 +102,7 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 		EndDate:       req.EndDate,
 		IsForAllUsers: req.IsForAllUsers,
 		DepartmentID:  req.DepartmentID,
+		UserGroupID:   req.UserGroupID,
 		TemplateID:    req.TemplateID,
 		IsActive:      true,
 	}
@@ -291,6 +295,9 @@ func (u *scheduleUsecase) UpdateSchedule(userID, scheduleID uint, req *models.Up
 	}
 	if req.DepartmentID != nil {
 		schedule.DepartmentID = req.DepartmentID
+	}
+	if req.UserGroupID != nil {
+		schedule.UserGroupID = req.UserGroupID
 	}
 	if req.Color != nil {
 		schedule.Color = *req.Color
@@ -1239,4 +1246,23 @@ func (u *scheduleUsecase) CanEditSchedule(userID, scheduleID uint, userRole shar
 		// Default to creator only for backwards compatibility
 		return schedule.CreatedBy == userID, nil
 	}
+}
+
+// GetScheduleGroupMembers returns the user group members for a schedule's linked group
+func (u *scheduleUsecase) GetScheduleGroupMembers(scheduleID uint) ([]*clients.UserGroupMember, error) {
+	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schedule: %w", err)
+	}
+
+	if schedule.UserGroupID == nil {
+		return []*clients.UserGroupMember{}, nil
+	}
+
+	members, err := u.userClient.GetUserGroupMembers(*schedule.UserGroupID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user group members: %w", err)
+	}
+
+	return members, nil
 }

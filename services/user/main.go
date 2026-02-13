@@ -388,6 +388,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		// Status cleanup endpoints for chat-service
 		internal.POST("/users/reset-online-statuses", userHandler.ResetOnlineStatuses)
 		internal.POST("/users/cleanup-statuses", userHandler.CleanupStatuses)
+		// Get user group members for calendar-service
+		internal.GET("/user-groups/:id/members", userGroupHandler.GetGroup)
 	}
 
 	// API v1 routes

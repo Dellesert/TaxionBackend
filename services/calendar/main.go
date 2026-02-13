@@ -273,6 +273,9 @@ func setupRoutes(
 		protected.PUT("/schedules/:id", scheduleHandler.UpdateSchedule)
 		protected.DELETE("/schedules/:id", scheduleHandler.DeleteSchedule)
 
+		// Schedule group members
+		protected.GET("/schedules/:id/group-members", scheduleHandler.GetScheduleGroupMembers)
+
 		// Schedule entry endpoints
 		protected.GET("/schedules/:id/entries", scheduleHandler.GetScheduleEntries)
 		protected.POST("/schedules/:id/entries", scheduleHandler.CreateScheduleEntry)

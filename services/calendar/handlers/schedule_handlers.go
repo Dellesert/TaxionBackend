@@ -1026,6 +1026,42 @@ func (h *ScheduleHandler) GetDailySummary(c *gin.Context) {
 	})
 }
 
+// GetScheduleGroupMembers handles getting user group members for a schedule
+func (h *ScheduleHandler) GetScheduleGroupMembers(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	scheduleIDStr := c.Param("id")
+	scheduleID, err := strconv.ParseUint(scheduleIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	members, err := h.scheduleUsecase.GetScheduleGroupMembers(uint(scheduleID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to get schedule group members")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get group members",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"members":    members,
+		"count":      len(members),
+		"request_id": requestID,
+	})
+}
+
 // Helper functions from calendar_handlers.go
 func containsNotFoundError(errMsg string) bool {
 	return contains(errMsg, "not found")

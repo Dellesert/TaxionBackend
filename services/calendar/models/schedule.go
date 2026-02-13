@@ -61,6 +61,7 @@ type Schedule struct {
 	EndDate       time.Time          `gorm:"not null;index" json:"end_date" validate:"required"`
 	IsForAllUsers bool               `gorm:"not null;default:false" json:"is_for_all_users"`
 	DepartmentID  *uint              `gorm:"index" json:"department_id,omitempty" validate:"omitempty,min=1"`
+	UserGroupID   *uint              `gorm:"index" json:"user_group_id,omitempty" validate:"omitempty,min=1"`
 	Color         string             `gorm:"size:7;default:'#4CAF50'" json:"color" validate:"omitempty,len=7"`
 	IsActive      bool               `gorm:"not null;default:true;index" json:"is_active"`
 	Mode          ScheduleMode       `gorm:"not null;default:'monthly';size:20" json:"mode" validate:"omitempty,oneof=recurring monthly"`
@@ -329,6 +330,7 @@ type CreateScheduleRequest struct {
 	EndDate        time.Time              `json:"end_date" binding:"required" validate:"required"`
 	IsForAllUsers  bool                   `json:"is_for_all_users"`
 	DepartmentID   *uint                  `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	UserGroupID    *uint                  `json:"user_group_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	Color          string                 `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 	Mode           *ScheduleMode          `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
 	TemplateID     *uint                  `json:"template_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
@@ -355,6 +357,7 @@ type UpdateScheduleRequest struct {
 	EndDate        *time.Time              `json:"end_date,omitempty"`
 	IsForAllUsers  *bool                   `json:"is_for_all_users,omitempty"`
 	DepartmentID   *uint                   `json:"department_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
+	UserGroupID    *uint                   `json:"user_group_id,omitempty"`
 	Color          *string                 `json:"color,omitempty" binding:"omitempty,len=7" validate:"omitempty,len=7"`
 	IsActive       *bool                   `json:"is_active,omitempty"`
 	Mode           *ScheduleMode           `json:"mode,omitempty" binding:"omitempty,oneof=recurring monthly" validate:"omitempty,oneof=recurring monthly"`
@@ -412,6 +415,7 @@ type ScheduleResponse struct {
 	EndDate        time.Time                 `json:"end_date"`
 	IsForAllUsers  bool                      `json:"is_for_all_users"`
 	DepartmentID   *uint                     `json:"department_id,omitempty"`
+	UserGroupID    *uint                     `json:"user_group_id,omitempty"`
 	Color          string                    `json:"color"`
 	IsActive       bool                      `json:"is_active"`
 	Mode           ScheduleMode              `json:"mode"`
@@ -444,6 +448,7 @@ func (s *Schedule) ToResponse() *ScheduleResponse {
 		EndDate:        s.EndDate,
 		IsForAllUsers:  s.IsForAllUsers,
 		DepartmentID:   s.DepartmentID,
+		UserGroupID:    s.UserGroupID,
 		Color:          s.Color,
 		IsActive:       s.IsActive,
 		Mode:           s.Mode,
