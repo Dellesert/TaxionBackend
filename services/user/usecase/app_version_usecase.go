@@ -96,6 +96,7 @@ func (u *appVersionUsecase) CreateAppVersion(
 	appVersion := &models.AppVersion{
 		Platform:     platform,
 		Version:      strings.TrimSpace(req.Version),
+		BuildNumber:  req.BuildNumber,
 		Changelog:    strings.TrimSpace(req.Changelog),
 		IsCritical:   req.IsCritical,
 		IsActive:     true, // New versions are active by default
@@ -250,6 +251,9 @@ func (u *appVersionUsecase) UpdateAppVersion(id uint, req *models.UpdateAppVersi
 	}
 	if req.StoreURL != nil {
 		version.StoreURL = *req.StoreURL
+	}
+	if req.BuildNumber != nil {
+		version.BuildNumber = *req.BuildNumber
 	}
 
 	if err := u.appVersionRepo.Update(version); err != nil {

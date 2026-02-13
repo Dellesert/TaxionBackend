@@ -20,6 +20,7 @@ type AppVersion struct {
 	models.BaseModel
 	Platform      AppPlatform `gorm:"not null;index;size:20" json:"platform" validate:"required,oneof=windows android ios"`
 	Version       string      `gorm:"not null;size:50;index" json:"version" validate:"required,max=50"`
+	BuildNumber   int         `gorm:"default:0" json:"build_number"`
 	Changelog     string      `gorm:"type:text" json:"changelog,omitempty"`
 	IsCritical    bool        `gorm:"default:false;index" json:"is_critical"`    // Force update flag
 	IsActive      bool        `gorm:"default:true;index" json:"is_active"`       // Only one active version per platform
@@ -40,20 +41,22 @@ func (AppVersion) TableName() string {
 
 // CreateAppVersionRequest represents request for creating a new app version
 type CreateAppVersionRequest struct {
-	Platform   string `form:"platform" binding:"required,oneof=windows android ios"`
-	Version    string `form:"version" binding:"required,max=50"`
-	Changelog  string `form:"changelog"`
-	IsCritical bool   `form:"is_critical"`
-	StoreURL   string `form:"store_url"` // Only for iOS
+	Platform    string `form:"platform" binding:"required,oneof=windows android ios"`
+	Version     string `form:"version" binding:"required,max=50"`
+	BuildNumber int    `form:"build_number"`
+	Changelog   string `form:"changelog"`
+	IsCritical  bool   `form:"is_critical"`
+	StoreURL    string `form:"store_url"` // Only for iOS
 	// File is handled separately via multipart form
 }
 
 // UpdateAppVersionRequest represents request for updating app version metadata
 type UpdateAppVersionRequest struct {
-	Changelog  *string `json:"changelog,omitempty"`
-	IsCritical *bool   `json:"is_critical,omitempty"`
-	IsActive   *bool   `json:"is_active,omitempty"`
-	StoreURL   *string `json:"store_url,omitempty"`
+	Changelog   *string `json:"changelog,omitempty"`
+	IsCritical  *bool   `json:"is_critical,omitempty"`
+	IsActive    *bool   `json:"is_active,omitempty"`
+	StoreURL    *string `json:"store_url,omitempty"`
+	BuildNumber *int    `json:"build_number,omitempty"`
 }
 
 // AppVersionResponse represents app version response
@@ -61,6 +64,7 @@ type AppVersionResponse struct {
 	ID            uint        `json:"id"`
 	Platform      AppPlatform `json:"platform"`
 	Version       string      `json:"version"`
+	BuildNumber   int         `json:"build_number"`
 	Changelog     string      `json:"changelog,omitempty"`
 	IsCritical    bool        `json:"is_critical"`
 	IsActive      bool        `json:"is_active"`
@@ -81,6 +85,7 @@ func (av *AppVersion) ToResponse() *AppVersionResponse {
 		ID:            av.ID,
 		Platform:      av.Platform,
 		Version:       av.Version,
+		BuildNumber:   av.BuildNumber,
 		Changelog:     av.Changelog,
 		IsCritical:    av.IsCritical,
 		IsActive:      av.IsActive,
