@@ -1058,6 +1058,15 @@ func (uc *messageUsecase) AddReaction(userID, messageID uint, req *models.AddRea
 		return fmt.Errorf("failed to add reaction: %w", err)
 	}
 
+	// Broadcast reaction to WebSocket clients
+	if uc.wsHub != nil {
+		uc.wsHub.BroadcastToChatExcludeSender(message.ChatID, map[string]interface{}{
+			"message_id": messageID,
+			"emoji":      strings.TrimSpace(req.Emoji),
+			"action":     "added",
+		}, models.WSMessageTypeReaction, userID)
+	}
+
 	return nil
 }
 
@@ -1080,6 +1089,15 @@ func (uc *messageUsecase) RemoveReaction(userID, messageID uint, emoji string) e
 
 	if err := uc.messageRepo.RemoveReaction(messageID, userID, emoji); err != nil {
 		return fmt.Errorf("failed to remove reaction: %w", err)
+	}
+
+	// Broadcast reaction removal to WebSocket clients
+	if uc.wsHub != nil {
+		uc.wsHub.BroadcastToChatExcludeSender(message.ChatID, map[string]interface{}{
+			"message_id": messageID,
+			"emoji":      emoji,
+			"action":     "removed",
+		}, models.WSMessageTypeReaction, userID)
 	}
 
 	return nil
