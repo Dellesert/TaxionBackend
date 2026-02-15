@@ -37,6 +37,7 @@ type File struct {
 	IsPublic         bool      `gorm:"not null;default:false" json:"is_public"`
 	Duration         float64   `json:"duration,omitempty"`               // Video/audio duration in seconds
 	ConversionStatus string    `gorm:"size:20" json:"conversion_status,omitempty"` // Video conversion status: "", "processing", "completed", "failed"
+	ContentHash      string    `gorm:"size:64;index" json:"content_hash,omitempty"` // SHA-256 hash for deduplication
 	URL              string    `gorm:"-" json:"url,omitempty"`          // Computed field for public URL
 	ThumbnailURL     string    `gorm:"-" json:"thumbnail_url,omitempty"` // Computed field for thumbnail URL
 }

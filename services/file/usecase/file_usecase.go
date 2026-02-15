@@ -3,6 +3,7 @@ package usecase
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -548,6 +549,23 @@ func (u *FileUsecase) UploadFile(
 	}
 	defer src.Close()
 
+	// Calculate SHA-256 hash of file content for deduplication
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, src); err != nil {
+		return nil, fmt.Errorf("failed to calculate file hash: %w", err)
+	}
+	contentHash := hex.EncodeToString(hasher.Sum(nil))
+
+	// Check if a file with the same content already exists
+	if existingFile, err := u.repo.GetByContentHash(contentHash); err == nil && existingFile != nil {
+		return existingFile, nil
+	}
+
+	// Reset file reader to beginning for saving
+	if _, err := src.Seek(0, io.SeekStart); err != nil {
+		return nil, fmt.Errorf("failed to reset file reader: %w", err)
+	}
+
 	// Generate unique filename
 	fileName, err := u.generateUniqueFileName(file.Filename)
 	if err != nil {
@@ -677,6 +695,7 @@ func (u *FileUsecase) UploadFile(
 		IsPublic:         isPublic,
 		Duration:         duration,
 		ConversionStatus: conversionStatus,
+		ContentHash:      contentHash,
 	}
 
 	// Save to database

@@ -53,6 +53,15 @@ func (r *FileRepository) GetByThumbnailFileName(thumbnailFileName string) (*mode
 	return &file, nil
 }
 
+// GetByContentHash retrieves a file by its content hash (SHA-256)
+func (r *FileRepository) GetByContentHash(hash string) (*models.File, error) {
+	var file models.File
+	if err := r.db.DB.Where("content_hash = ?", hash).First(&file).Error; err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
 // GetByEntity retrieves files by entity type and ID
 func (r *FileRepository) GetByEntity(entityType string, entityID uint) ([]models.File, error) {
 	var files []models.File
