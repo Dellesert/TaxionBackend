@@ -47,20 +47,25 @@ type MessageAttachmentResponse struct {
 // Otherwise, the stored FileURL will be used
 func (ma *MessageAttachment) ToResponse(baseURL ...string) *MessageAttachmentResponse {
 	fileURL := ma.FileURL
+	thumbnailURL := ma.ThumbnailURL
 
-	// If baseURL is provided, construct the URL dynamically
-	// This ensures the URL is always current (important after domain changes)
+	// If baseURL is provided, construct URLs dynamically
+	// This ensures URLs are always current (important after domain changes)
 	if len(baseURL) > 0 && baseURL[0] != "" {
-		// Extract the actual filename from the stored FileURL
-		// ma.FileURL format: http://host/api/v1/files/public/{actual_filename.ext}
-		// We need to extract {actual_filename.ext} and use it with the new baseURL
+		// Reconstruct FileURL
 		parts := strings.Split(ma.FileURL, "/")
 		if len(parts) > 0 {
 			actualFilename := parts[len(parts)-1]
 			fileURL = baseURL[0] + "/api/v1/files/public/" + actualFilename
-		} else {
-			// Fallback: keep the original FileURL if parsing fails
-			fileURL = ma.FileURL
+		}
+
+		// Reconstruct ThumbnailURL
+		if ma.ThumbnailURL != "" {
+			thumbParts := strings.Split(ma.ThumbnailURL, "/")
+			if len(thumbParts) > 0 {
+				thumbFilename := thumbParts[len(thumbParts)-1]
+				thumbnailURL = baseURL[0] + "/api/v1/files/public/" + thumbFilename
+			}
 		}
 	}
 
@@ -71,7 +76,7 @@ func (ma *MessageAttachment) ToResponse(baseURL ...string) *MessageAttachmentRes
 		FileName:     ma.FileName,
 		FileSize:     ma.FileSize,
 		FileURL:      fileURL,
-		ThumbnailURL: ma.ThumbnailURL,
+		ThumbnailURL: thumbnailURL,
 		MimeType:     ma.MimeType,
 		FileType:     ma.FileType,
 		Duration:     ma.Duration,

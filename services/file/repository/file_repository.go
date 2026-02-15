@@ -44,6 +44,15 @@ func (r *FileRepository) GetByFileName(fileName string) (*models.File, error) {
 	return &file, nil
 }
 
+// GetByThumbnailFileName retrieves a file by its thumbnail filename
+func (r *FileRepository) GetByThumbnailFileName(thumbnailFileName string) (*models.File, error) {
+	var file models.File
+	if err := r.db.DB.Where("thumbnail_path LIKE ?", "%/"+thumbnailFileName).First(&file).Error; err != nil {
+		return nil, fmt.Errorf("failed to get file by thumbnail filename: %w", err)
+	}
+	return &file, nil
+}
+
 // GetByEntity retrieves files by entity type and ID
 func (r *FileRepository) GetByEntity(entityType string, entityID uint) ([]models.File, error) {
 	var files []models.File

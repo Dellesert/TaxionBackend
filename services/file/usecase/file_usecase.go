@@ -697,14 +697,29 @@ func (u *FileUsecase) GetFileByName(fileName string, userID uint) (*models.File,
 	// Check if this is a thumbnail request
 	isThumbnail := strings.Contains(fileName, "_thumb")
 
-	// If it's a thumbnail, get the original filename
-	originalFileName := fileName
 	if isThumbnail {
-		ext := filepath.Ext(fileName)
-		originalFileName = strings.Replace(fileName, "_thumb"+ext, ext, 1)
+		// For thumbnails, search by thumbnail_path directly
+		// This handles cases where thumbnail extension differs from original (e.g., video.mp4 -> video_thumb.jpg)
+		file, err := u.repo.GetByThumbnailFileName(fileName)
+		if err != nil {
+			// Fallback: try the old approach for backwards compatibility
+			ext := filepath.Ext(fileName)
+			originalFileName := strings.Replace(fileName, "_thumb"+ext, ext, 1)
+			file, err = u.repo.GetByFileName(originalFileName)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		// Check access permissions
+		if !file.IsPublic && file.UploadedBy != userID {
+			return nil, errors.New("access denied")
+		}
+
+		return file, nil
 	}
 
-	file, err := u.repo.GetByFileName(originalFileName)
+	file, err := u.repo.GetByFileName(fileName)
 	if err != nil {
 		return nil, err
 	}
@@ -729,14 +744,28 @@ func (u *FileUsecase) GetPublicFileByName(fileName string) (*models.File, error)
 	// Check if this is a thumbnail request
 	isThumbnail := strings.Contains(fileName, "_thumb")
 
-	// If it's a thumbnail, get the original filename
-	originalFileName := fileName
 	if isThumbnail {
-		ext := filepath.Ext(fileName)
-		originalFileName = strings.Replace(fileName, "_thumb"+ext, ext, 1)
+		// For thumbnails, search by thumbnail_path directly
+		// This handles cases where thumbnail extension differs from original (e.g., video.mp4 -> video_thumb.jpg)
+		file, err := u.repo.GetByThumbnailFileName(fileName)
+		if err != nil {
+			// Fallback: try the old approach for backwards compatibility
+			ext := filepath.Ext(fileName)
+			originalFileName := strings.Replace(fileName, "_thumb"+ext, ext, 1)
+			file, err = u.repo.GetByFileName(originalFileName)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if !file.IsPublic {
+			return nil, errors.New("file is not public")
+		}
+
+		return file, nil
 	}
 
-	file, err := u.repo.GetByFileName(originalFileName)
+	file, err := u.repo.GetByFileName(fileName)
 	if err != nil {
 		return nil, err
 	}
