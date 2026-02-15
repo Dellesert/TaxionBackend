@@ -401,7 +401,7 @@ func (u *FileUsecase) compressVideo(videoPath string) (string, error) {
 	var stderr bytes.Buffer
 	cmd := exec.Command("ffmpeg",
 		"-i", videoPath,
-		"-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+		"-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2",
 		"-c:v", "libx264",
 		"-crf", "23",
 		"-preset", "medium",
