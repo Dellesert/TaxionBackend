@@ -403,6 +403,7 @@ func (u *FileUsecase) compressVideo(videoPath string) (string, error) {
 		"-i", videoPath,
 		"-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2",
 		"-c:v", "libx264",
+		"-pix_fmt", "yuv420p",
 		"-crf", "23",
 		"-preset", "medium",
 		"-c:a", "aac",
