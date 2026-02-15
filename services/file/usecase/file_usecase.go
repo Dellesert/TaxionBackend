@@ -95,7 +95,7 @@ func NewFileUsecase(repo *repository.FileRepository, uploadDir, baseURL string) 
 	return &FileUsecase{
 		repo:         repo,
 		uploadDir:    uploadDir,
-		maxFileSize:  200 * 1024 * 1024, // 200 MB default
+		maxFileSize:  1000 * 1024 * 1024, // 1000 MB default
 		allowedTypes: allowedTypes,
 		baseURL:      baseURL,
 	}
@@ -368,6 +368,135 @@ func (u *FileUsecase) getVideoDuration(videoPath string) (float64, error) {
 	return duration, nil
 }
 
+// compressVideo converts a video to H.264 MP4 with max 720p resolution using FFmpeg
+// Returns the path to the compressed file
+func (u *FileUsecase) compressVideo(videoPath string) (string, error) {
+	// Generate output path (always .mp4)
+	ext := filepath.Ext(videoPath)
+	outputPath := strings.TrimSuffix(videoPath, ext) + "_compressed.mp4"
+
+	var stderr bytes.Buffer
+	cmd := exec.Command("ffmpeg",
+		"-i", videoPath,
+		"-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+		"-c:v", "libx264",
+		"-crf", "23",
+		"-preset", "medium",
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		"-y",
+		outputPath,
+	)
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("ffmpeg compression failed: %v, stderr: %s", err, stderr.String())
+	}
+
+	return outputPath, nil
+}
+
+// processVideoAsync handles video compression in the background
+// It compresses the video, updates the thumbnail, and updates the database record
+func (u *FileUsecase) processVideoAsync(fileID uint, originalPath string) {
+	fmt.Printf("processVideoAsync: starting compression for file ID %d, path: %s\n", fileID, originalPath)
+
+	// Compress video
+	compressedPath, err := u.compressVideo(originalPath)
+	if err != nil {
+		fmt.Printf("processVideoAsync: compression failed for file ID %d: %v\n", fileID, err)
+		// Update status to failed
+		if file, getErr := u.repo.GetByID(fileID); getErr == nil {
+			file.ConversionStatus = "failed"
+			u.repo.Update(file)
+		}
+		return
+	}
+
+	// Get compressed file info
+	compressedInfo, err := os.Stat(compressedPath)
+	if err != nil {
+		fmt.Printf("processVideoAsync: failed to stat compressed file for ID %d: %v\n", fileID, err)
+		os.Remove(compressedPath)
+		if file, getErr := u.repo.GetByID(fileID); getErr == nil {
+			file.ConversionStatus = "failed"
+			u.repo.Update(file)
+		}
+		return
+	}
+
+	// Get the file record
+	file, err := u.repo.GetByID(fileID)
+	if err != nil {
+		fmt.Printf("processVideoAsync: failed to get file record for ID %d: %v\n", fileID, err)
+		os.Remove(compressedPath)
+		return
+	}
+
+	// Replace with the final path (rename compressed to final name)
+	finalPath := strings.TrimSuffix(originalPath, filepath.Ext(originalPath)) + ".mp4"
+	if finalPath == originalPath {
+		// Same extension — use a different final name to avoid conflict
+		finalPath = strings.TrimSuffix(originalPath, filepath.Ext(originalPath)) + "_conv.mp4"
+	}
+	if err := os.Rename(compressedPath, finalPath); err != nil {
+		fmt.Printf("processVideoAsync: failed to rename compressed file for ID %d: %v\n", fileID, err)
+		os.Remove(compressedPath)
+		file.ConversionStatus = "failed"
+		u.repo.Update(file)
+		return
+	}
+
+	// Delete original file if it's different from the final path
+	if originalPath != finalPath {
+		os.Remove(originalPath)
+	}
+
+	// Delete old thumbnail and regenerate from compressed video
+	if file.ThumbnailPath != "" {
+		os.Remove(file.ThumbnailPath)
+	}
+	thumbPath, thumbSize, err := u.createVideoThumbnail(finalPath)
+	if err != nil {
+		fmt.Printf("processVideoAsync: failed to regenerate thumbnail for ID %d: %v\n", fileID, err)
+	} else {
+		file.ThumbnailPath = thumbPath
+		file.ThumbnailSize = thumbSize
+	}
+
+	// Re-extract duration from compressed video
+	if dur, err := u.getVideoDuration(finalPath); err == nil {
+		file.Duration = dur
+	}
+
+	// Update database record
+	originalSize := file.FileSize
+	file.FilePath = finalPath
+	file.FileName = filepath.Base(finalPath)
+	file.FileSize = compressedInfo.Size()
+	file.MimeType = "video/mp4"
+	file.OriginalName = strings.TrimSuffix(file.OriginalName, filepath.Ext(file.OriginalName)) + ".mp4"
+	file.ConversionStatus = "completed"
+
+	if err := u.repo.Update(file); err != nil {
+		fmt.Printf("processVideoAsync: failed to update file record for ID %d: %v\n", fileID, err)
+		return
+	}
+
+	fmt.Printf("processVideoAsync: completed for file ID %d, original size: %d, compressed size: %d\n",
+		fileID, originalSize, compressedInfo.Size())
+}
+
+// needsVideoConversion checks if a video file needs conversion
+// Small MP4 files (< 5MB) are skipped
+func (u *FileUsecase) needsVideoConversion(mimeType string, fileSize int64) bool {
+	if mimeType == "video/mp4" && fileSize < 5*1024*1024 {
+		return false
+	}
+	return true
+}
+
 // UploadFile uploads a file and creates a record in the database
 func (u *FileUsecase) UploadFile(
 	file *multipart.FileHeader,
@@ -504,27 +633,39 @@ func (u *FileUsecase) UploadFile(
 		}
 	}
 
+	// Determine if video needs conversion
+	var conversionStatus string
+	if u.isVideo(finalMimeType) && u.needsVideoConversion(finalMimeType, written) {
+		conversionStatus = "processing"
+	}
+
 	// Create file record
 	fileRecord := &models.File{
-		FileName:      fileName,
-		OriginalName:  originalName,
-		FilePath:      filePath,
-		FileSize:      written,
-		ThumbnailPath: thumbnailPath,
-		ThumbnailSize: thumbnailSize,
-		MimeType:      finalMimeType,
-		FileType:      fileType,
-		UploadedBy:    uploadedBy,
-		EntityType:    entityType,
-		EntityID:      entityID,
-		IsPublic:      isPublic,
-		Duration:      duration,
+		FileName:         fileName,
+		OriginalName:     originalName,
+		FilePath:         filePath,
+		FileSize:         written,
+		ThumbnailPath:    thumbnailPath,
+		ThumbnailSize:    thumbnailSize,
+		MimeType:         finalMimeType,
+		FileType:         fileType,
+		UploadedBy:       uploadedBy,
+		EntityType:       entityType,
+		EntityID:         entityID,
+		IsPublic:         isPublic,
+		Duration:         duration,
+		ConversionStatus: conversionStatus,
 	}
 
 	// Save to database
 	if err := u.repo.Create(fileRecord); err != nil {
 		os.Remove(filePath) // Clean up on error
 		return nil, fmt.Errorf("failed to save file record: %w", err)
+	}
+
+	// Start async video conversion if needed
+	if conversionStatus == "processing" {
+		go u.processVideoAsync(fileRecord.ID, filePath)
 	}
 
 	return fileRecord, nil

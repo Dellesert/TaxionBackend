@@ -36,6 +36,7 @@ type File struct {
 	EntityID         *uint     `gorm:"index" json:"entity_id,omitempty"`           // ID of the related entity
 	IsPublic         bool      `gorm:"not null;default:false" json:"is_public"`
 	Duration         float64   `json:"duration,omitempty"`               // Video/audio duration in seconds
+	ConversionStatus string    `gorm:"size:20" json:"conversion_status,omitempty"` // Video conversion status: "", "processing", "completed", "failed"
 	URL              string    `gorm:"-" json:"url,omitempty"`          // Computed field for public URL
 	ThumbnailURL     string    `gorm:"-" json:"thumbnail_url,omitempty"` // Computed field for thumbnail URL
 }
@@ -57,22 +58,23 @@ type UploadFileRequest struct {
 
 // FileResponse represents a file in API responses
 type FileResponse struct {
-	ID           uint      `json:"id"`
-	FileName     string    `json:"file_name"`
-	OriginalName string    `json:"original_name"`
-	FilePath     string    `json:"file_path"`
-	FileSize     int64     `json:"file_size"`
-	ThumbnailURL string    `json:"thumbnail_url,omitempty"`
-	MimeType     string    `json:"mime_type"`
-	FileType     FileType  `json:"file_type"`
-	UploadedBy   uint      `json:"uploaded_by"`
-	EntityType   *string   `json:"entity_type,omitempty"`
-	EntityID     *uint     `json:"entity_id,omitempty"`
-	IsPublic     bool      `json:"is_public"`
-	Duration     float64   `json:"duration,omitempty"`
-	URL          string    `json:"url"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID               uint      `json:"id"`
+	FileName         string    `json:"file_name"`
+	OriginalName     string    `json:"original_name"`
+	FilePath         string    `json:"file_path"`
+	FileSize         int64     `json:"file_size"`
+	ThumbnailURL     string    `json:"thumbnail_url,omitempty"`
+	MimeType         string    `json:"mime_type"`
+	FileType         FileType  `json:"file_type"`
+	UploadedBy       uint      `json:"uploaded_by"`
+	EntityType       *string   `json:"entity_type,omitempty"`
+	EntityID         *uint     `json:"entity_id,omitempty"`
+	IsPublic         bool      `json:"is_public"`
+	Duration         float64   `json:"duration,omitempty"`
+	ConversionStatus string    `json:"conversion_status,omitempty"`
+	URL              string    `json:"url"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // ToResponse converts File model to FileResponse
@@ -94,22 +96,23 @@ func (f *File) ToResponse(baseURL string) *FileResponse {
 	}
 
 	return &FileResponse{
-		ID:           f.ID,
-		FileName:     f.FileName,
-		OriginalName: f.OriginalName,
-		FilePath:     f.FilePath,
-		FileSize:     f.FileSize,
-		ThumbnailURL: thumbnailURL,
-		MimeType:     f.MimeType,
-		FileType:     f.FileType,
-		UploadedBy:   f.UploadedBy,
-		EntityType:   f.EntityType,
-		EntityID:     f.EntityID,
-		IsPublic:     f.IsPublic,
-		Duration:     f.Duration,
-		URL:          url,
-		CreatedAt:    f.CreatedAt,
-		UpdatedAt:    f.UpdatedAt,
+		ID:               f.ID,
+		FileName:         f.FileName,
+		OriginalName:     f.OriginalName,
+		FilePath:         f.FilePath,
+		FileSize:         f.FileSize,
+		ThumbnailURL:     thumbnailURL,
+		MimeType:         f.MimeType,
+		FileType:         f.FileType,
+		UploadedBy:       f.UploadedBy,
+		EntityType:       f.EntityType,
+		EntityID:         f.EntityID,
+		IsPublic:         f.IsPublic,
+		Duration:         f.Duration,
+		ConversionStatus: f.ConversionStatus,
+		URL:              url,
+		CreatedAt:        f.CreatedAt,
+		UpdatedAt:        f.UpdatedAt,
 	}
 }
 
