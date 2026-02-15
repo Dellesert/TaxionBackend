@@ -326,13 +326,13 @@ func (u *FileUsecase) createVideoThumbnail(videoPath string) (string, int64, err
 	ext := filepath.Ext(videoPath)
 	thumbnailPath := strings.TrimSuffix(videoPath, ext) + "_thumb.jpg"
 
-	// Use ffmpeg to extract a frame at 1 second, scaled to fit 400x300
+	// Use ffmpeg to extract a frame at 1 second, scaled to 400px width
 	var stderr bytes.Buffer
 	cmd := exec.Command("ffmpeg",
 		"-i", videoPath,
 		"-ss", "1",           // seek to 1 second
 		"-vframes", "1",      // extract 1 frame
-		"-vf", "scale=400:300:force_original_aspect_ratio=decrease,pad=400:300:(ow-iw)/2:(oh-ih)/2:black",
+		"-vf", "scale=400:-2",
 		"-q:v", "5",          // JPEG quality (2-31, lower is better)
 		"-y",                 // overwrite output
 		thumbnailPath,
@@ -345,7 +345,7 @@ func (u *FileUsecase) createVideoThumbnail(videoPath string) (string, int64, err
 		cmd = exec.Command("ffmpeg",
 			"-i", videoPath,
 			"-vframes", "1",
-			"-vf", "scale=400:300:force_original_aspect_ratio=decrease,pad=400:300:(ow-iw)/2:(oh-ih)/2:black",
+			"-vf", "scale=400:-2",
 			"-q:v", "5",
 			"-y",
 			thumbnailPath,
