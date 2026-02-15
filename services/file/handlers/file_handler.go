@@ -97,7 +97,7 @@ func (h *FileHandler) UploadFile(c *gin.Context) {
 		var apiErr *sharedErrors.APIError
 
 		if strings.Contains(err.Error(), "file too large") || strings.Contains(err.Error(), "too large") {
-			apiErr = sharedErrors.FileTooLargeError(50 * 1024 * 1024) // 50MB default
+			apiErr = sharedErrors.FileTooLargeError(200 * 1024 * 1024) // 200MB default
 		} else if strings.Contains(err.Error(), "invalid file type") || strings.Contains(err.Error(), "unsupported") {
 			apiErr = sharedErrors.FileInvalidTypeError(nil)
 		} else if strings.Contains(err.Error(), "invalid format") {

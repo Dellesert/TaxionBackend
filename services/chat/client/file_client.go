@@ -11,15 +11,16 @@ import (
 
 // FileInfo represents file information from file-service
 type FileInfo struct {
-	ID           uint   `json:"id"`
-	FileName     string `json:"file_name"`
-	OriginalName string `json:"original_name"`
-	FileSize     int64  `json:"file_size"`
-	MimeType     string `json:"mime_type"`
-	FileType     string `json:"file_type"`
-	FileURL      string `json:"url"` // Changed from file_url to url to match FileResponse
-	ThumbnailURL string `json:"thumbnail_url,omitempty"`
-	UploadedBy   uint   `json:"uploaded_by"`
+	ID           uint    `json:"id"`
+	FileName     string  `json:"file_name"`
+	OriginalName string  `json:"original_name"`
+	FileSize     int64   `json:"file_size"`
+	MimeType     string  `json:"mime_type"`
+	FileType     string  `json:"file_type"`
+	FileURL      string  `json:"url"` // Changed from file_url to url to match FileResponse
+	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
+	Duration     float64 `json:"duration,omitempty"`
+	UploadedBy   uint    `json:"uploaded_by"`
 }
 
 // FileClient handles communication with file-service

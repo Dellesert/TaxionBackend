@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -94,7 +95,7 @@ func NewFileUsecase(repo *repository.FileRepository, uploadDir, baseURL string) 
 	return &FileUsecase{
 		repo:         repo,
 		uploadDir:    uploadDir,
-		maxFileSize:  50 * 1024 * 1024, // 50 MB default
+		maxFileSize:  200 * 1024 * 1024, // 200 MB default
 		allowedTypes: allowedTypes,
 		baseURL:      baseURL,
 	}
@@ -276,6 +277,97 @@ func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
 	return jpegPath, nil
 }
 
+// isVideo checks if the file is a video
+func (u *FileUsecase) isVideo(mimeType string) bool {
+	videoFormats := []string{
+		"video/mp4",
+		"video/mpeg",
+		"video/webm",
+		"video/quicktime",
+		"video/x-msvideo",
+		"video/3gpp",
+		"video/x-matroska",
+	}
+	for _, format := range videoFormats {
+		if mimeType == format {
+			return true
+		}
+	}
+	return false
+}
+
+// createVideoThumbnail creates a thumbnail for a video file using ffmpeg
+// Extracts a frame at 1 second (or first frame for very short videos)
+func (u *FileUsecase) createVideoThumbnail(videoPath string) (string, int64, error) {
+	// Generate thumbnail path
+	ext := filepath.Ext(videoPath)
+	thumbnailPath := strings.TrimSuffix(videoPath, ext) + "_thumb.jpg"
+
+	// Use ffmpeg to extract a frame at 1 second, scaled to fit 400x300
+	var stderr bytes.Buffer
+	cmd := exec.Command("ffmpeg",
+		"-i", videoPath,
+		"-ss", "1",           // seek to 1 second
+		"-vframes", "1",      // extract 1 frame
+		"-vf", "scale=400:300:force_original_aspect_ratio=decrease,pad=400:300:(ow-iw)/2:(oh-ih)/2:black",
+		"-q:v", "5",          // JPEG quality (2-31, lower is better)
+		"-y",                 // overwrite output
+		thumbnailPath,
+	)
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		// If seeking to 1s fails (video too short), try extracting the first frame
+		stderr.Reset()
+		cmd = exec.Command("ffmpeg",
+			"-i", videoPath,
+			"-vframes", "1",
+			"-vf", "scale=400:300:force_original_aspect_ratio=decrease,pad=400:300:(ow-iw)/2:(oh-ih)/2:black",
+			"-q:v", "5",
+			"-y",
+			thumbnailPath,
+		)
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			return "", 0, fmt.Errorf("ffmpeg thumbnail extraction failed: %v, stderr: %s", err, stderr.String())
+		}
+	}
+
+	// Get thumbnail file size
+	fileInfo, err := os.Stat(thumbnailPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to get thumbnail file info: %w", err)
+	}
+
+	return thumbnailPath, fileInfo.Size(), nil
+}
+
+// getVideoDuration extracts video duration in seconds using ffprobe
+func (u *FileUsecase) getVideoDuration(videoPath string) (float64, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		videoPath,
+	)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return 0, fmt.Errorf("ffprobe failed: %v, stderr: %s", err, stderr.String())
+	}
+
+	durationStr := strings.TrimSpace(stdout.String())
+	duration, err := strconv.ParseFloat(durationStr, 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse duration '%s': %w", durationStr, err)
+	}
+
+	return duration, nil
+}
+
 // UploadFile uploads a file and creates a record in the database
 func (u *FileUsecase) UploadFile(
 	file *multipart.FileHeader,
@@ -391,6 +483,27 @@ func (u *FileUsecase) UploadFile(
 		}
 	}
 
+	// Create thumbnail and extract duration for videos
+	var duration float64
+	if u.isVideo(finalMimeType) {
+		// Generate video thumbnail
+		thumbPath, thumbSize, err := u.createVideoThumbnail(filePath)
+		if err != nil {
+			fmt.Printf("Warning: failed to create video thumbnail: %v\n", err)
+		} else {
+			thumbnailPath = thumbPath
+			thumbnailSize = thumbSize
+		}
+
+		// Extract video duration
+		dur, err := u.getVideoDuration(filePath)
+		if err != nil {
+			fmt.Printf("Warning: failed to get video duration: %v\n", err)
+		} else {
+			duration = dur
+		}
+	}
+
 	// Create file record
 	fileRecord := &models.File{
 		FileName:      fileName,
@@ -405,6 +518,7 @@ func (u *FileUsecase) UploadFile(
 		EntityType:    entityType,
 		EntityID:      entityID,
 		IsPublic:      isPublic,
+		Duration:      duration,
 	}
 
 	// Save to database

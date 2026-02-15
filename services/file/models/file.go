@@ -35,6 +35,7 @@ type File struct {
 	EntityType       *string   `gorm:"size:50;index" json:"entity_type,omitempty"` // e.g., "user", "message", "task"
 	EntityID         *uint     `gorm:"index" json:"entity_id,omitempty"`           // ID of the related entity
 	IsPublic         bool      `gorm:"not null;default:false" json:"is_public"`
+	Duration         float64   `json:"duration,omitempty"`               // Video/audio duration in seconds
 	URL              string    `gorm:"-" json:"url,omitempty"`          // Computed field for public URL
 	ThumbnailURL     string    `gorm:"-" json:"thumbnail_url,omitempty"` // Computed field for thumbnail URL
 }
@@ -68,6 +69,7 @@ type FileResponse struct {
 	EntityType   *string   `json:"entity_type,omitempty"`
 	EntityID     *uint     `json:"entity_id,omitempty"`
 	IsPublic     bool      `json:"is_public"`
+	Duration     float64   `json:"duration,omitempty"`
 	URL          string    `json:"url"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -104,6 +106,7 @@ func (f *File) ToResponse(baseURL string) *FileResponse {
 		EntityType:   f.EntityType,
 		EntityID:     f.EntityID,
 		IsPublic:     f.IsPublic,
+		Duration:     f.Duration,
 		URL:          url,
 		CreatedAt:    f.CreatedAt,
 		UpdatedAt:    f.UpdatedAt,
