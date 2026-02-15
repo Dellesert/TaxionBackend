@@ -36,6 +36,8 @@ type File struct {
 	EntityID         *uint     `gorm:"index" json:"entity_id,omitempty"`           // ID of the related entity
 	IsPublic         bool      `gorm:"not null;default:false" json:"is_public"`
 	Duration         float64   `json:"duration,omitempty"`               // Video/audio duration in seconds
+	Width            int       `json:"width,omitempty"`                  // Media width in pixels
+	Height           int       `json:"height,omitempty"`                 // Media height in pixels
 	ConversionStatus string    `gorm:"size:20" json:"conversion_status,omitempty"` // Video conversion status: "", "processing", "completed", "failed"
 	ContentHash      string    `gorm:"size:64;index" json:"content_hash,omitempty"` // SHA-256 hash for deduplication
 	URL              string    `gorm:"-" json:"url,omitempty"`          // Computed field for public URL
@@ -72,6 +74,8 @@ type FileResponse struct {
 	EntityID         *uint     `json:"entity_id,omitempty"`
 	IsPublic         bool      `json:"is_public"`
 	Duration         float64   `json:"duration,omitempty"`
+	Width            int       `json:"width,omitempty"`
+	Height           int       `json:"height,omitempty"`
 	ConversionStatus string    `json:"conversion_status,omitempty"`
 	URL              string    `json:"url"`
 	CreatedAt        time.Time `json:"created_at"`
@@ -110,6 +114,8 @@ func (f *File) ToResponse(baseURL string) *FileResponse {
 		EntityID:         f.EntityID,
 		IsPublic:         f.IsPublic,
 		Duration:         f.Duration,
+		Width:            f.Width,
+		Height:           f.Height,
 		ConversionStatus: f.ConversionStatus,
 		URL:              url,
 		CreatedAt:        f.CreatedAt,

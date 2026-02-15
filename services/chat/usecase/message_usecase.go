@@ -245,6 +245,8 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 				MimeType:     fileInfo.MimeType,
 				FileType:     fileInfo.FileType,
 				Duration:     fileInfo.Duration,
+			Width:        fileInfo.Width,
+			Height:       fileInfo.Height,
 			}
 
 			if err := uc.messageRepo.CreateAttachment(attachment); err != nil {

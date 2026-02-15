@@ -20,6 +20,8 @@ type FileInfo struct {
 	FileURL      string  `json:"url"` // Changed from file_url to url to match FileResponse
 	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
 	Duration     float64 `json:"duration,omitempty"`
+	Width        int     `json:"width,omitempty"`
+	Height       int     `json:"height,omitempty"`
 	UploadedBy   uint    `json:"uploaded_by"`
 }
 

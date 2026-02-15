@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"image/gif"
 	"image/jpeg"
 	"image/png"
 	"io"
@@ -391,6 +392,56 @@ func (u *FileUsecase) getVideoDuration(videoPath string) (float64, error) {
 	return duration, nil
 }
 
+// getVideoDimensions extracts video width and height using ffprobe
+func (u *FileUsecase) getVideoDimensions(videoPath string) (int, int, error) {
+	var stdout, stderr bytes.Buffer
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-select_streams", "v:0",
+		"-show_entries", "stream=width,height",
+		"-of", "csv=p=0:s=x",
+		videoPath,
+	)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return 0, 0, fmt.Errorf("ffprobe failed: %v, stderr: %s", err, stderr.String())
+	}
+
+	parts := strings.Split(strings.TrimSpace(stdout.String()), "x")
+	if len(parts) != 2 {
+		return 0, 0, fmt.Errorf("unexpected ffprobe output: %s", stdout.String())
+	}
+
+	width, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse width: %w", err)
+	}
+	height, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to parse height: %w", err)
+	}
+
+	return width, height, nil
+}
+
+// getImageDimensions extracts image width and height by reading the image header
+func (u *FileUsecase) getImageDimensions(imagePath string) (int, int, error) {
+	file, err := os.Open(imagePath)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to open image: %w", err)
+	}
+	defer file.Close()
+
+	config, _, err := image.DecodeConfig(file)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to decode image config: %w", err)
+	}
+
+	return config.Width, config.Height, nil
+}
+
 // compressVideo converts a video to H.264 MP4 with max 720p resolution using FFmpeg
 // Returns the path to the compressed file
 func (u *FileUsecase) compressVideo(videoPath string) (string, error) {
@@ -489,9 +540,13 @@ func (u *FileUsecase) processVideoAsync(fileID uint, originalPath string) {
 		file.ThumbnailSize = thumbSize
 	}
 
-	// Re-extract duration from compressed video
+	// Re-extract duration and dimensions from compressed video
 	if dur, err := u.getVideoDuration(finalPath); err == nil {
 		file.Duration = dur
+	}
+	if w, h, err := u.getVideoDimensions(finalPath); err == nil {
+		file.Width = w
+		file.Height = h
 	}
 
 	// Update database record
@@ -641,6 +696,7 @@ func (u *FileUsecase) UploadFile(
 	// Create thumbnail for images
 	var thumbnailPath string
 	var thumbnailSize int64
+	var mediaWidth, mediaHeight int
 	if u.isImage(finalMimeType) {
 		thumbPath, thumbSize, err := u.createThumbnail(filePath, finalMimeType)
 		if err != nil {
@@ -650,6 +706,14 @@ func (u *FileUsecase) UploadFile(
 		} else {
 			thumbnailPath = thumbPath
 			thumbnailSize = thumbSize
+		}
+
+		// Extract image dimensions
+		if w, h, err := u.getImageDimensions(filePath); err != nil {
+			fmt.Printf("Warning: failed to get image dimensions: %v\n", err)
+		} else {
+			mediaWidth = w
+			mediaHeight = h
 		}
 	}
 
@@ -671,6 +735,14 @@ func (u *FileUsecase) UploadFile(
 			fmt.Printf("Warning: failed to get video duration: %v\n", err)
 		} else {
 			duration = dur
+		}
+
+		// Extract video dimensions
+		if w, h, err := u.getVideoDimensions(filePath); err != nil {
+			fmt.Printf("Warning: failed to get video dimensions: %v\n", err)
+		} else {
+			mediaWidth = w
+			mediaHeight = h
 		}
 	}
 
@@ -728,9 +800,13 @@ func (u *FileUsecase) UploadFile(
 			thumbnailSize = thumbSize
 		}
 
-		// Re-extract duration
+		// Re-extract duration and dimensions from converted video
 		if dur, err := u.getVideoDuration(finalPath); err == nil {
 			duration = dur
+		}
+		if w, h, err := u.getVideoDimensions(finalPath); err == nil {
+			mediaWidth = w
+			mediaHeight = h
 		}
 
 		fmt.Printf("Upload: video conversion completed, size: %d -> %d\n", written, compressedInfo.Size())
@@ -751,6 +827,8 @@ func (u *FileUsecase) UploadFile(
 		EntityID:         entityID,
 		IsPublic:         isPublic,
 		Duration:         duration,
+		Width:            mediaWidth,
+		Height:           mediaHeight,
 		ConversionStatus: conversionStatus,
 		ContentHash:      contentHash,
 	}

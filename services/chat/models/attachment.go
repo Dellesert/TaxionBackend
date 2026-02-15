@@ -18,6 +18,8 @@ type MessageAttachment struct {
 	MimeType     string  `gorm:"not null;size:100" json:"mime_type" validate:"required,max=100"`
 	FileType     string  `gorm:"not null;size:20" json:"file_type" validate:"required,oneof=image video audio document other"`
 	Duration     float64 `json:"duration,omitempty"` // Video/audio duration in seconds
+	Width        int     `json:"width,omitempty"`    // Media width in pixels
+	Height       int     `json:"height,omitempty"`   // Media height in pixels
 
 	// Associations
 	Message *Message `gorm:"foreignKey:MessageID" json:"message,omitempty"`
@@ -40,6 +42,8 @@ type MessageAttachmentResponse struct {
 	MimeType     string  `json:"mime_type"`
 	FileType     string  `json:"file_type"`
 	Duration     float64 `json:"duration,omitempty"`
+	Width        int     `json:"width,omitempty"`
+	Height       int     `json:"height,omitempty"`
 }
 
 // ToResponse converts MessageAttachment to MessageAttachmentResponse
@@ -80,5 +84,7 @@ func (ma *MessageAttachment) ToResponse(baseURL ...string) *MessageAttachmentRes
 		MimeType:     ma.MimeType,
 		FileType:     ma.FileType,
 		Duration:     ma.Duration,
+		Width:        ma.Width,
+		Height:       ma.Height,
 	}
 }
