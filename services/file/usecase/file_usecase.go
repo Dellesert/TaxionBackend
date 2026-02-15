@@ -257,18 +257,40 @@ func (u *FileUsecase) fixImageOrientation(imagePath string) error {
 	return nil
 }
 
-// convertHEICtoJPEG converts a HEIC file to JPEG using heif-convert
+// convertHEICtoJPEG converts a HEIC file to JPEG using ImageMagick with auto-orient
+// This preserves and applies EXIF orientation in a single step, preventing rotation issues
 func (u *FileUsecase) convertHEICtoJPEG(heicPath string) (string, error) {
 	// Generate output path with .jpg extension
 	jpegPath := strings.TrimSuffix(heicPath, filepath.Ext(heicPath)) + ".jpg"
 
-	// Run heif-convert command
-	cmd := exec.Command("heif-convert", "-q", "90", heicPath, jpegPath)
 	var stderr bytes.Buffer
+	var cmd *exec.Cmd
+
+	// Use ImageMagick to convert HEIC to JPEG with auto-orient applied
+	// This reads EXIF orientation, physically rotates pixels, and strips the orientation tag
+	cmd = exec.Command("magick", "convert", heicPath, "-auto-orient", "-quality", "90", jpegPath)
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("heif-convert failed: %v, stderr: %s", err, stderr.String())
+		fmt.Printf("convertHEICtoJPEG: magick convert failed: %v, stderr: %s\n", err, stderr.String())
+
+		// Fallback: try with 'convert' directly (older ImageMagick or Alpine)
+		stderr.Reset()
+		cmd = exec.Command("convert", heicPath, "-auto-orient", "-quality", "90", jpegPath)
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err != nil {
+			fmt.Printf("convertHEICtoJPEG: convert also failed: %v, stderr: %s\n", err, stderr.String())
+
+			// Last fallback: use heif-convert without orientation fix
+			stderr.Reset()
+			cmd = exec.Command("heif-convert", "-q", "90", heicPath, jpegPath)
+			cmd.Stderr = &stderr
+
+			if err := cmd.Run(); err != nil {
+				return "", fmt.Errorf("all HEIC conversion methods failed: %v, stderr: %s", err, stderr.String())
+			}
+		}
 	}
 
 	// Remove original HEIC file
