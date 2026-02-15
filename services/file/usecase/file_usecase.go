@@ -674,10 +674,66 @@ func (u *FileUsecase) UploadFile(
 		}
 	}
 
-	// Determine if video needs conversion
-	var conversionStatus string
+	// Convert video synchronously before creating DB record
+	conversionStatus := ""
 	if u.isVideo(finalMimeType) && u.needsVideoConversion(finalMimeType, written) {
-		conversionStatus = "processing"
+		fmt.Printf("Upload: starting synchronous video conversion for %s\n", filePath)
+
+		compressedPath, err := u.compressVideo(filePath)
+		if err != nil {
+			fmt.Printf("Upload: video conversion failed: %v\n", err)
+			os.Remove(filePath)
+			return nil, fmt.Errorf("video conversion failed: %w", err)
+		}
+
+		// Rename compressed file to final path
+		finalPath := strings.TrimSuffix(filePath, filepath.Ext(filePath)) + ".mp4"
+		if finalPath == filePath {
+			finalPath = strings.TrimSuffix(filePath, filepath.Ext(filePath)) + "_conv.mp4"
+		}
+		if err := os.Rename(compressedPath, finalPath); err != nil {
+			os.Remove(compressedPath)
+			os.Remove(filePath)
+			return nil, fmt.Errorf("failed to rename converted video: %w", err)
+		}
+
+		// Delete original if different
+		if filePath != finalPath {
+			os.Remove(filePath)
+		}
+
+		// Update file info with converted data
+		compressedInfo, err := os.Stat(finalPath)
+		if err != nil {
+			os.Remove(finalPath)
+			return nil, fmt.Errorf("failed to stat converted video: %w", err)
+		}
+
+		filePath = finalPath
+		fileName = filepath.Base(finalPath)
+		originalName = strings.TrimSuffix(originalName, filepath.Ext(originalName)) + ".mp4"
+		written = compressedInfo.Size()
+		finalMimeType = "video/mp4"
+		conversionStatus = "completed"
+
+		// Regenerate thumbnail from converted video
+		if thumbnailPath != "" {
+			os.Remove(thumbnailPath)
+		}
+		thumbPath, thumbSize, err := u.createVideoThumbnail(finalPath)
+		if err != nil {
+			fmt.Printf("Warning: failed to create thumbnail for converted video: %v\n", err)
+		} else {
+			thumbnailPath = thumbPath
+			thumbnailSize = thumbSize
+		}
+
+		// Re-extract duration
+		if dur, err := u.getVideoDuration(finalPath); err == nil {
+			duration = dur
+		}
+
+		fmt.Printf("Upload: video conversion completed, size: %d -> %d\n", written, compressedInfo.Size())
 	}
 
 	// Create file record
@@ -703,11 +759,6 @@ func (u *FileUsecase) UploadFile(
 	if err := u.repo.Create(fileRecord); err != nil {
 		os.Remove(filePath) // Clean up on error
 		return nil, fmt.Errorf("failed to save file record: %w", err)
-	}
-
-	// Start async video conversion if needed
-	if conversionStatus == "processing" {
-		go u.processVideoAsync(fileRecord.ID, filePath)
 	}
 
 	return fileRecord, nil
