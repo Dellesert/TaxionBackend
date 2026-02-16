@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -40,6 +41,28 @@ func resolveThumbnailPath(fileName string, file *models.File) string {
 		}
 	}
 	return ""
+}
+
+// encodeContentDisposition properly encodes filename for Content-Disposition header
+// according to RFC 5987 to support non-ASCII characters (Cyrillic, etc.) on iOS and other platforms.
+// Returns header value in format: attachment; filename="fallback.txt"; filename*=UTF-8''encoded_name.txt
+func encodeContentDisposition(disposition, filename string) string {
+	// URL-encode the filename for filename* parameter (RFC 5987)
+	encodedFilename := url.QueryEscape(filename)
+	encodedFilename = strings.ReplaceAll(encodedFilename, "+", "%20")
+
+	// Create ASCII-safe fallback filename (replace non-ASCII with underscore)
+	fallbackFilename := strings.Map(func(r rune) rune {
+		if r > 127 {
+			return '_'
+		}
+		return r
+	}, filename)
+
+	// Return properly formatted Content-Disposition header
+	// Format: disposition; filename="fallback"; filename*=UTF-8''encoded_name
+	return fmt.Sprintf(`%s; filename="%s"; filename*=UTF-8''%s`,
+		disposition, fallbackFilename, encodedFilename)
 }
 
 // FileHandler handles file-related HTTP requests
@@ -256,7 +279,7 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 
 	// Serve file
 	c.Header("Content-Description", "File Transfer")
-	c.Header("Content-Disposition", "attachment; filename="+file.OriginalName)
+	c.Header("Content-Disposition", encodeContentDisposition("attachment", file.OriginalName))
 	c.Header("Content-Type", file.MimeType)
 	c.File(filePath)
 }
@@ -305,7 +328,7 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 
 	// Serve file
 	c.Header("Content-Description", "File Transfer")
-	c.Header("Content-Disposition", "inline; filename="+file.OriginalName)
+	c.Header("Content-Disposition", encodeContentDisposition("inline", file.OriginalName))
 	c.Header("Content-Type", file.MimeType)
 	c.Header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
 
@@ -570,7 +593,7 @@ func (h *FileHandler) DownloadFileInternal(c *gin.Context) {
 	}
 
 	// Serve the file
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", file.OriginalName))
+	c.Header("Content-Disposition", encodeContentDisposition("attachment", file.OriginalName))
 	c.Header("Content-Type", file.MimeType)
 	c.File(file.FilePath)
 }
