@@ -106,7 +106,8 @@ type MessageReaction struct {
 	Emoji     string `gorm:"not null;size:10" json:"emoji" validate:"required,max=10"`
 
 	// Associations
-	Message *Message `gorm:"foreignKey:MessageID" json:"message,omitempty"`
+	Message *Message     `gorm:"foreignKey:MessageID" json:"message,omitempty"`
+	User    *models.User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // TableName returns the table name for MessageReaction model
@@ -353,11 +354,12 @@ type MessageResponse struct {
 
 // MessageReactionResponse represents message reaction response
 type MessageReactionResponse struct {
-	ID        uint      `json:"id"`
-	MessageID uint      `json:"message_id"`
-	UserID    uint      `json:"user_id"`
-	Emoji     string    `json:"emoji"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        uint         `json:"id"`
+	MessageID uint         `json:"message_id"`
+	UserID    uint         `json:"user_id"`
+	User      *models.User `json:"user,omitempty"`
+	Emoji     string       `json:"emoji"`
+	CreatedAt time.Time    `json:"created_at"`
 }
 
 // MessageReadReceiptResponse represents message read receipt response
@@ -449,6 +451,7 @@ func (m *Message) toResponse(viewerUserID uint, baseURL ...string) *MessageRespo
 				ID:        reaction.ID,
 				MessageID: reaction.MessageID,
 				UserID:    reaction.UserID,
+				User:      reaction.User,
 				Emoji:     reaction.Emoji,
 				CreatedAt: reaction.CreatedAt,
 			}
