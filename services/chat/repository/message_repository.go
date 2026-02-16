@@ -100,6 +100,7 @@ func (r *messageRepository) GetByID(id uint) (*models.Message, error) {
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		First(&message, id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -118,6 +119,7 @@ func (r *messageRepository) GetByChatID(chatID uint, limit, offset int) ([]*mode
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -157,6 +159,7 @@ func (r *messageRepository) GetByChatIDWithPagination(chatID uint, limit, offset
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -207,6 +210,7 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -290,6 +294,7 @@ func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -324,6 +329,7 @@ func (r *messageRepository) GetMessagesAfter(chatID, userID, after uint, limit i
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -359,6 +365,7 @@ func (r *messageRepository) GetMessagesBefore(chatID, userID, before uint, limit
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -386,6 +393,7 @@ func (r *messageRepository) GetMessagesByTimeRange(chatID uint, startTime, endTi
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -605,6 +613,7 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -641,6 +650,7 @@ func (r *messageRepository) GetMessagesByType(chatID uint, messageType models.Me
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -726,6 +736,7 @@ func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offse
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -757,6 +768,7 @@ func (r *messageRepository) GetMessagesSince(chatID uint, since time.Time, limit
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -824,6 +836,7 @@ func (r *messageRepository) GetThreadMessages(replyToID uint, limit, offset int)
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -1129,6 +1142,7 @@ func (r *messageRepository) GetLatestMessages(chatID, userID uint, limit int) ([
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -1169,6 +1183,7 @@ func (r *messageRepository) GetMessagesBeforeID(chatID, userID, beforeID uint, l
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -1212,6 +1227,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -1236,6 +1252,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 			Preload("Sender").
 			Preload("ReplyTo").
 			Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 			Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 				return db.Order("created_at ASC")
 			}).
@@ -1265,6 +1282,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 			Preload("Sender").
 			Preload("ReplyTo").
 			Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 			Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 				return db.Order("created_at ASC")
 			}).
@@ -1314,6 +1332,7 @@ func (r *messageRepository) GetFirstUnreadMessage(chatID, userID uint) (*models.
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -1409,6 +1428,7 @@ func (r *messageRepository) GetMessagesAfterID(chatID, userID, afterID uint, lim
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
@@ -1444,6 +1464,7 @@ func (r *messageRepository) GetPinnedMessages(chatID, userID uint) ([]*models.Me
 		Preload("OriginalSender").
 		Preload("ReplyTo").
 		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
