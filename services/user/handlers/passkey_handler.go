@@ -524,6 +524,15 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 		userAgent = credData.DeviceInfo
 	}
 
+	// DEBUG: Log user agent to see what's being sent
+	logger.WithFields(map[string]interface{}{
+		"request_id":        requestID,
+		"user_id":           user.ID,
+		"user_agent_header": c.GetHeader("User-Agent"),
+		"device_info_body":  credData.DeviceInfo,
+		"final_user_agent":  userAgent,
+	}).Info("Passkey login user agent debug")
+
 	authConfig := middleware.GetAuthConfig()
 	if authConfig != nil && authConfig.SessionStore != nil {
 		ctx := c.Request.Context()

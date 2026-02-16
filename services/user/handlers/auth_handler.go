@@ -195,6 +195,15 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		userAgent = req.DeviceInfo
 	}
 
+	// DEBUG: Log user agent to see what's being sent
+	logger.WithFields(map[string]interface{}{
+		"request_id":        requestID,
+		"email":             req.Email,
+		"user_agent_header": c.GetHeader("User-Agent"),
+		"device_info_body":  req.DeviceInfo,
+		"final_user_agent":  userAgent,
+	}).Info("Login user agent debug")
+
 	// Call usecase to authenticate user
 	loginResponse, err := h.authUsecase.Login(req.Email, req.Password, ipAddress, userAgent)
 	if err != nil {
