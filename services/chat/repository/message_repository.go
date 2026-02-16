@@ -126,6 +126,7 @@ func (r *messageRepository) GetByChatID(chatID uint, limit, offset int) ([]*mode
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -166,6 +167,7 @@ func (r *messageRepository) GetByChatIDWithPagination(chatID uint, limit, offset
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -217,6 +219,7 @@ func (r *messageRepository) GetByChatIDWithPaginationForUser(chatID, userID uint
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -301,6 +304,7 @@ func (r *messageRepository) GetWithReactions(id uint) (*models.Message, error) {
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -336,6 +340,7 @@ func (r *messageRepository) GetMessagesAfter(chatID, userID, after uint, limit i
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -372,6 +377,7 @@ func (r *messageRepository) GetMessagesBefore(chatID, userID, before uint, limit
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -400,6 +406,7 @@ func (r *messageRepository) GetMessagesByTimeRange(chatID uint, startTime, endTi
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -620,6 +627,7 @@ func (r *messageRepository) SearchMessages(chatID, userID uint, query string, li
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -657,6 +665,7 @@ func (r *messageRepository) GetMessagesByType(chatID uint, messageType models.Me
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -743,6 +752,7 @@ func (r *messageRepository) GetMessagesForUser(chatID, userID uint, limit, offse
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -775,6 +785,7 @@ func (r *messageRepository) GetMessagesSince(chatID uint, since time.Time, limit
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -843,6 +854,7 @@ func (r *messageRepository) GetThreadMessages(replyToID uint, limit, offset int)
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -1182,6 +1194,7 @@ func (r *messageRepository) GetLatestMessages(chatID, userID uint, limit int) ([
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -1223,6 +1236,7 @@ func (r *messageRepository) GetMessagesBeforeID(chatID, userID, beforeID uint, l
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -1267,6 +1281,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -1292,6 +1307,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 			Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 				return db.Order("created_at ASC")
 			}).
+			Preload("Reactions.User").
 			Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 				return db.Order("read_at DESC")
 			}).
@@ -1322,6 +1338,7 @@ func (r *messageRepository) GetMessageContext(chatID, userID, targetMessageID ui
 			Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 				return db.Order("created_at ASC")
 			}).
+			Preload("Reactions.User").
 			Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 				return db.Order("read_at DESC")
 			}).
@@ -1372,6 +1389,7 @@ func (r *messageRepository) GetFirstUnreadMessage(chatID, userID uint) (*models.
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -1468,6 +1486,7 @@ func (r *messageRepository) GetMessagesAfterID(chatID, userID, afterID uint, lim
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
@@ -1504,6 +1523,7 @@ func (r *messageRepository) GetPinnedMessages(chatID, userID uint) ([]*models.Me
 		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at ASC")
 		}).
+		Preload("Reactions.User").
 		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
 			return db.Order("read_at DESC")
 		}).
