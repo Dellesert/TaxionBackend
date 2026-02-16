@@ -466,6 +466,75 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 	})
 }
 
+// DeleteAttachment handles deleting a single attachment from a message
+// DELETE /api/v1/messages/:id/attachments/:attachmentId
+func (h *MessageHandler) DeleteAttachment(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	messageID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	attachmentID, err := strconv.ParseUint(c.Param("attachmentId"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid attachment ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.messageUsecase.DeleteAttachment(userID, uint(messageID), uint(attachmentID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":    requestID,
+			"user_id":       userID,
+			"message_id":    messageID,
+			"attachment_id": attachmentID,
+			"error":         err.Error(),
+		}).Error("Failed to delete attachment")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to delete attachment"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Attachment not found"
+		} else if strings.Contains(err.Error(), "insufficient permissions") || strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = err.Error()
+		} else if strings.Contains(err.Error(), "does not belong") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Attachment deleted successfully",
+		"request_id": requestID,
+	})
+}
+
 // BulkDeleteMessages handles deleting multiple messages at once
 func (h *MessageHandler) BulkDeleteMessages(c *gin.Context) {
 	requestID := requestid.Get(c)

@@ -255,6 +255,7 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			messages.GET("/:id", messageHandler.GetMessage)       // GET /api/v1/messages/:id
 			messages.PUT("/:id", messageHandler.UpdateMessage)    // PUT /api/v1/messages/:id
 			messages.DELETE("/:id", messageHandler.DeleteMessage) // DELETE /api/v1/messages/:id
+			messages.DELETE("/:id/attachments/:attachmentId", messageHandler.DeleteAttachment) // DELETE /api/v1/messages/:id/attachments/:attachmentId
 			messages.POST("/:id/restore", messageHandler.RestoreMessage) // POST /api/v1/messages/:id/restore
 			messages.POST("/:id/pin", messageHandler.PinMessage)         // POST /api/v1/messages/:id/pin
 			messages.POST("/:id/unpin", messageHandler.UnpinMessage)     // POST /api/v1/messages/:id/unpin

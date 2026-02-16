@@ -56,6 +56,9 @@ type MessageRepository interface {
 
 	// Attachment operations
 	CreateAttachment(attachment *models.MessageAttachment) error
+	GetAttachmentByID(id uint) (*models.MessageAttachment, error)
+	DeleteAttachment(id uint) error
+	CountAttachmentsByMessageID(messageID uint) (int64, error)
 	GetChatAttachments(chatID uint, limit, offset int) ([]*models.MessageAttachment, int64, error)
 	GetChatLinks(chatID uint, limit, offset int) ([]*models.Message, int64, error)
 
@@ -1052,6 +1055,39 @@ func (r *messageRepository) CreateAttachment(attachment *models.MessageAttachmen
 		return fmt.Errorf("failed to create attachment: %w", err)
 	}
 	return nil
+}
+
+// GetAttachmentByID retrieves a single attachment by ID
+func (r *messageRepository) GetAttachmentByID(id uint) (*models.MessageAttachment, error) {
+	var attachment models.MessageAttachment
+	if err := r.db.First(&attachment, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("attachment not found")
+		}
+		return nil, fmt.Errorf("failed to get attachment: %w", err)
+	}
+	return &attachment, nil
+}
+
+// DeleteAttachment hard-deletes a single attachment by ID
+func (r *messageRepository) DeleteAttachment(id uint) error {
+	result := r.db.Unscoped().Delete(&models.MessageAttachment{}, id)
+	if result.Error != nil {
+		return fmt.Errorf("failed to delete attachment: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("attachment not found")
+	}
+	return nil
+}
+
+// CountAttachmentsByMessageID counts remaining attachments for a message
+func (r *messageRepository) CountAttachmentsByMessageID(messageID uint) (int64, error) {
+	var count int64
+	if err := r.db.Model(&models.MessageAttachment{}).Where("message_id = ?", messageID).Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("failed to count attachments: %w", err)
+	}
+	return count, nil
 }
 
 // GetChatAttachments retrieves all attachments for a chat with pagination

@@ -30,6 +30,7 @@ type MessageUsecase interface {
 	UpdateMessage(userID, messageID uint, req *models.UpdateMessageRequest) (*models.MessageResponse, error)
 	DeleteMessage(userID, messageID uint) error
 	DeleteMessageForUser(userID, messageID uint, deleteFor string) error
+	DeleteAttachment(userID, messageID, attachmentID uint) error
 	BulkDeleteMessages(userID uint, req *models.BulkDeleteMessagesRequest) error
 	BulkForwardMessages(userID uint, req *models.BulkForwardMessagesRequest) (*models.BulkForwardMessagesResponse, error)
 	ClearChatHistory(userID, chatID uint) error
@@ -605,6 +606,83 @@ func (uc *messageUsecase) DeleteMessageForUser(userID, messageID uint, deleteFor
 		}
 	} else {
 		return fmt.Errorf("invalid delete_for value: must be 'everyone' or 'me'")
+	}
+
+	return nil
+}
+
+// DeleteAttachment deletes a single attachment from a message.
+// If it's the last attachment and the message has no text content, the whole message is deleted.
+func (uc *messageUsecase) DeleteAttachment(userID, messageID, attachmentID uint) error {
+	// Get message
+	message, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to get message: %w", err)
+	}
+
+	// Check membership
+	isMember, err := uc.chatRepo.IsMember(message.ChatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Check permissions: sender or admin/owner
+	if message.SenderID != userID {
+		role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+		if err != nil {
+			return fmt.Errorf("failed to get user role: %w", err)
+		}
+		if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+			return fmt.Errorf("insufficient permissions to delete attachment")
+		}
+	}
+
+	// Verify attachment belongs to this message
+	attachment, err := uc.messageRepo.GetAttachmentByID(attachmentID)
+	if err != nil {
+		return fmt.Errorf("attachment not found")
+	}
+	if attachment.MessageID != messageID {
+		return fmt.Errorf("attachment does not belong to this message")
+	}
+
+	// Count remaining attachments
+	count, err := uc.messageRepo.CountAttachmentsByMessageID(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to count attachments: %w", err)
+	}
+
+	if count <= 1 && strings.TrimSpace(message.Content) == "" {
+		// Last attachment and no text content — delete the whole message
+		if err := uc.messageRepo.Delete(messageID); err != nil {
+			return fmt.Errorf("failed to delete message: %w", err)
+		}
+
+		// Broadcast message deletion
+		if uc.wsHub != nil {
+			deletedMessage, err := uc.messageRepo.GetWithReactions(messageID)
+			if err == nil {
+				broadcastResponse := deletedMessage.ToResponse(uc.baseURL)
+				uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageDelete, userID)
+			}
+		}
+	} else {
+		// Remove only this attachment
+		if err := uc.messageRepo.DeleteAttachment(attachmentID); err != nil {
+			return fmt.Errorf("failed to delete attachment: %w", err)
+		}
+
+		// Broadcast updated message so clients refresh
+		if uc.wsHub != nil {
+			updatedMessage, err := uc.messageRepo.GetWithReactions(messageID)
+			if err == nil {
+				broadcastResponse := updatedMessage.ToResponse(uc.baseURL)
+				uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageEdit, userID)
+			}
+		}
 	}
 
 	return nil
