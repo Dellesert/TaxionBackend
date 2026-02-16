@@ -137,6 +137,15 @@ func (h *ScheduleHandler) GetSchedules(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	// Parse query parameters
 	var filter usecase.ScheduleFilterParams
 
@@ -175,7 +184,7 @@ func (h *ScheduleHandler) GetSchedules(c *gin.Context) {
 	filter.Limit = limit
 	filter.Offset = offset
 
-	response, err := h.scheduleUsecase.GetSchedules(userID, filter)
+	response, err := h.scheduleUsecase.GetSchedules(userID, userRole, filter)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,
@@ -208,10 +217,43 @@ func (h *ScheduleHandler) GetSchedule(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check visibility permissions
+	canView, err := h.scheduleUsecase.CanViewSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule visibility")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to check schedule visibility",
+			"request_id": requestID,
+		})
+		return
+	}
+	if !canView {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет доступа к этому графику",
 			"request_id": requestID,
 		})
 		return
@@ -629,10 +671,43 @@ func (h *ScheduleHandler) GetScheduleEntries(c *gin.Context) {
 		return
 	}
 
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check visibility permissions
+	canView, err := h.scheduleUsecase.CanViewSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id":  requestID,
+			"user_id":     userID,
+			"schedule_id": scheduleID,
+			"error":       err.Error(),
+		}).Error("Failed to check schedule visibility")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to check schedule visibility",
+			"request_id": requestID,
+		})
+		return
+	}
+	if !canView {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет доступа к этому графику",
 			"request_id": requestID,
 		})
 		return

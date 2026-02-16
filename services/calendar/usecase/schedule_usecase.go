@@ -17,7 +17,7 @@ type ScheduleUsecase interface {
 	// Schedule management
 	CreateSchedule(userID uint, req *models.CreateScheduleRequest) (*models.ScheduleResponse, error)
 	GetScheduleByID(userID, scheduleID uint) (*models.ScheduleResponse, error)
-	GetSchedules(userID uint, filter ScheduleFilterParams) (*models.ScheduleListResponse, error)
+	GetSchedules(userID uint, userRole sharedmodels.Role, filter ScheduleFilterParams) (*models.ScheduleListResponse, error)
 	UpdateSchedule(userID, scheduleID uint, req *models.UpdateScheduleRequest) (*models.ScheduleResponse, error)
 	DeleteSchedule(userID, scheduleID uint) error
 
@@ -229,7 +229,7 @@ func (u *scheduleUsecase) GetScheduleByID(userID, scheduleID uint) (*models.Sche
 }
 
 // GetSchedules retrieves schedules based on user permissions
-func (u *scheduleUsecase) GetSchedules(userID uint, filter ScheduleFilterParams) (*models.ScheduleListResponse, error) {
+func (u *scheduleUsecase) GetSchedules(userID uint, userRole sharedmodels.Role, filter ScheduleFilterParams) (*models.ScheduleListResponse, error) {
 	// Convert to repository filter
 	repoFilter := repository.ScheduleFilter{
 		Type:         filter.Type,
@@ -241,20 +241,32 @@ func (u *scheduleUsecase) GetSchedules(userID uint, filter ScheduleFilterParams)
 		Offset:       filter.Offset,
 	}
 
-	schedules, total, err := u.scheduleRepo.GetSchedules(repoFilter)
+	schedules, _, err := u.scheduleRepo.GetSchedules(repoFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schedules: %w", err)
 	}
 
+	// Filter schedules by visibility
+	var filteredSchedules []*models.Schedule
+	for _, schedule := range schedules {
+		canView, err := u.canViewScheduleObj(userID, schedule, userRole)
+		if err != nil {
+			continue
+		}
+		if canView {
+			filteredSchedules = append(filteredSchedules, schedule)
+		}
+	}
+
 	// Convert to responses
-	responses := make([]*models.ScheduleResponse, len(schedules))
-	for i, schedule := range schedules {
+	responses := make([]*models.ScheduleResponse, len(filteredSchedules))
+	for i, schedule := range filteredSchedules {
 		responses[i] = schedule.ToResponse()
 	}
 
 	return &models.ScheduleListResponse{
 		Schedules: responses,
-		Total:     total,
+		Total:     int64(len(filteredSchedules)),
 		Limit:     filter.Limit,
 		Offset:    filter.Offset,
 	}, nil
@@ -1149,13 +1161,8 @@ func isManagement(role sharedmodels.Role) bool {
 		role == sharedmodels.RoleDepartmentHead
 }
 
-// CanViewSchedule checks if user can view a schedule
-func (u *scheduleUsecase) CanViewSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error) {
-	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
-	if err != nil {
-		return false, err
-	}
-
+// canViewScheduleObj checks if user can view an already-loaded schedule object
+func (u *scheduleUsecase) canViewScheduleObj(userID uint, schedule *models.Schedule, userRole sharedmodels.Role) (bool, error) {
 	// Super admin and admin can view all
 	if userRole == sharedmodels.RoleSuperAdmin || userRole == sharedmodels.RoleAdmin {
 		return true, nil
@@ -1169,37 +1176,41 @@ func (u *scheduleUsecase) CanViewSchedule(userID, scheduleID uint, userRole shar
 	// Check visibility based on setting
 	switch schedule.Visibility {
 	case models.VisibilityCreatorOnly:
-		// Only creator can view (already checked above)
 		return false, nil
 
 	case models.VisibilityManagement:
-		// DepartmentHead and above can view
 		return isManagement(userRole), nil
 
 	case models.VisibilityParticipants:
-		// Check if user is assigned to this schedule
-		isAssigned, err := u.scheduleRepo.IsUserAssignedToSchedule(scheduleID, userID)
+		isAssigned, err := u.scheduleRepo.IsUserAssignedToSchedule(schedule.ID, userID)
 		if err != nil {
 			return false, err
 		}
 		return isAssigned, nil
 
 	case models.VisibilitySpecificUsers:
-		// Check if user is in the viewers list
-		isViewer, err := u.scheduleRepo.IsUserScheduleViewer(scheduleID, userID)
+		isViewer, err := u.scheduleRepo.IsUserScheduleViewer(schedule.ID, userID)
 		if err != nil {
 			return false, err
 		}
 		return isViewer, nil
 
 	case models.VisibilityAll:
-		// Everyone can view
 		return true, nil
 
 	default:
-		// Default to management visibility for backwards compatibility
 		return isManagement(userRole), nil
 	}
+}
+
+// CanViewSchedule checks if user can view a schedule
+func (u *scheduleUsecase) CanViewSchedule(userID, scheduleID uint, userRole sharedmodels.Role) (bool, error) {
+	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
+	if err != nil {
+		return false, err
+	}
+
+	return u.canViewScheduleObj(userID, schedule, userRole)
 }
 
 // CanEditSchedule checks if user can edit a schedule
