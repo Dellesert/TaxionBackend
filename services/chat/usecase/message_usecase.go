@@ -236,17 +236,20 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		// Create attachment records
 		for _, fileInfo := range fileInfos {
 			attachment := &models.MessageAttachment{
-				MessageID:    message.ID,
-				FileID:       fileInfo.ID,
-				FileName:     fileInfo.OriginalName,
-				FileSize:     fileInfo.FileSize,
-				FileURL:      fileInfo.FileURL,
-				ThumbnailURL: fileInfo.ThumbnailURL,
-				MimeType:     fileInfo.MimeType,
-				FileType:     fileInfo.FileType,
-				Duration:     fileInfo.Duration,
-			Width:        fileInfo.Width,
-			Height:       fileInfo.Height,
+				MessageID:          message.ID,
+				FileID:             fileInfo.ID,
+				FileName:           fileInfo.OriginalName,
+				FileSize:           fileInfo.FileSize,
+				FileURL:            fileInfo.FileURL,
+				ThumbnailURL:       fileInfo.ThumbnailURL,
+				ThumbnailSmallURL:  fileInfo.ThumbnailSmallURL,
+				ThumbnailMediumURL: fileInfo.ThumbnailMediumURL,
+				ThumbnailLargeURL:  fileInfo.ThumbnailLargeURL,
+				MimeType:           fileInfo.MimeType,
+				FileType:           fileInfo.FileType,
+				Duration:           fileInfo.Duration,
+				Width:              fileInfo.Width,
+				Height:             fileInfo.Height,
 			}
 
 			if err := uc.messageRepo.CreateAttachment(attachment); err != nil {

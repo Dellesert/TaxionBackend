@@ -11,18 +11,21 @@ import (
 
 // FileInfo represents file information from file-service
 type FileInfo struct {
-	ID           uint    `json:"id"`
-	FileName     string  `json:"file_name"`
-	OriginalName string  `json:"original_name"`
-	FileSize     int64   `json:"file_size"`
-	MimeType     string  `json:"mime_type"`
-	FileType     string  `json:"file_type"`
-	FileURL      string  `json:"url"` // Changed from file_url to url to match FileResponse
-	ThumbnailURL string  `json:"thumbnail_url,omitempty"`
-	Duration     float64 `json:"duration,omitempty"`
-	Width        int     `json:"width,omitempty"`
-	Height       int     `json:"height,omitempty"`
-	UploadedBy   uint    `json:"uploaded_by"`
+	ID                 uint    `json:"id"`
+	FileName           string  `json:"file_name"`
+	OriginalName       string  `json:"original_name"`
+	FileSize           int64   `json:"file_size"`
+	MimeType           string  `json:"mime_type"`
+	FileType           string  `json:"file_type"`
+	FileURL            string  `json:"url"` // Changed from file_url to url to match FileResponse
+	ThumbnailURL       string  `json:"thumbnail_url,omitempty"`        // Legacy = medium
+	ThumbnailSmallURL  string  `json:"thumbnail_small_url,omitempty"`  // ~100x100
+	ThumbnailMediumURL string  `json:"thumbnail_medium_url,omitempty"` // ~400x300
+	ThumbnailLargeURL  string  `json:"thumbnail_large_url,omitempty"`  // ~800x600
+	Duration           float64 `json:"duration,omitempty"`
+	Width              int     `json:"width,omitempty"`
+	Height             int     `json:"height,omitempty"`
+	UploadedBy         uint    `json:"uploaded_by"`
 }
 
 // FileClient handles communication with file-service

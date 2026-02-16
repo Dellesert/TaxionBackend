@@ -124,17 +124,39 @@ func (u *FileUsecase) isImage(mimeType string) bool {
 	return false
 }
 
-// createThumbnail creates a thumbnail for an image file
-// Target size: 400x300px, maintaining aspect ratio
-func (u *FileUsecase) createThumbnail(originalPath string, mimeType string) (string, int64, error) {
-	// Open original file
+// thumbnailSizeDef defines a thumbnail size configuration
+type thumbnailSizeDef struct {
+	Suffix    string
+	MaxWidth  uint
+	MaxHeight uint
+}
+
+// ThumbnailResult holds paths and sizes for all generated thumbnails
+type ThumbnailResult struct {
+	SmallPath  string
+	SmallSize  int64
+	MediumPath string
+	MediumSize int64
+	LargePath  string
+	LargeSize  int64
+}
+
+var thumbnailSizes = []thumbnailSizeDef{
+	{Suffix: "_thumb_s", MaxWidth: 100, MaxHeight: 100},
+	{Suffix: "_thumb_m", MaxWidth: 400, MaxHeight: 300},
+	{Suffix: "_thumb_l", MaxWidth: 800, MaxHeight: 600},
+}
+
+// createThumbnails creates small, medium, and large thumbnails for an image file.
+// Decodes the image once, then resizes to all 3 sizes. Skips sizes larger than the original.
+func (u *FileUsecase) createThumbnails(originalPath string, mimeType string) (*ThumbnailResult, error) {
+	// Open and decode image once
 	file, err := os.Open(originalPath)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to open image: %w", err)
+		return nil, fmt.Errorf("failed to open image: %w", err)
 	}
 	defer file.Close()
 
-	// Decode image based on MIME type
 	var img image.Image
 	switch mimeType {
 	case "image/jpeg", "image/jpg":
@@ -142,79 +164,193 @@ func (u *FileUsecase) createThumbnail(originalPath string, mimeType string) (str
 	case "image/png":
 		img, err = png.Decode(file)
 	default:
-		// For other formats, try generic decode
 		img, _, err = image.Decode(file)
 	}
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to decode image: %w", err)
+		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	// Calculate thumbnail dimensions (max 400x300, maintain aspect ratio)
-	const maxWidth = 400
-	const maxHeight = 300
 	bounds := img.Bounds()
-	width := bounds.Dx()
-	height := bounds.Dy()
+	origWidth := uint(bounds.Dx())
+	origHeight := uint(bounds.Dy())
+	ext := filepath.Ext(originalPath)
 
-	// Calculate new dimensions maintaining aspect ratio
+	result := &ThumbnailResult{}
+
+	for _, size := range thumbnailSizes {
+		// Skip if original is smaller than this thumbnail size
+		if origWidth <= size.MaxWidth && origHeight <= size.MaxHeight {
+			// Still generate — use original dimensions (no upscale, but keep the file for consistent URLs)
+		}
+
+		// Calculate new dimensions maintaining aspect ratio
+		var newWidth, newHeight uint
+		aspectRatio := float64(origWidth) / float64(origHeight)
+
+		if aspectRatio > float64(size.MaxWidth)/float64(size.MaxHeight) {
+			newWidth = size.MaxWidth
+			newHeight = uint(float64(size.MaxWidth) / aspectRatio)
+		} else {
+			newHeight = size.MaxHeight
+			newWidth = uint(float64(size.MaxHeight) * aspectRatio)
+		}
+
+		// Don't upscale
+		if newWidth > origWidth {
+			newWidth = origWidth
+			newHeight = origHeight
+		}
+
+		// Ensure minimum 1px
+		if newWidth < 1 {
+			newWidth = 1
+		}
+		if newHeight < 1 {
+			newHeight = 1
+		}
+
+		thumbnail := resize.Resize(newWidth, newHeight, img, resize.Lanczos3)
+
+		thumbPath := strings.TrimSuffix(originalPath, ext) + size.Suffix + ext
+
+		out, err := os.Create(thumbPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create thumbnail file: %w", err)
+		}
+
+		switch mimeType {
+		case "image/jpeg", "image/jpg":
+			err = jpeg.Encode(out, thumbnail, &jpeg.Options{Quality: 85})
+		case "image/png":
+			err = png.Encode(out, thumbnail)
+		default:
+			err = jpeg.Encode(out, thumbnail, &jpeg.Options{Quality: 85})
+			if err == nil {
+				out.Close()
+				newThumbPath := strings.TrimSuffix(thumbPath, ext) + ".jpg"
+				os.Rename(thumbPath, newThumbPath)
+				thumbPath = newThumbPath
+			}
+		}
+
+		if err != nil {
+			out.Close()
+			os.Remove(thumbPath)
+			return nil, fmt.Errorf("failed to encode thumbnail: %w", err)
+		}
+		out.Close()
+
+		fileInfo, err := os.Stat(thumbPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get thumbnail file info: %w", err)
+		}
+
+		switch size.Suffix {
+		case "_thumb_s":
+			result.SmallPath = thumbPath
+			result.SmallSize = fileInfo.Size()
+		case "_thumb_m":
+			result.MediumPath = thumbPath
+			result.MediumSize = fileInfo.Size()
+		case "_thumb_l":
+			result.LargePath = thumbPath
+			result.LargeSize = fileInfo.Size()
+		}
+	}
+
+	return result, nil
+}
+
+// createAvatarThumbnail creates only a small thumbnail (100x100) for avatar files.
+func (u *FileUsecase) createAvatarThumbnail(originalPath string, mimeType string) (*ThumbnailResult, error) {
+	file, err := os.Open(originalPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open image: %w", err)
+	}
+	defer file.Close()
+
+	var img image.Image
+	switch mimeType {
+	case "image/jpeg", "image/jpg":
+		img, err = jpeg.Decode(file)
+	case "image/png":
+		img, err = png.Decode(file)
+	default:
+		img, _, err = image.Decode(file)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode image: %w", err)
+	}
+
+	const maxWidth uint = 100
+	const maxHeight uint = 100
+	bounds := img.Bounds()
+	origWidth := uint(bounds.Dx())
+	origHeight := uint(bounds.Dy())
+
 	var newWidth, newHeight uint
-	aspectRatio := float64(width) / float64(height)
+	aspectRatio := float64(origWidth) / float64(origHeight)
 
 	if aspectRatio > float64(maxWidth)/float64(maxHeight) {
-		// Width is the limiting factor
 		newWidth = maxWidth
 		newHeight = uint(float64(maxWidth) / aspectRatio)
 	} else {
-		// Height is the limiting factor
 		newHeight = maxHeight
 		newWidth = uint(float64(maxHeight) * aspectRatio)
 	}
 
-	// Resize image
+	if newWidth > origWidth {
+		newWidth = origWidth
+		newHeight = origHeight
+	}
+	if newWidth < 1 {
+		newWidth = 1
+	}
+	if newHeight < 1 {
+		newHeight = 1
+	}
+
 	thumbnail := resize.Resize(newWidth, newHeight, img, resize.Lanczos3)
 
-	// Generate thumbnail filename
 	ext := filepath.Ext(originalPath)
-	thumbnailPath := strings.TrimSuffix(originalPath, ext) + "_thumb" + ext
+	thumbPath := strings.TrimSuffix(originalPath, ext) + "_thumb_s" + ext
 
-	// Create thumbnail file
-	out, err := os.Create(thumbnailPath)
+	out, err := os.Create(thumbPath)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to create thumbnail file: %w", err)
+		return nil, fmt.Errorf("failed to create thumbnail file: %w", err)
 	}
-	defer out.Close()
 
-	// Encode thumbnail with quality optimization
 	switch mimeType {
 	case "image/jpeg", "image/jpg":
-		// JPEG with quality 85 for good balance between size and quality
 		err = jpeg.Encode(out, thumbnail, &jpeg.Options{Quality: 85})
 	case "image/png":
-		// PNG encoding
 		err = png.Encode(out, thumbnail)
 	default:
-		// Default to JPEG for other formats
 		err = jpeg.Encode(out, thumbnail, &jpeg.Options{Quality: 85})
 		if err == nil {
-			// Update path if we converted to JPEG
-			newThumbnailPath := strings.TrimSuffix(thumbnailPath, ext) + ".jpg"
-			os.Rename(thumbnailPath, newThumbnailPath)
-			thumbnailPath = newThumbnailPath
+			out.Close()
+			newThumbPath := strings.TrimSuffix(thumbPath, ext) + ".jpg"
+			os.Rename(thumbPath, newThumbPath)
+			thumbPath = newThumbPath
 		}
 	}
 
 	if err != nil {
-		os.Remove(thumbnailPath) // Clean up on error
-		return "", 0, fmt.Errorf("failed to encode thumbnail: %w", err)
+		out.Close()
+		os.Remove(thumbPath)
+		return nil, fmt.Errorf("failed to encode thumbnail: %w", err)
 	}
+	out.Close()
 
-	// Get thumbnail file size
-	fileInfo, err := os.Stat(thumbnailPath)
+	fileInfo, err := os.Stat(thumbPath)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to get thumbnail file info: %w", err)
+		return nil, fmt.Errorf("failed to get thumbnail file info: %w", err)
 	}
 
-	return thumbnailPath, fileInfo.Size(), nil
+	return &ThumbnailResult{
+		SmallPath: thumbPath,
+		SmallSize: fileInfo.Size(),
+	}, nil
 }
 
 // fixImageOrientation applies EXIF orientation to an image file using ImageMagick
@@ -319,51 +455,72 @@ func (u *FileUsecase) isVideo(mimeType string) bool {
 	return false
 }
 
-// createVideoThumbnail creates a thumbnail for a video file using ffmpeg
-// Extracts a frame at 1 second (or first frame for very short videos)
-func (u *FileUsecase) createVideoThumbnail(videoPath string) (string, int64, error) {
-	// Generate thumbnail path
+// createVideoThumbnails creates small, medium, and large thumbnails for a video file.
+// Extracts one high-quality frame via FFmpeg, then resizes in Go to all 3 sizes.
+func (u *FileUsecase) createVideoThumbnails(videoPath string) (*ThumbnailResult, error) {
+	// Extract a full-resolution frame to a temp file
 	ext := filepath.Ext(videoPath)
-	thumbnailPath := strings.TrimSuffix(videoPath, ext) + "_thumb.jpg"
+	tempFramePath := strings.TrimSuffix(videoPath, ext) + "_frame_tmp.jpg"
 
-	// Use ffmpeg to extract a frame at 1 second, scaled to 400px width
 	var stderr bytes.Buffer
 	cmd := exec.Command("ffmpeg",
 		"-i", videoPath,
-		"-ss", "1",           // seek to 1 second
-		"-vframes", "1",      // extract 1 frame
-		"-vf", "scale=400:-2",
-		"-q:v", "5",          // JPEG quality (2-31, lower is better)
-		"-y",                 // overwrite output
-		thumbnailPath,
+		"-ss", "1",
+		"-vframes", "1",
+		"-q:v", "2", // high quality source frame
+		"-y",
+		tempFramePath,
 	)
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		// If seeking to 1s fails (video too short), try extracting the first frame
+		// Fallback: try without seeking (very short videos)
 		stderr.Reset()
 		cmd = exec.Command("ffmpeg",
 			"-i", videoPath,
 			"-vframes", "1",
-			"-vf", "scale=400:-2",
-			"-q:v", "5",
+			"-q:v", "2",
 			"-y",
-			thumbnailPath,
+			tempFramePath,
 		)
 		cmd.Stderr = &stderr
 
 		if err := cmd.Run(); err != nil {
-			return "", 0, fmt.Errorf("ffmpeg thumbnail extraction failed: %v, stderr: %s", err, stderr.String())
+			return nil, fmt.Errorf("ffmpeg frame extraction failed: %v, stderr: %s", err, stderr.String())
 		}
 	}
+	defer os.Remove(tempFramePath)
 
-	// Get thumbnail file size
-	fileInfo, err := os.Stat(thumbnailPath)
+	// Now resize the extracted frame to all 3 sizes using Go image processing
+	result, err := u.createThumbnails(tempFramePath, "image/jpeg")
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to get thumbnail file info: %w", err)
+		return nil, fmt.Errorf("failed to create video thumbnails from frame: %w", err)
 	}
 
-	return thumbnailPath, fileInfo.Size(), nil
+	// Rename thumbnail files to use the video's base name instead of the temp frame name
+	videoBase := strings.TrimSuffix(videoPath, ext)
+	renames := []struct {
+		from *string
+		suffix string
+	}{
+		{&result.SmallPath, "_thumb_s.jpg"},
+		{&result.MediumPath, "_thumb_m.jpg"},
+		{&result.LargePath, "_thumb_l.jpg"},
+	}
+
+	for _, r := range renames {
+		if *r.from == "" {
+			continue
+		}
+		newPath := videoBase + r.suffix
+		if err := os.Rename(*r.from, newPath); err != nil {
+			// Clean up any already-renamed files
+			return nil, fmt.Errorf("failed to rename video thumbnail: %w", err)
+		}
+		*r.from = newPath
+	}
+
+	return result, nil
 }
 
 // getVideoDuration extracts video duration in seconds using ffprobe
@@ -527,16 +684,24 @@ func (u *FileUsecase) processVideoAsync(fileID uint, originalPath string) {
 		os.Remove(originalPath)
 	}
 
-	// Delete old thumbnail and regenerate from compressed video
-	if file.ThumbnailPath != "" {
-		os.Remove(file.ThumbnailPath)
+	// Delete old thumbnails and regenerate from compressed video
+	for _, p := range []string{file.ThumbnailPath, file.ThumbnailSmallPath, file.ThumbnailMediumPath, file.ThumbnailLargePath} {
+		if p != "" {
+			os.Remove(p)
+		}
 	}
-	thumbPath, thumbSize, err := u.createVideoThumbnail(finalPath)
-	if err != nil {
-		fmt.Printf("processVideoAsync: failed to regenerate thumbnail for ID %d: %v\n", fileID, err)
+	thumbResult, thumbErr := u.createVideoThumbnails(finalPath)
+	if thumbErr != nil {
+		fmt.Printf("processVideoAsync: failed to regenerate thumbnails for ID %d: %v\n", fileID, thumbErr)
 	} else {
-		file.ThumbnailPath = thumbPath
-		file.ThumbnailSize = thumbSize
+		file.ThumbnailSmallPath = thumbResult.SmallPath
+		file.ThumbnailSmallSize = thumbResult.SmallSize
+		file.ThumbnailMediumPath = thumbResult.MediumPath
+		file.ThumbnailMediumSize = thumbResult.MediumSize
+		file.ThumbnailLargePath = thumbResult.LargePath
+		file.ThumbnailLargeSize = thumbResult.LargeSize
+		file.ThumbnailPath = thumbResult.MediumPath
+		file.ThumbnailSize = thumbResult.MediumSize
 	}
 
 	// Re-extract duration and dimensions from compressed video
@@ -692,19 +857,39 @@ func (u *FileUsecase) UploadFile(
 		}
 	}
 
-	// Create thumbnail for images
+	// Create thumbnails for images
 	var thumbnailPath string
 	var thumbnailSize int64
+	var thumbnailSmallPath, thumbnailMediumPath, thumbnailLargePath string
+	var thumbnailSmallSize, thumbnailMediumSize, thumbnailLargeSize int64
 	var mediaWidth, mediaHeight int
 	if u.isImage(finalMimeType) {
-		thumbPath, thumbSize, err := u.createThumbnail(filePath, finalMimeType)
-		if err != nil {
-			// Log error but don't fail the upload if thumbnail creation fails
-			// Just continue without thumbnail
-			fmt.Printf("Warning: failed to create thumbnail: %v\n", err)
+		if fileType == models.FileTypeAvatar {
+			// Avatar: only small thumbnail (100x100)
+			thumbResult, err := u.createAvatarThumbnail(filePath, finalMimeType)
+			if err != nil {
+				fmt.Printf("Warning: failed to create avatar thumbnail: %v\n", err)
+			} else {
+				thumbnailSmallPath = thumbResult.SmallPath
+				thumbnailSmallSize = thumbResult.SmallSize
+				thumbnailPath = thumbResult.SmallPath
+				thumbnailSize = thumbResult.SmallSize
+			}
 		} else {
-			thumbnailPath = thumbPath
-			thumbnailSize = thumbSize
+			// Regular image: all three sizes
+			thumbResult, err := u.createThumbnails(filePath, finalMimeType)
+			if err != nil {
+				fmt.Printf("Warning: failed to create thumbnails: %v\n", err)
+			} else {
+				thumbnailSmallPath = thumbResult.SmallPath
+				thumbnailSmallSize = thumbResult.SmallSize
+				thumbnailMediumPath = thumbResult.MediumPath
+				thumbnailMediumSize = thumbResult.MediumSize
+				thumbnailLargePath = thumbResult.LargePath
+				thumbnailLargeSize = thumbResult.LargeSize
+				thumbnailPath = thumbResult.MediumPath
+				thumbnailSize = thumbResult.MediumSize
+			}
 		}
 
 		// Extract image dimensions
@@ -716,16 +901,22 @@ func (u *FileUsecase) UploadFile(
 		}
 	}
 
-	// Create thumbnail and extract duration for videos
+	// Create thumbnails and extract duration for videos
 	var duration float64
 	if u.isVideo(finalMimeType) {
-		// Generate video thumbnail
-		thumbPath, thumbSize, err := u.createVideoThumbnail(filePath)
+		// Generate video thumbnails (all 3 sizes)
+		thumbResult, err := u.createVideoThumbnails(filePath)
 		if err != nil {
-			fmt.Printf("Warning: failed to create video thumbnail: %v\n", err)
+			fmt.Printf("Warning: failed to create video thumbnails: %v\n", err)
 		} else {
-			thumbnailPath = thumbPath
-			thumbnailSize = thumbSize
+			thumbnailSmallPath = thumbResult.SmallPath
+			thumbnailSmallSize = thumbResult.SmallSize
+			thumbnailMediumPath = thumbResult.MediumPath
+			thumbnailMediumSize = thumbResult.MediumSize
+			thumbnailLargePath = thumbResult.LargePath
+			thumbnailLargeSize = thumbResult.LargeSize
+			thumbnailPath = thumbResult.MediumPath
+			thumbnailSize = thumbResult.MediumSize
 		}
 
 		// Extract video duration
@@ -787,16 +978,24 @@ func (u *FileUsecase) UploadFile(
 		finalMimeType = "video/mp4"
 		conversionStatus = "completed"
 
-		// Regenerate thumbnail from converted video
-		if thumbnailPath != "" {
-			os.Remove(thumbnailPath)
+		// Regenerate thumbnails from converted video
+		for _, p := range []string{thumbnailPath, thumbnailSmallPath, thumbnailMediumPath, thumbnailLargePath} {
+			if p != "" {
+				os.Remove(p)
+			}
 		}
-		thumbPath, thumbSize, err := u.createVideoThumbnail(finalPath)
+		thumbResult, err := u.createVideoThumbnails(finalPath)
 		if err != nil {
-			fmt.Printf("Warning: failed to create thumbnail for converted video: %v\n", err)
+			fmt.Printf("Warning: failed to create thumbnails for converted video: %v\n", err)
 		} else {
-			thumbnailPath = thumbPath
-			thumbnailSize = thumbSize
+			thumbnailSmallPath = thumbResult.SmallPath
+			thumbnailSmallSize = thumbResult.SmallSize
+			thumbnailMediumPath = thumbResult.MediumPath
+			thumbnailMediumSize = thumbResult.MediumSize
+			thumbnailLargePath = thumbResult.LargePath
+			thumbnailLargeSize = thumbResult.LargeSize
+			thumbnailPath = thumbResult.MediumPath
+			thumbnailSize = thumbResult.MediumSize
 		}
 
 		// Re-extract duration and dimensions from converted video
@@ -813,23 +1012,29 @@ func (u *FileUsecase) UploadFile(
 
 	// Create file record
 	fileRecord := &models.File{
-		FileName:         fileName,
-		OriginalName:     originalName,
-		FilePath:         filePath,
-		FileSize:         written,
-		ThumbnailPath:    thumbnailPath,
-		ThumbnailSize:    thumbnailSize,
-		MimeType:         finalMimeType,
-		FileType:         fileType,
-		UploadedBy:       uploadedBy,
-		EntityType:       entityType,
-		EntityID:         entityID,
-		IsPublic:         isPublic,
-		Duration:         duration,
-		Width:            mediaWidth,
-		Height:           mediaHeight,
-		ConversionStatus: conversionStatus,
-		ContentHash:      contentHash,
+		FileName:            fileName,
+		OriginalName:        originalName,
+		FilePath:            filePath,
+		FileSize:            written,
+		ThumbnailPath:       thumbnailPath,
+		ThumbnailSize:       thumbnailSize,
+		ThumbnailSmallPath:  thumbnailSmallPath,
+		ThumbnailSmallSize:  thumbnailSmallSize,
+		ThumbnailMediumPath: thumbnailMediumPath,
+		ThumbnailMediumSize: thumbnailMediumSize,
+		ThumbnailLargePath:  thumbnailLargePath,
+		ThumbnailLargeSize:  thumbnailLargeSize,
+		MimeType:            finalMimeType,
+		FileType:            fileType,
+		UploadedBy:          uploadedBy,
+		EntityType:          entityType,
+		EntityID:            entityID,
+		IsPublic:            isPublic,
+		Duration:            duration,
+		Width:               mediaWidth,
+		Height:              mediaHeight,
+		ConversionStatus:    conversionStatus,
+		ContentHash:         contentHash,
 	}
 
 	// Save to database
@@ -990,11 +1195,12 @@ func (u *FileUsecase) DeleteFile(id uint, userID uint) error {
 		return fmt.Errorf("failed to delete physical file: %w", err)
 	}
 
-	// Delete thumbnail if exists
-	if file.ThumbnailPath != "" {
-		if err := os.Remove(file.ThumbnailPath); err != nil && !os.IsNotExist(err) {
-			// Log error but continue - don't fail if thumbnail deletion fails
-			fmt.Printf("Warning: failed to delete thumbnail: %v\n", err)
+	// Delete all thumbnails if they exist
+	for _, p := range []string{file.ThumbnailPath, file.ThumbnailSmallPath, file.ThumbnailMediumPath, file.ThumbnailLargePath} {
+		if p != "" {
+			if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+				fmt.Printf("Warning: failed to delete thumbnail %s: %v\n", p, err)
+			}
 		}
 	}
 

@@ -14,6 +14,34 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// resolveThumbnailPath determines the correct thumbnail file path based on the requested filename suffix.
+// Supports _thumb_s (small), _thumb_m (medium), _thumb_l (large), and legacy _thumb (→ medium).
+func resolveThumbnailPath(fileName string, file *models.File) string {
+	switch {
+	case strings.Contains(fileName, "_thumb_s"):
+		if file.ThumbnailSmallPath != "" {
+			return file.ThumbnailSmallPath
+		}
+	case strings.Contains(fileName, "_thumb_l"):
+		if file.ThumbnailLargePath != "" {
+			return file.ThumbnailLargePath
+		}
+	case strings.Contains(fileName, "_thumb_m"):
+		if file.ThumbnailMediumPath != "" {
+			return file.ThumbnailMediumPath
+		}
+	default:
+		// Legacy "_thumb" suffix → serve medium, fallback to legacy path
+		if file.ThumbnailMediumPath != "" {
+			return file.ThumbnailMediumPath
+		}
+		if file.ThumbnailPath != "" {
+			return file.ThumbnailPath
+		}
+	}
+	return ""
+}
+
 // FileHandler handles file-related HTTP requests
 type FileHandler struct {
 	fileUsecase *usecase.FileUsecase
@@ -217,12 +245,13 @@ func (h *FileHandler) DownloadFile(c *gin.Context) {
 
 	// Determine which file to serve (original or thumbnail)
 	filePath := file.FilePath
-	if isThumbnail && file.ThumbnailPath != "" {
-		filePath = file.ThumbnailPath
-	} else if isThumbnail && file.ThumbnailPath == "" {
-		apiErr := sharedErrors.FileThumbnailNotAvailableError().WithRequestID(requestID)
-		c.JSON(apiErr.StatusCode, apiErr)
-		return
+	if isThumbnail {
+		filePath = resolveThumbnailPath(fileName, file)
+		if filePath == "" {
+			apiErr := sharedErrors.FileThumbnailNotAvailableError().WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
+			return
+		}
 	}
 
 	// Serve file
@@ -265,12 +294,13 @@ func (h *FileHandler) DownloadPublicFile(c *gin.Context) {
 
 	// Determine which file to serve (original or thumbnail)
 	filePath := file.FilePath
-	if isThumbnail && file.ThumbnailPath != "" {
-		filePath = file.ThumbnailPath
-	} else if isThumbnail && file.ThumbnailPath == "" {
-		apiErr := sharedErrors.FileThumbnailNotAvailableError().WithRequestID(requestID)
-		c.JSON(apiErr.StatusCode, apiErr)
-		return
+	if isThumbnail {
+		filePath = resolveThumbnailPath(fileName, file)
+		if filePath == "" {
+			apiErr := sharedErrors.FileThumbnailNotAvailableError().WithRequestID(requestID)
+			c.JSON(apiErr.StatusCode, apiErr)
+			return
+		}
 	}
 
 	// Serve file

@@ -44,10 +44,16 @@ func (r *FileRepository) GetByFileName(fileName string) (*models.File, error) {
 	return &file, nil
 }
 
-// GetByThumbnailFileName retrieves a file by its thumbnail filename
+// GetByThumbnailFileName retrieves a file by its thumbnail filename.
+// Searches across all thumbnail path columns (legacy, small, medium, large).
 func (r *FileRepository) GetByThumbnailFileName(thumbnailFileName string) (*models.File, error) {
 	var file models.File
-	if err := r.db.DB.Where("thumbnail_path LIKE ?", "%/"+thumbnailFileName).First(&file).Error; err != nil {
+	pattern := "%/" + thumbnailFileName
+	err := r.db.DB.Where(
+		"thumbnail_path LIKE ? OR thumbnail_small_path LIKE ? OR thumbnail_medium_path LIKE ? OR thumbnail_large_path LIKE ?",
+		pattern, pattern, pattern, pattern,
+	).First(&file).Error
+	if err != nil {
 		return nil, fmt.Errorf("failed to get file by thumbnail filename: %w", err)
 	}
 	return &file, nil
