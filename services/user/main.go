@@ -252,7 +252,7 @@ func main() {
 	settingsHandler := handlers.NewSettingsHandler(settingsUsecase)
 	sessionHandler := handlers.NewSessionHandler(analyticsClient)
 	twoFAHandler := handlers.NewTwoFAHandler(twoFAUsecase, authUsecase, jwtConfig)
-	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase)
+	passkeyHandler := handlers.NewPasskeyHandler(passkeyUsecase, analyticsClient)
 	invitationHandler := handlers.NewInvitationHandler(invitationUsecase)
 	passwordResetHandler := handlers.NewPasswordResetHandler(passwordResetUsecase)
 	smtpHandler := handlers.NewSMTPHandler(smtpUsecase)

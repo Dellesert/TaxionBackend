@@ -8,8 +8,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"tachyon-messenger/services/user/usecase"
+	"tachyon-messenger/shared/analytics"
 	sharedErrors "tachyon-messenger/shared/errors"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
@@ -50,13 +52,15 @@ func decodeBase64Flexible(data string) ([]byte, error) {
 
 // PasskeyHandler handles passkey-related HTTP requests
 type PasskeyHandler struct {
-	passkeyUsecase usecase.PasskeyUsecase
+	passkeyUsecase  usecase.PasskeyUsecase
+	analyticsClient *analytics.Client
 }
 
 // NewPasskeyHandler creates a new passkey handler
-func NewPasskeyHandler(passkeyUsecase usecase.PasskeyUsecase) *PasskeyHandler {
+func NewPasskeyHandler(passkeyUsecase usecase.PasskeyUsecase, analyticsClient *analytics.Client) *PasskeyHandler {
 	return &PasskeyHandler{
-		passkeyUsecase: passkeyUsecase,
+		passkeyUsecase:  passkeyUsecase,
+		analyticsClient: analyticsClient,
 	}
 }
 
@@ -560,6 +564,42 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 			"user_id":    user.ID,
 			"session_id": session.SessionID,
 		}).Info("Passkey authentication successful, session created")
+
+		// Send successful login attempt to analytics
+		userID := uint64(user.ID)
+		h.analyticsClient.SendLoginAttemptAsync(analytics.LoginAttemptRequest{
+			Email:     user.Email,
+			UserID:    &userID,
+			IPAddress: ipAddress,
+			UserAgent: userAgent,
+			Success:   true,
+			AuthMode:  "passkey",
+		})
+
+		// Track device for security monitoring
+		h.analyticsClient.TrackDeviceAsync(userID, userAgent, ipAddress)
+
+		// Send analytics event (legacy)
+		h.analyticsClient.SendEvent(
+			analytics.EventPasskeyUsed,
+			analytics.CategorySecurity,
+			uint64(user.ID),
+			map[string]interface{}{
+				"email":      user.Email,
+				"auth_mode":  "passkey",
+				"ip_address": ipAddress,
+			},
+		)
+
+		// Track session in analytics
+		expiresAt := time.Unix(session.ExpiresAt.Unix(), 0)
+		h.analyticsClient.TrackSessionAsync(
+			uint64(user.ID),
+			session.SessionID,
+			ipAddress,
+			userAgent,
+			expiresAt,
+		)
 
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
