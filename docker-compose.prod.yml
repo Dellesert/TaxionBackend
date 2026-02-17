@@ -554,6 +554,8 @@ services:
     volumes:
       - ./logs/gateway:/app/logs
       - ./.well-known:/app/.well-known:ro
+      # Mount host filesystem for VPS metrics (disk space)
+      - /:/hostfs:ro
     deploy:
       resources:
         limits:

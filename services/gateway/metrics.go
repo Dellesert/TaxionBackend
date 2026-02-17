@@ -310,7 +310,12 @@ func collectVPSMetrics() *VPSMetrics {
 	cpuInfo, err := cpu.Info()
 	if err == nil && len(cpuInfo) > 0 {
 		vps.CPUModelName = cpuInfo[0].ModelName
-		vps.CPUCores = int(cpuInfo[0].Cores)
+	}
+
+	// Get total logical CPU cores (not per-socket cores)
+	cpuCores, err := cpu.Counts(true) // true = logical cores
+	if err == nil {
+		vps.CPUCores = cpuCores
 	}
 
 	// Load average
@@ -338,13 +343,19 @@ func collectVPSMetrics() *VPSMetrics {
 		vps.SwapUsedPercent = swapInfo.UsedPercent
 	}
 
-	// Disk metrics (root partition)
-	diskInfo, err := disk.Usage("/")
-	if err == nil {
-		vps.DiskTotal = diskInfo.Total
-		vps.DiskUsed = diskInfo.Used
-		vps.DiskFree = diskInfo.Free
-		vps.DiskUsedPercent = diskInfo.UsedPercent
+	// Disk metrics - try multiple paths for Docker compatibility
+	// In Docker, "/" shows container's overlay filesystem, not host disk
+	// Try /hostfs first (common mount point for host filesystem), then /host, then /
+	diskPaths := []string{"/hostfs", "/host", "/"}
+	for _, path := range diskPaths {
+		diskInfo, err := disk.Usage(path)
+		if err == nil && diskInfo.Total > 0 {
+			vps.DiskTotal = diskInfo.Total
+			vps.DiskUsed = diskInfo.Used
+			vps.DiskFree = diskInfo.Free
+			vps.DiskUsedPercent = diskInfo.UsedPercent
+			break
+		}
 	}
 
 	// Host info
