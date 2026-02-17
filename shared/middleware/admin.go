@@ -185,19 +185,26 @@ func ValidateAdminRequest() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := requestid.Get(c)
 
-		// Skip validation for GET requests
+		// Skip validation for GET and DELETE requests
 		if c.Request.Method == "GET" || c.Request.Method == "DELETE" {
 			c.Next()
 			return
 		}
 
-		// Check Content-Type for POST/PUT requests
+		// Skip validation for requests without body (Content-Length: 0 or no body)
+		// This allows POST requests that don't need a body (like /activate endpoints)
+		if c.Request.ContentLength == 0 {
+			c.Next()
+			return
+		}
+
+		// Check Content-Type for POST/PUT requests with body
 		contentType := c.GetHeader("Content-Type")
 		// Allow application/json and multipart/form-data (for file uploads)
 		isJSON := contentType == "application/json"
 		isMultipart := len(contentType) >= 19 && contentType[:19] == "multipart/form-data"
 
-		if !isJSON && !isMultipart && c.Request.Method != "DELETE" {
+		if !isJSON && !isMultipart {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":      "Invalid Content-Type",
 				"message":    "Content-Type must be application/json or multipart/form-data for this request",
