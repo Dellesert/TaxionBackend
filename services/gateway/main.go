@@ -38,11 +38,12 @@ func main() {
 	log.Info("Starting Gateway service...")
 
 	// Initialize Redis client for VPS metrics storage
-	redisClient = redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.Host + ":" + cfg.Redis.Port,
-		Password: cfg.Redis.Password,
-		DB:       0,
-	})
+	redisOpts, err := redis.ParseURL(cfg.Redis.URL)
+	if err != nil {
+		log.Warnf("Failed to parse Redis URL for metrics storage: %v", err)
+	} else {
+		redisClient = redis.NewClient(redisOpts)
+	}
 
 	// Test Redis connection
 	ctx := context.Background()
