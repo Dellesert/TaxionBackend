@@ -20,6 +20,7 @@ type UserGroupUsecase interface {
 	AddMembers(groupID uint, req *models.AddRemoveUserGroupMembersRequest, userID uint, userRole string) error
 	RemoveMembers(groupID uint, req *models.AddRemoveUserGroupMembersRequest, userID uint, userRole string) error
 	GetAllGroupsWithMembers() ([]*models.UserGroupWithMembersResponse, error)
+	ReorderGroups(req *models.ReorderUserGroupsRequest) error
 }
 
 // userGroupUsecase implements UserGroupUsecase interface
@@ -67,9 +68,15 @@ func (uc *userGroupUsecase) CreateGroup(req *models.CreateUserGroupRequest, crea
 		return nil, fmt.Errorf("group name must be less than 100 characters")
 	}
 
+	sortOrder := 0
+	if req.SortOrder != nil {
+		sortOrder = *req.SortOrder
+	}
+
 	group := &models.UserGroup{
 		Name:        name,
 		Description: strings.TrimSpace(req.Description),
+		SortOrder:   sortOrder,
 		CreatorID:   creatorID,
 	}
 
@@ -110,6 +117,7 @@ func (uc *userGroupUsecase) GetGroup(id uint) (*models.UserGroupWithMembersRespo
 		ID:          group.ID,
 		Name:        group.Name,
 		Description: group.Description,
+		SortOrder:   group.SortOrder,
 		CreatorID:   group.CreatorID,
 		Members:     memberResponses,
 		MemberCount: len(memberResponses),
@@ -165,6 +173,10 @@ func (uc *userGroupUsecase) UpdateGroup(id uint, req *models.UpdateUserGroupRequ
 
 	if req.Description != nil {
 		group.Description = strings.TrimSpace(*req.Description)
+	}
+
+	if req.SortOrder != nil {
+		group.SortOrder = *req.SortOrder
 	}
 
 	if err := uc.groupRepo.Update(group); err != nil {
@@ -288,6 +300,7 @@ func (uc *userGroupUsecase) GetAllGroupsWithMembers() ([]*models.UserGroupWithMe
 			ID:          group.ID,
 			Name:        group.Name,
 			Description: group.Description,
+			SortOrder:   group.SortOrder,
 			CreatorID:   group.CreatorID,
 			Members:     memberResponses,
 			MemberCount: len(memberResponses),
@@ -297,4 +310,12 @@ func (uc *userGroupUsecase) GetAllGroupsWithMembers() ([]*models.UserGroupWithMe
 	}
 
 	return responses, nil
+}
+
+// ReorderGroups updates the sort_order of groups based on the order of IDs provided
+func (uc *userGroupUsecase) ReorderGroups(req *models.ReorderUserGroupsRequest) error {
+	if req == nil || len(req.GroupIDs) == 0 {
+		return fmt.Errorf("group_ids is required")
+	}
+	return uc.groupRepo.ReorderGroups(req.GroupIDs)
 }

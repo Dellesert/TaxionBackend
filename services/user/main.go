@@ -535,8 +535,9 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		userGroups.Use(middleware.AuthMiddleware())
 		{
 			userGroups.GET("", userGroupHandler.GetGroups)                                                                       // GET /api/v1/user-groups - list all groups (any authenticated user)
-			userGroups.GET("/:id", userGroupHandler.GetGroup)                                                                    // GET /api/v1/user-groups/:id - get group with members
 			userGroups.POST("", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.CreateGroup)                          // POST /api/v1/user-groups - create group (dept head+)
+			userGroups.PUT("/reorder", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.ReorderGroups)                 // PUT /api/v1/user-groups/reorder - reorder groups (dept head+)
+			userGroups.GET("/:id", userGroupHandler.GetGroup)                                                                    // GET /api/v1/user-groups/:id - get group with members
 			userGroups.PUT("/:id", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.UpdateGroup)                       // PUT /api/v1/user-groups/:id - update group (dept head+)
 			userGroups.DELETE("/:id", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.DeleteGroup)                    // DELETE /api/v1/user-groups/:id - delete group (dept head+)
 			userGroups.PUT("/:id/members", middleware.RequireDepartmentHeadOrAbove(), userGroupHandler.UpdateMembers)             // PUT /api/v1/user-groups/:id/members - replace members (dept head+)
@@ -595,6 +596,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			{
 				v1AdminUserGroups.GET("", middleware.LogAdminAction("list_user_groups"), userGroupHandler.GetGroups)
 				v1AdminUserGroups.POST("", middleware.LogAdminAction("create_user_group"), userGroupHandler.CreateGroup)
+				v1AdminUserGroups.PUT("/reorder", middleware.LogAdminAction("reorder_user_groups"), userGroupHandler.ReorderGroups)
 				v1AdminUserGroups.GET("/:id", middleware.LogAdminAction("get_user_group"), userGroupHandler.GetGroup)
 				v1AdminUserGroups.PUT("/:id", middleware.LogAdminAction("update_user_group"), userGroupHandler.UpdateGroup)
 				v1AdminUserGroups.DELETE("/:id", middleware.LogAdminAction("delete_user_group"), userGroupHandler.DeleteGroup)

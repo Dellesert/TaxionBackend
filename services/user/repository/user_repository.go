@@ -761,6 +761,7 @@ type UserGroupRepository interface {
 	GetGroupsForUser(userID uint) ([]*models.UserGroup, error)
 	GetAllWithMemberCount() ([]*models.UserGroup, []int64, error)
 	CountMembers(groupID uint) (int64, error)
+	ReorderGroups(groupIDs []uint) error
 }
 
 // userGroupRepository implements UserGroupRepository interface
@@ -797,7 +798,7 @@ func (r *userGroupRepository) GetByID(id uint) (*models.UserGroup, error) {
 // GetAll retrieves all user groups
 func (r *userGroupRepository) GetAll() ([]*models.UserGroup, error) {
 	var groups []*models.UserGroup
-	err := r.db.Order("name ASC").Find(&groups).Error
+	err := r.db.Order("sort_order ASC, name ASC").Find(&groups).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user groups: %w", err)
 	}
@@ -807,7 +808,7 @@ func (r *userGroupRepository) GetAll() ([]*models.UserGroup, error) {
 // GetByCreatorID retrieves all user groups created by a specific user
 func (r *userGroupRepository) GetByCreatorID(creatorID uint) ([]*models.UserGroup, error) {
 	var groups []*models.UserGroup
-	err := r.db.Where("creator_id = ?", creatorID).Order("name ASC").Find(&groups).Error
+	err := r.db.Where("creator_id = ?", creatorID).Order("sort_order ASC, name ASC").Find(&groups).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user groups by creator: %w", err)
 	}
@@ -921,7 +922,7 @@ func (r *userGroupRepository) GetGroupsForUser(userID uint) ([]*models.UserGroup
 	err := r.db.
 		Joins("JOIN user_group_members ON user_group_members.group_id = user_groups.id").
 		Where("user_group_members.user_id = ? AND user_group_members.deleted_at IS NULL", userID).
-		Order("user_groups.name ASC").
+		Order("user_groups.sort_order ASC, user_groups.name ASC").
 		Find(&groups).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to get groups for user: %w", err)
@@ -932,7 +933,7 @@ func (r *userGroupRepository) GetGroupsForUser(userID uint) ([]*models.UserGroup
 // GetAllWithMemberCount retrieves all groups with their member counts
 func (r *userGroupRepository) GetAllWithMemberCount() ([]*models.UserGroup, []int64, error) {
 	var groups []*models.UserGroup
-	err := r.db.Order("name ASC").Find(&groups).Error
+	err := r.db.Order("sort_order ASC, name ASC").Find(&groups).Error
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get user groups: %w", err)
 	}
@@ -958,4 +959,16 @@ func (r *userGroupRepository) CountMembers(groupID uint) (int64, error) {
 		return 0, fmt.Errorf("failed to count group members: %w", err)
 	}
 	return count, nil
+}
+
+// ReorderGroups updates the sort_order of groups based on the order of IDs provided
+func (r *userGroupRepository) ReorderGroups(groupIDs []uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for i, id := range groupIDs {
+			if err := tx.Model(&models.UserGroup{}).Where("id = ?", id).Update("sort_order", i).Error; err != nil {
+				return fmt.Errorf("failed to update sort_order for group %d: %w", id, err)
+			}
+		}
+		return nil
+	})
 }

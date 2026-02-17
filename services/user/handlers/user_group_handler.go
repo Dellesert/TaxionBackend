@@ -403,6 +403,45 @@ func (h *UserGroupHandler) AddMembers(c *gin.Context) {
 	})
 }
 
+// ReorderGroups handles reordering user groups
+func (h *UserGroupHandler) ReorderGroups(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	var req models.ReorderUserGroupsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err := h.userGroupUsecase.ReorderGroups(&req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to reorder user groups")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to reorder user groups",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":   requestID,
+		"groups_count": len(req.GroupIDs),
+	}).Info("User groups reordered successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "User groups reordered successfully",
+		"request_id": requestID,
+	})
+}
+
 // RemoveMembers handles removing members from a user group
 func (h *UserGroupHandler) RemoveMembers(c *gin.Context) {
 	requestID := requestid.Get(c)

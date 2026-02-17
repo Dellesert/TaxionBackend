@@ -445,6 +445,7 @@ type UserGroup struct {
 	models.BaseModel
 	Name        string            `gorm:"not null;size:100" json:"name" validate:"required,min=2,max=100"`
 	Description string            `gorm:"size:500" json:"description,omitempty" validate:"omitempty,max=500"`
+	SortOrder   int               `gorm:"not null;default:0" json:"sort_order"`
 	CreatorID   uint              `gorm:"not null;index" json:"creator_id"`
 	Creator     *User             `gorm:"foreignKey:CreatorID" json:"creator,omitempty"`
 	Members     []UserGroupMember `gorm:"foreignKey:GroupID" json:"members,omitempty"`
@@ -469,6 +470,7 @@ func (UserGroupMember) TableName() string { return "user_group_members" }
 type CreateUserGroupRequest struct {
 	Name        string `json:"name" binding:"required,min=2,max=100" validate:"required,min=2,max=100"`
 	Description string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	SortOrder   *int   `json:"sort_order,omitempty"`
 	UserIDs     []uint `json:"user_ids,omitempty"`
 }
 
@@ -476,6 +478,7 @@ type CreateUserGroupRequest struct {
 type UpdateUserGroupRequest struct {
 	Name        *string `json:"name,omitempty" binding:"omitempty,min=2,max=100" validate:"omitempty,min=2,max=100"`
 	Description *string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	SortOrder   *int    `json:"sort_order,omitempty"`
 }
 
 // UpdateUserGroupMembersRequest represents request for setting group members
@@ -488,11 +491,17 @@ type AddRemoveUserGroupMembersRequest struct {
 	UserIDs []uint `json:"user_ids" binding:"required" validate:"required"`
 }
 
+// ReorderUserGroupsRequest represents request for reordering user groups
+type ReorderUserGroupsRequest struct {
+	GroupIDs []uint `json:"group_ids" binding:"required" validate:"required"`
+}
+
 // UserGroupResponse represents a user group response
 type UserGroupResponse struct {
 	ID          uint      `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
+	SortOrder   int       `json:"sort_order"`
 	CreatorID   uint      `json:"creator_id"`
 	MemberCount int       `json:"member_count"`
 	CreatedAt   time.Time `json:"created_at"`
@@ -504,6 +513,7 @@ type UserGroupWithMembersResponse struct {
 	ID          uint            `json:"id"`
 	Name        string          `json:"name"`
 	Description string          `json:"description,omitempty"`
+	SortOrder   int             `json:"sort_order"`
 	CreatorID   uint            `json:"creator_id"`
 	Members     []*UserResponse `json:"members"`
 	MemberCount int             `json:"member_count"`
@@ -517,6 +527,7 @@ func (g *UserGroup) ToResponse() *UserGroupResponse {
 		ID:          g.ID,
 		Name:        g.Name,
 		Description: g.Description,
+		SortOrder:   g.SortOrder,
 		CreatorID:   g.CreatorID,
 		MemberCount: len(g.Members),
 		CreatedAt:   g.CreatedAt,
@@ -530,6 +541,7 @@ func (g *UserGroup) ToResponseWithMemberCount(count int) *UserGroupResponse {
 		ID:          g.ID,
 		Name:        g.Name,
 		Description: g.Description,
+		SortOrder:   g.SortOrder,
 		CreatorID:   g.CreatorID,
 		MemberCount: count,
 		CreatedAt:   g.CreatedAt,
