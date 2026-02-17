@@ -70,6 +70,16 @@ func (h *SearchHandler) Search(c *gin.Context) {
 		}
 	}
 
+	logger.WithFields(map[string]interface{}{
+		"user_id":   userID,
+		"user_role": userRole,
+		"query":     req.Query,
+		"types":     req.Types,
+		"category":  req.Category,
+		"limit":     req.Limit,
+		"offset":    req.Offset,
+	}).Info("[Search] Incoming search request")
+
 	result, err := h.searchUsecase.Search(req.Query, userID, userRole, &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -85,6 +95,13 @@ func (h *SearchHandler) Search(c *gin.Context) {
 		})
 		return
 	}
+
+	logger.WithFields(map[string]interface{}{
+		"user_id":      userID,
+		"query":        req.Query,
+		"total_count":  result.TotalCount,
+		"categories":   len(result.Categories),
+	}).Info("[Search] Search completed successfully")
 
 	c.JSON(http.StatusOK, result)
 }

@@ -57,8 +57,15 @@ func (uc *searchUsecase) Search(query string, userID uint, userRole string, req 
 	// Try cache first
 	cacheKey := uc.buildCacheKey(userID, query, req)
 	if cached := uc.getFromCache(cacheKey); cached != nil {
+		logger.WithFields(map[string]interface{}{
+			"query":       query,
+			"user_id":     userID,
+			"cache_key":   cacheKey,
+			"total_count": cached.TotalCount,
+		}).Info("[Search] Cache HIT - returning cached result")
 		return cached, nil
 	}
+	logger.Infof("[Search] Cache MISS for key: %s", cacheKey)
 
 	var response *models.SearchResponse
 
@@ -97,6 +104,12 @@ func (uc *searchUsecase) Search(query string, userID uint, userRole string, req 
 		if err != nil {
 			return nil, fmt.Errorf("failed to count by categories: %w", err)
 		}
+
+		logger.WithFields(map[string]interface{}{
+			"query":           query,
+			"user_id":         userID,
+			"category_counts": categoryCounts,
+		}).Info("[Search] Category counts retrieved")
 
 		// Fetch first N results per category
 		var categories []models.CategoryResults

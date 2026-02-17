@@ -6,6 +6,7 @@ import (
 
 	"tachyon-messenger/services/search/models"
 	"tachyon-messenger/shared/database"
+	"tachyon-messenger/shared/logger"
 )
 
 // SearchRepository defines the interface for search data access
@@ -101,6 +102,45 @@ func (r *searchRepository) DeleteDocument(entityType models.EntityType, entityID
 
 // Search performs a full-text search with permission filtering
 func (r *searchRepository) Search(query string, userID uint, userRole string, entityType string, limit, offset int) ([]models.SearchResult, int64, error) {
+	logger.WithFields(map[string]interface{}{
+		"query":       query,
+		"user_id":     userID,
+		"user_role":   userRole,
+		"entity_type": entityType,
+		"limit":       limit,
+		"offset":      offset,
+	}).Info("[Search] Starting search query")
+
+	// Diagnostic: count total documents in table
+	var totalDocs int64
+	r.db.Raw("SELECT COUNT(*) FROM search_documents").Scan(&totalDocs)
+	logger.Infof("[Search] Total documents in search_documents table: %d", totalDocs)
+
+	// Check if search_vector is populated
+	var emptyVectorCount int64
+	r.db.Raw("SELECT COUNT(*) FROM search_documents WHERE search_vector = ''").Scan(&emptyVectorCount)
+	logger.Infof("[Search] Documents with empty search_vector: %d", emptyVectorCount)
+
+	// Debug: check tsquery result
+	var tsqueryDebug string
+	r.db.Raw("SELECT plainto_tsquery('russian', @query)::text", map[string]interface{}{"query": query}).Scan(&tsqueryDebug)
+	logger.Infof("[Search] plainto_tsquery('russian', '%s') = %s", query, tsqueryDebug)
+
+	// Debug: check how many docs match without permission filter
+	var matchWithoutPerms int64
+	r.db.Raw(`
+		SELECT COUNT(*) FROM search_documents
+		WHERE search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
+	`, map[string]interface{}{"query": query}).Scan(&matchWithoutPerms)
+	logger.Infof("[Search] FTS matches (no permission filter): %d", matchWithoutPerms)
+
+	var similarityMatches int64
+	r.db.Raw(`
+		SELECT COUNT(*) FROM search_documents
+		WHERE similarity(title, @query) > 0.1 OR similarity(content, @query) > 0.05
+	`, map[string]interface{}{"query": query}).Scan(&similarityMatches)
+	logger.Infof("[Search] Similarity matches (no permission filter): %d", similarityMatches)
+
 	// Build permission clause
 	permissionClause := buildPermissionClause(userRole)
 
@@ -136,7 +176,10 @@ func (r *searchRepository) Search(query string, userID uint, userRole string, en
 		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
 	}
 
+	logger.Infof("[Search] Matches with permission filter (userID=%d, role=%s): %d", userID, userRole, total)
+
 	if total == 0 {
+		logger.Warn("[Search] No results found - check: 1) are documents indexed? 2) is search_vector populated? 3) do permissions allow access?")
 		return []models.SearchResult{}, 0, nil
 	}
 
@@ -234,6 +277,13 @@ func (r *searchRepository) CountByCategories(query string, userID uint, userRole
 	for _, c := range counts {
 		result[c.EntityType] = c.Cnt
 	}
+
+	logger.WithFields(map[string]interface{}{
+		"query":            query,
+		"user_id":          userID,
+		"category_counts":  result,
+		"total_categories": len(result),
+	}).Info("[Search] CountByCategories result")
 
 	return result, nil
 }
