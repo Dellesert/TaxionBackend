@@ -444,6 +444,10 @@ func (r *messageRepository) AddReaction(reaction *models.MessageReaction) error 
 	if err := r.db.Create(reaction).Error; err != nil {
 		return fmt.Errorf("failed to add reaction: %w", err)
 	}
+
+	// Preload user data for WebSocket broadcast
+	r.db.Preload("User").First(reaction, reaction.ID)
+
 	return nil
 }
 

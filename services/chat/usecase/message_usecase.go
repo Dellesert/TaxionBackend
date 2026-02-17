@@ -1144,11 +1144,15 @@ func (uc *messageUsecase) AddReaction(userID, messageID uint, req *models.AddRea
 
 	// Broadcast reaction to WebSocket clients
 	if uc.wsHub != nil {
-		uc.wsHub.BroadcastToChatExcludeSender(message.ChatID, map[string]interface{}{
+		data := map[string]interface{}{
 			"message_id": messageID,
 			"emoji":      strings.TrimSpace(req.Emoji),
 			"action":     "added",
-		}, models.WSMessageTypeReaction, userID)
+		}
+		if reaction.User != nil {
+			data["user"] = reaction.User
+		}
+		uc.wsHub.BroadcastToChatExcludeSender(message.ChatID, data, models.WSMessageTypeReaction, userID)
 	}
 
 	return nil
