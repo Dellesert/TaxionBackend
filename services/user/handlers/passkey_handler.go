@@ -121,12 +121,18 @@ func getOrigin(c *gin.Context) string {
 		return "https://" + host
 	}
 
-	// For iOS native apps without Origin header, use default production domain
-	// iOS apps use the domain from Associated Domains (webcredentials)
+	// For native apps without Origin header, use default production domain
 	userAgent := c.GetHeader("User-Agent")
+
+	// iOS apps use the domain from Associated Domains (webcredentials)
 	if isIOSNativeApp(userAgent) {
-		// Return the main iOS app domain
 		logger.WithField("user_agent", userAgent).Info("iOS native app detected, using default origin")
+		return "https://taxion.fusioninsight.cloud"
+	}
+
+	// Android apps using Credential Manager need the same domain as assetlinks.json
+	if isAndroidNativeApp(userAgent) {
+		logger.WithField("user_agent", userAgent).Info("Android native app detected, using default origin")
 		return "https://taxion.fusioninsight.cloud"
 	}
 
@@ -153,6 +159,14 @@ func isIOSNativeApp(userAgent string) bool {
 	return strings.Contains(userAgent, "Darwin") ||
 		strings.Contains(userAgent, "CFNetwork") ||
 		strings.Contains(userAgent, "Tahion") // Your app name
+}
+
+// isAndroidNativeApp checks if the User-Agent indicates an Android native app
+func isAndroidNativeApp(userAgent string) bool {
+	// Android native apps using Credential Manager typically have User-Agent with "Dalvik"
+	// or custom app User-Agent containing "Android"
+	return strings.Contains(userAgent, "Dalvik") ||
+		(strings.Contains(userAgent, "Android") && !strings.Contains(userAgent, "Chrome"))
 }
 
 // findHostEnd finds the end of host in a URL (first / or end of string)
