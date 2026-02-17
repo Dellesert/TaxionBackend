@@ -64,15 +64,22 @@ CREATE INDEX IF NOT EXISTS idx_search_documents_is_public
 CREATE INDEX IF NOT EXISTS idx_search_documents_type_updated
     ON search_documents (entity_type, updated_at DESC);
 
+-- Helper: lowercase Cyrillic + Latin (lc_ctype=C does not handle Cyrillic)
+CREATE OR REPLACE FUNCTION cyrillic_lower(t text) RETURNS text AS $$
+    SELECT translate(lower(t),
+        'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ',
+        'абвгдеёжзийклмнопрстуфхцчшщъыьэюя')
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
 -- Function to auto-update search_vector on INSERT/UPDATE
 CREATE OR REPLACE FUNCTION search_documents_update_vector()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.search_vector :=
-        setweight(to_tsvector('russian', COALESCE(NEW.title, '')), 'A') ||
-        setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
-        setweight(to_tsvector('russian', COALESCE(NEW.content, '')), 'B') ||
-        setweight(to_tsvector('english', COALESCE(NEW.content, '')), 'B');
+        setweight(to_tsvector('russian', cyrillic_lower(COALESCE(NEW.title, ''))), 'A') ||
+        setweight(to_tsvector('english', cyrillic_lower(COALESCE(NEW.title, ''))), 'A') ||
+        setweight(to_tsvector('russian', cyrillic_lower(COALESCE(NEW.content, ''))), 'B') ||
+        setweight(to_tsvector('english', cyrillic_lower(COALESCE(NEW.content, ''))), 'B');
     NEW.updated_at := NOW();
     RETURN NEW;
 END;

@@ -101,46 +101,8 @@ func (r *searchRepository) DeleteDocument(entityType models.EntityType, entityID
 }
 
 // Search performs a full-text search with permission filtering
+// NOTE: cyrillic_lower() is used because lc_ctype=C does not lowercase Cyrillic
 func (r *searchRepository) Search(query string, userID uint, userRole string, entityType string, limit, offset int) ([]models.SearchResult, int64, error) {
-	logger.WithFields(map[string]interface{}{
-		"query":       query,
-		"user_id":     userID,
-		"user_role":   userRole,
-		"entity_type": entityType,
-		"limit":       limit,
-		"offset":      offset,
-	}).Info("[Search] Starting search query")
-
-	// Diagnostic: count total documents in table
-	var totalDocs int64
-	r.db.Raw("SELECT COUNT(*) FROM search_documents").Scan(&totalDocs)
-	logger.Infof("[Search] Total documents in search_documents table: %d", totalDocs)
-
-	// Check if search_vector is populated
-	var emptyVectorCount int64
-	r.db.Raw("SELECT COUNT(*) FROM search_documents WHERE search_vector = ''").Scan(&emptyVectorCount)
-	logger.Infof("[Search] Documents with empty search_vector: %d", emptyVectorCount)
-
-	// Debug: check tsquery result
-	var tsqueryDebug string
-	r.db.Raw("SELECT plainto_tsquery('russian', @query)::text", map[string]interface{}{"query": query}).Scan(&tsqueryDebug)
-	logger.Infof("[Search] plainto_tsquery('russian', '%s') = %s", query, tsqueryDebug)
-
-	// Debug: check how many docs match without permission filter
-	var matchWithoutPerms int64
-	r.db.Raw(`
-		SELECT COUNT(*) FROM search_documents
-		WHERE search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
-	`, map[string]interface{}{"query": query}).Scan(&matchWithoutPerms)
-	logger.Infof("[Search] FTS matches (no permission filter): %d", matchWithoutPerms)
-
-	var similarityMatches int64
-	r.db.Raw(`
-		SELECT COUNT(*) FROM search_documents
-		WHERE similarity(title, @query) > 0.1 OR similarity(content, @query) > 0.05
-	`, map[string]interface{}{"query": query}).Scan(&similarityMatches)
-	logger.Infof("[Search] Similarity matches (no permission filter): %d", similarityMatches)
-
 	// Build permission clause
 	permissionClause := buildPermissionClause(userRole)
 
@@ -155,9 +117,9 @@ func (r *searchRepository) Search(query string, userID uint, userRole string, en
 		SELECT COUNT(*)
 		FROM search_documents
 		WHERE (
-			search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
-			OR similarity(title, @query) > 0.1
-			OR similarity(content, @query) > 0.05
+			search_vector @@ (plainto_tsquery('russian', cyrillic_lower(@query)) || plainto_tsquery('english', cyrillic_lower(@query)))
+			OR similarity(cyrillic_lower(title), cyrillic_lower(@query)) > 0.1
+			OR similarity(cyrillic_lower(content), cyrillic_lower(@query)) > 0.05
 		)
 		AND %s
 		%s
@@ -176,10 +138,7 @@ func (r *searchRepository) Search(query string, userID uint, userRole string, en
 		return nil, 0, fmt.Errorf("failed to count search results: %w", err)
 	}
 
-	logger.Infof("[Search] Matches with permission filter (userID=%d, role=%s): %d", userID, userRole, total)
-
 	if total == 0 {
-		logger.Warn("[Search] No results found - check: 1) are documents indexed? 2) is search_vector populated? 3) do permissions allow access?")
 		return []models.SearchResult{}, 0, nil
 	}
 
@@ -188,23 +147,23 @@ func (r *searchRepository) Search(query string, userID uint, userRole string, en
 		SELECT
 			entity_type, entity_id, title,
 			COALESCE(
-				ts_headline('russian', content, plainto_tsquery('russian', @query),
+				ts_headline('russian', content, plainto_tsquery('russian', cyrillic_lower(@query)),
 					'StartSel=<mark>, StopSel=</mark>, MaxWords=30, MinWords=15, MaxFragments=2'),
 				content
 			) as content,
 			metadata, created_at, updated_at,
 			(
-				COALESCE(ts_rank(search_vector, plainto_tsquery('russian', @query)), 0) +
-				COALESCE(ts_rank(search_vector, plainto_tsquery('english', @query)), 0)
+				COALESCE(ts_rank(search_vector, plainto_tsquery('russian', cyrillic_lower(@query))), 0) +
+				COALESCE(ts_rank(search_vector, plainto_tsquery('english', cyrillic_lower(@query))), 0)
 			) * 2.0 +
-			COALESCE(similarity(title, @query), 0) * 1.5 +
-			COALESCE(similarity(content, @query), 0) * 0.5
+			COALESCE(similarity(cyrillic_lower(title), cyrillic_lower(@query)), 0) * 1.5 +
+			COALESCE(similarity(cyrillic_lower(content), cyrillic_lower(@query)), 0) * 0.5
 			AS rank
 		FROM search_documents
 		WHERE (
-			search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
-			OR similarity(title, @query) > 0.1
-			OR similarity(content, @query) > 0.05
+			search_vector @@ (plainto_tsquery('russian', cyrillic_lower(@query)) || plainto_tsquery('english', cyrillic_lower(@query)))
+			OR similarity(cyrillic_lower(title), cyrillic_lower(@query)) > 0.1
+			OR similarity(cyrillic_lower(content), cyrillic_lower(@query)) > 0.05
 		)
 		AND %s
 		%s
@@ -234,45 +193,8 @@ func (r *searchRepository) Search(query string, userID uint, userRole string, en
 }
 
 // CountByCategories returns the count of matching documents per entity type
+// NOTE: cyrillic_lower() is used because lc_ctype=C does not lowercase Cyrillic
 func (r *searchRepository) CountByCategories(query string, userID uint, userRole string, types []models.EntityType) (map[models.EntityType]int64, error) {
-	// Diagnostic: total documents in table
-	var totalDocs int64
-	r.db.Raw("SELECT COUNT(*) FROM search_documents").Scan(&totalDocs)
-	logger.Infof("[Search:CountByCategories] Total documents in table: %d", totalDocs)
-
-	if totalDocs > 0 {
-		// Check empty search_vector
-		var emptyVectorCount int64
-		r.db.Raw("SELECT COUNT(*) FROM search_documents WHERE search_vector = ''").Scan(&emptyVectorCount)
-		logger.Infof("[Search:CountByCategories] Documents with empty search_vector: %d / %d", emptyVectorCount, totalDocs)
-
-		// Debug: tsquery result
-		var tsqueryDebug string
-		r.db.Raw("SELECT plainto_tsquery('russian', @query)::text", map[string]interface{}{"query": query}).Scan(&tsqueryDebug)
-		logger.Infof("[Search:CountByCategories] plainto_tsquery('russian', '%s') = %s", query, tsqueryDebug)
-
-		// FTS matches without permissions
-		var ftsMatches int64
-		r.db.Raw(`
-			SELECT COUNT(*) FROM search_documents
-			WHERE search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
-		`, map[string]interface{}{"query": query}).Scan(&ftsMatches)
-		logger.Infof("[Search:CountByCategories] FTS matches (no perms): %d", ftsMatches)
-
-		// Similarity matches without permissions
-		var simMatches int64
-		r.db.Raw(`
-			SELECT COUNT(*) FROM search_documents
-			WHERE similarity(title, @query) > 0.1 OR similarity(content, @query) > 0.05
-		`, map[string]interface{}{"query": query}).Scan(&simMatches)
-		logger.Infof("[Search:CountByCategories] Similarity matches (no perms): %d", simMatches)
-
-		// Sample document titles for debugging
-		var sampleTitles []string
-		r.db.Raw("SELECT title FROM search_documents LIMIT 5").Scan(&sampleTitles)
-		logger.Infof("[Search:CountByCategories] Sample titles: %v", sampleTitles)
-	}
-
 	permissionClause := buildPermissionClause(userRole)
 
 	typeFilter := ""
@@ -288,9 +210,9 @@ func (r *searchRepository) CountByCategories(query string, userID uint, userRole
 		SELECT entity_type, COUNT(*) as cnt
 		FROM search_documents
 		WHERE (
-			search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
-			OR similarity(title, @query) > 0.1
-			OR similarity(content, @query) > 0.05
+			search_vector @@ (plainto_tsquery('russian', cyrillic_lower(@query)) || plainto_tsquery('english', cyrillic_lower(@query)))
+			OR similarity(cyrillic_lower(title), cyrillic_lower(@query)) > 0.1
+			OR similarity(cyrillic_lower(content), cyrillic_lower(@query)) > 0.05
 		)
 		AND %s
 		%s
