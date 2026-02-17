@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 
 	"tachyon-messenger/services/search/models"
@@ -39,7 +40,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	// Get user role (for admin bypass)
 	userRole := ""
 	if roleRaw, exists := c.Get("user_role"); exists {
-		userRole = roleRaw.(string)
+		userRole = fmt.Sprintf("%v", roleRaw)
 	}
 
 	// Bind query parameters
