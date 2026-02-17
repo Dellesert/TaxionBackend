@@ -89,10 +89,11 @@ func main() {
 	// Initialize handlers
 	searchHandler := handlers.NewSearchHandler(searchUsecase)
 	indexHandler := handlers.NewIndexHandler(searchUsecase)
+	reindexHandler := handlers.NewReindexHandler(db, searchUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "search-service", startTime)
 
 	// Setup routes
-	r := setupRoutes(searchHandler, indexHandler, metricsHandler)
+	r := setupRoutes(searchHandler, indexHandler, reindexHandler, metricsHandler)
 
 	// Start server
 	port := os.Getenv("PORT")
@@ -134,6 +135,7 @@ func main() {
 func setupRoutes(
 	searchHandler *handlers.SearchHandler,
 	indexHandler *handlers.IndexHandler,
+	reindexHandler *handlers.ReindexHandler,
 	metricsHandler *handlers.MetricsHandler,
 ) *gin.Engine {
 	r := gin.New()
@@ -173,6 +175,7 @@ func setupRoutes(
 		internal.POST("/index", indexHandler.IndexDocument)
 		internal.POST("/bulk-index", indexHandler.BulkIndex)
 		internal.DELETE("/index", indexHandler.DeleteDocument)
+		internal.POST("/reindex", reindexHandler.ReindexAll)
 	}
 
 	// Protected search endpoint (requires auth)
