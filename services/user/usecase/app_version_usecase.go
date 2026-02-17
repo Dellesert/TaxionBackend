@@ -82,10 +82,10 @@ func (u *appVersionUsecase) CreateAppVersion(
 		return nil, fmt.Errorf("invalid version format: %s (expected format: X.Y.Z)", req.Version)
 	}
 
-	// Check if version already exists
-	existing, err := u.appVersionRepo.GetByPlatformAndVersion(platform, req.Version)
+	// Check if version with same build number already exists
+	existing, err := u.appVersionRepo.GetByPlatformVersionAndBuild(platform, req.Version, req.BuildNumber)
 	if err == nil && existing != nil {
-		return nil, fmt.Errorf("version %s already exists for platform %s", req.Version, platform)
+		return nil, fmt.Errorf("version %s (build %d) already exists for platform %s", req.Version, req.BuildNumber, platform)
 	}
 
 	// Validate uploader exists
@@ -126,7 +126,7 @@ func (u *appVersionUsecase) CreateAppVersion(
 		}
 
 		// Save file and calculate checksum
-		filePath, fileSize, checksum, err := u.saveFile(file, platform, req.Version)
+		filePath, fileSize, checksum, err := u.saveFile(file, platform, req.Version, req.BuildNumber)
 		if err != nil {
 			return nil, fmt.Errorf("failed to save file: %w", err)
 		}
@@ -381,7 +381,7 @@ func (u *appVersionUsecase) IncrementDownloadCount(id uint) error {
 // Helper functions
 
 // saveFile saves the uploaded file to disk and returns file path, size, and checksum
-func (u *appVersionUsecase) saveFile(file *multipart.FileHeader, platform models.AppPlatform, version string) (string, int64, string, error) {
+func (u *appVersionUsecase) saveFile(file *multipart.FileHeader, platform models.AppPlatform, version string, buildNumber int) (string, int64, string, error) {
 	// Open the uploaded file
 	src, err := file.Open()
 	if err != nil {
@@ -395,9 +395,9 @@ func (u *appVersionUsecase) saveFile(file *multipart.FileHeader, platform models
 		return "", 0, "", fmt.Errorf("failed to create platform directory: %w", err)
 	}
 
-	// Generate file name with version
+	// Generate file name with version and build number
 	ext := filepath.Ext(file.Filename)
-	fileName := fmt.Sprintf("%s-%s%s", string(platform), version, ext)
+	fileName := fmt.Sprintf("%s-%s-build%d%s", string(platform), version, buildNumber, ext)
 	filePath := filepath.Join(platformDir, fileName)
 
 	// Create destination file

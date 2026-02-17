@@ -14,6 +14,7 @@ type AppVersionRepository interface {
 	GetByID(id uint) (*models.AppVersion, error)
 	GetByIDWithRelations(id uint) (*models.AppVersion, error)
 	GetByPlatformAndVersion(platform models.AppPlatform, version string) (*models.AppVersion, error)
+	GetByPlatformVersionAndBuild(platform models.AppPlatform, version string, buildNumber int) (*models.AppVersion, error)
 	GetLatestByPlatform(platform models.AppPlatform) (*models.AppVersion, error)
 	GetLatestVersions() (map[models.AppPlatform]*models.AppVersion, error)
 	Update(version *models.AppVersion) error
@@ -75,6 +76,19 @@ func (r *appVersionRepository) GetByIDWithRelations(id uint) (*models.AppVersion
 func (r *appVersionRepository) GetByPlatformAndVersion(platform models.AppPlatform, version string) (*models.AppVersion, error) {
 	var appVersion models.AppVersion
 	err := r.db.Where("platform = ? AND version = ?", platform, version).First(&appVersion).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("app version not found")
+		}
+		return nil, err
+	}
+	return &appVersion, nil
+}
+
+// GetByPlatformVersionAndBuild retrieves an app version by platform, version string, and build number
+func (r *appVersionRepository) GetByPlatformVersionAndBuild(platform models.AppPlatform, version string, buildNumber int) (*models.AppVersion, error) {
+	var appVersion models.AppVersion
+	err := r.db.Where("platform = ? AND version = ? AND build_number = ?", platform, version, buildNumber).First(&appVersion).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, fmt.Errorf("app version not found")
