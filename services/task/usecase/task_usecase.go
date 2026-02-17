@@ -12,6 +12,7 @@ import (
 	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/permissions"
 	"tachyon-messenger/services/task/repository"
+	searchclient "tachyon-messenger/services/search/client"
 	sharedmodels "tachyon-messenger/shared/models"
 
 	"gorm.io/gorm"
@@ -82,6 +83,7 @@ type taskUsecase struct {
 	syncRepo           repository.SyncRepository
 	userClient         *clients.UserClient
 	notificationClient *clients.NotificationClient
+	searchClient       *searchclient.SearchClient
 }
 
 // NewTaskUsecase creates a new task usecase
@@ -102,6 +104,7 @@ func NewTaskUsecase(
 		attachmentUsecase:  attachmentUsecase,
 		userClient:         clients.NewUserClient(),
 		notificationClient: clients.NewNotificationClient(),
+		searchClient:       searchclient.NewSearchClient(),
 	}
 }
 
@@ -125,6 +128,7 @@ func NewTaskUsecaseWithSync(
 		syncRepo:           syncRepo,
 		userClient:         clients.NewUserClient(),
 		notificationClient: clients.NewNotificationClient(),
+		searchClient:       searchclient.NewSearchClient(),
 	}
 }
 
@@ -247,6 +251,9 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 		// Log error but don't fail the request
 		fmt.Printf("Failed to enrich task with user info: %v\n", err)
 	}
+
+	// Index task in search service
+	u.indexTaskInSearch(task, assigneeIDs)
 
 	// Send notifications to assignees
 	if len(assigneeIDs) > 0 {
@@ -776,6 +783,10 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 		fmt.Printf("Failed to enrich task with user info: %v\n", err)
 	}
 
+	// Re-index task in search service
+	assigneeIDs := u.getTaskAssigneeIDs(task)
+	u.indexTaskInSearch(task, assigneeIDs)
+
 	return response, nil
 }
 
@@ -834,6 +845,9 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 
 		u.RecalculateTaskProgress(*parentTaskID)
 	}
+
+	// Remove task from search index
+	u.searchClient.DeleteDocument("task", taskID)
 
 	return nil
 }
@@ -2332,4 +2346,51 @@ func (u *taskUsecase) GetDeletedTaskIDsSince(since time.Time) ([]uint, error) {
 		return []uint{}, nil
 	}
 	return u.syncRepo.GetDeletedIDsSince(since)
+}
+
+// indexTaskInSearch sends a task to the search service for indexing
+func (u *taskUsecase) indexTaskInSearch(task *models.Task, assigneeIDs []uint) {
+	if u.searchClient == nil {
+		return
+	}
+
+	// Build accessible_by: creator + all assignees
+	accessibleBy := make([]uint, 0, len(assigneeIDs)+1)
+	accessibleBy = append(accessibleBy, task.CreatedByUserID)
+	for _, id := range assigneeIDs {
+		if id != task.CreatedByUserID {
+			accessibleBy = append(accessibleBy, id)
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"status":   string(task.Status),
+		"priority": string(task.Priority),
+	}
+	if task.DueDate != nil {
+		metadata["due_date"] = task.DueDate.Format(time.RFC3339)
+	}
+	if task.AssignedToDepartment != nil {
+		metadata["department_id"] = *task.AssignedToDepartment
+	}
+
+	u.searchClient.IndexDocument(&searchclient.IndexRequest{
+		EntityType:   "task",
+		EntityID:     task.ID,
+		Title:        task.Title,
+		Content:      task.Description,
+		Metadata:     metadata,
+		AccessibleBy: accessibleBy,
+		IsPublic:     false,
+		CreatorID:    task.CreatedByUserID,
+	})
+}
+
+// getTaskAssigneeIDs extracts assignee user IDs from a task
+func (u *taskUsecase) getTaskAssigneeIDs(task *models.Task) []uint {
+	ids := make([]uint, 0, len(task.Assignees))
+	for _, a := range task.Assignees {
+		ids = append(ids, a.UserID)
+	}
+	return ids
 }

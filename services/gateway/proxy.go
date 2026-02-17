@@ -35,6 +35,7 @@ type ProxyConfig struct {
 	FileService         ServiceConfig
 	AnalyticsService    ServiceConfig
 	BackupService       ServiceConfig
+	SearchService       ServiceConfig
 }
 
 // getProxyConfig returns service URLs configuration
@@ -75,6 +76,10 @@ func getProxyConfig() *ProxyConfig {
 		BackupService: ServiceConfig{
 			Name: "backup-service",
 			URL:  getEnvOrDefault("BACKUP_SERVICE_URL", "http://localhost:8089"),
+		},
+		SearchService: ServiceConfig{
+			Name: "search-service",
+			URL:  getEnvOrDefault("SEARCH_SERVICE_URL", "http://localhost:8090"),
 		},
 	}
 }

@@ -1,11 +1,11 @@
-# Multi-stage build for Calendar Service
+# Multi-stage build for Search Service
 # Build stage
 FROM golang:1.23-alpine AS builder
 
 # Install git and ca-certificates (needed for go mod download)
 RUN apk add --no-cache git ca-certificates tzdata
 
-# Create a non-root calendar for building
+# Create a non-root user for building
 RUN adduser -D -g '' appuser
 
 # Set working directory
@@ -21,27 +21,19 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy shared dependencies first (for better layer caching)
 COPY shared/ ./shared/
 
-# Copy search client (used for search indexing)
-COPY services/search/client/ ./services/search/client/
+# Copy search service source code
+COPY services/search/ ./services/search/
 
-# Copy calendar service source code
-COPY services/calendar/ ./services/calendar/
-
-# Set working directory to calendar service
-WORKDIR /build/services/calendar
+# Set working directory to search service
+WORKDIR /build/services/search
 
 # Build the application with cache mounts
-# CGO_ENABLED=0 for static binary
-# GOOS=linux for Linux target
-# Removed -a flag to allow Go to use cached builds
-# -installsuffix cgo for static linking
-# -ldflags for reducing binary size
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     CGO_ENABLED=0 GOOS=linux go build \
     -installsuffix cgo \
     -ldflags='-w -s -extldflags "-static"' \
-    -o calendar-service \
+    -o search-service \
     main.go
 
 # Runtime stage
@@ -64,7 +56,7 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
 
 # Copy the binary from builder stage
-COPY --from=builder /build/services/calendar/calendar-service .
+COPY --from=builder /build/services/search/search-service .
 
 # Change ownership of the application to non-root user
 RUN chown -R appuser:appgroup /app
@@ -73,15 +65,15 @@ RUN chown -R appuser:appgroup /app
 USER appuser
 
 # Expose port
-EXPOSE 8084
+EXPOSE 8090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8084/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8090/health || exit 1
 
 # Set environment variables
 ENV GIN_MODE=release
-ENV TZ=Europe/Moscow
+ENV TZ=UTC
 
 # Run the application
-CMD ["./calendar-service"]
+CMD ["./search-service"]

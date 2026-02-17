@@ -10,6 +10,7 @@ import (
 	"tachyon-messenger/services/poll/clients"
 	"tachyon-messenger/services/poll/models"
 	"tachyon-messenger/services/poll/repository"
+	searchclient "tachyon-messenger/services/search/client"
 	"tachyon-messenger/shared/logger"
 	sharedModels "tachyon-messenger/shared/models"
 
@@ -64,6 +65,7 @@ type pollUsecase struct {
 	commentRepo        repository.PollCommentRepository
 	notificationClient *clients.NotificationClient
 	userClient         *clients.UserClient
+	searchClient       *searchclient.SearchClient
 }
 
 // NewPollUsecase creates a new poll usecase
@@ -82,6 +84,7 @@ func NewPollUsecase(
 		commentRepo:        commentRepo,
 		notificationClient: clients.NewNotificationClient(),
 		userClient:         clients.NewUserClient(),
+		searchClient:       searchclient.NewSearchClient(),
 	}
 }
 
@@ -230,6 +233,9 @@ func (u *pollUsecase) CreatePoll(userID uint, req *models.CreatePollRequest) (*m
 		return nil, fmt.Errorf("failed to get created poll: %w", err)
 	}
 
+	// Index poll in search service
+	u.indexPollInSearch(createdPoll)
+
 	return createdPoll.ToResponse(), nil
 }
 
@@ -356,6 +362,9 @@ func (u *pollUsecase) UpdatePoll(userID, pollID uint, req *models.UpdatePollRequ
 		return nil, fmt.Errorf("failed to get updated poll: %w", err)
 	}
 
+	// Re-index poll in search service
+	u.indexPollInSearch(updatedPoll)
+
 	return updatedPoll.ToResponse(), nil
 }
 
@@ -404,6 +413,9 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role
 			"error":   err.Error(),
 		}).Warn("Failed to record poll deletion for sync")
 	}
+
+	// Remove poll from search index
+	u.searchClient.DeleteDocument("poll", pollID)
 
 	return nil
 }
@@ -1438,4 +1450,39 @@ func (u *pollUsecase) GetPendingPollsForUser(userID uint, limit int) ([]*models.
 	}
 
 	return responses, total, nil
+}
+
+// indexPollInSearch indexes or updates a poll in the search service
+func (u *pollUsecase) indexPollInSearch(poll *models.Poll) {
+	accessibleBy := []uint{poll.CreatedBy}
+
+	// Add participant user IDs
+	for _, p := range poll.Participants {
+		if p.UserID != poll.CreatedBy {
+			accessibleBy = append(accessibleBy, p.UserID)
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"status":     string(poll.Status),
+		"type":       string(poll.Type),
+		"visibility": string(poll.Visibility),
+	}
+	if poll.DepartmentID != nil {
+		metadata["department_id"] = *poll.DepartmentID
+	}
+	if poll.Category != "" {
+		metadata["category"] = poll.Category
+	}
+
+	u.searchClient.IndexDocument(&searchclient.IndexRequest{
+		EntityType:   "poll",
+		EntityID:     poll.ID,
+		Title:        poll.Title,
+		Content:      poll.Description,
+		Metadata:     metadata,
+		AccessibleBy: accessibleBy,
+		IsPublic:     poll.Visibility == models.PollVisibilityPublic || poll.Visibility == models.PollVisibilityDepartment,
+		CreatorID:    poll.CreatedBy,
+	})
 }

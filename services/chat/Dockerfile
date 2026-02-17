@@ -23,6 +23,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 # Copy shared dependencies first (for better layer caching)
 COPY shared/ ./shared/
 
+# Copy search client (used for search indexing)
+COPY services/search/client/ ./services/search/client/
+
 # Copy chat service source code
 COPY services/chat/ ./services/chat/
 

@@ -9,6 +9,7 @@ import (
 	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
+	searchclient "tachyon-messenger/services/search/client"
 	sharedmodels "tachyon-messenger/shared/models"
 )
 
@@ -68,6 +69,7 @@ type scheduleUsecase struct {
 	absenceRepo        repository.AbsenceRepository
 	notificationClient *clients.NotificationClient
 	userClient         *clients.UserClient
+	searchClient       *searchclient.SearchClient
 }
 
 // NewScheduleUsecase creates a new schedule usecase
@@ -82,6 +84,7 @@ func NewScheduleUsecase(
 		absenceRepo:        absenceRepo,
 		notificationClient: clients.NewNotificationClient(),
 		userClient:         clients.NewUserClient(),
+		searchClient:       searchclient.NewSearchClient(),
 	}
 }
 
@@ -194,6 +197,9 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 
 	// Send notifications to participants asynchronously
 	go u.sendScheduleCreatedNotification(createdSchedule, userID)
+
+	// Index schedule in search service
+	u.indexScheduleInSearch(createdSchedule)
 
 	return createdSchedule.ToResponse(), nil
 }
@@ -358,6 +364,9 @@ func (u *scheduleUsecase) UpdateSchedule(userID, scheduleID uint, req *models.Up
 		return nil, fmt.Errorf("failed to get updated schedule: %w", err)
 	}
 
+	// Re-index schedule in search service
+	u.indexScheduleInSearch(updatedSchedule)
+
 	return updatedSchedule.ToResponse(), nil
 }
 
@@ -389,6 +398,9 @@ func (u *scheduleUsecase) DeleteSchedule(userID, scheduleID uint) error {
 	if err := u.scheduleRepo.DeleteSchedule(schedule.ID); err != nil {
 		return fmt.Errorf("failed to delete schedule: %w", err)
 	}
+
+	// Remove schedule from search index
+	u.searchClient.DeleteDocument("schedule", scheduleID)
 
 	return nil
 }
@@ -1276,4 +1288,56 @@ func (u *scheduleUsecase) GetScheduleGroupMembers(scheduleID uint) ([]*clients.U
 	}
 
 	return members, nil
+}
+
+// indexScheduleInSearch indexes or updates a schedule in the search service
+func (u *scheduleUsecase) indexScheduleInSearch(schedule *models.Schedule) {
+	accessibleBy := []uint{schedule.CreatedBy}
+	seen := map[uint]bool{schedule.CreatedBy: true}
+
+	// Add viewer IDs
+	for _, v := range schedule.Viewers {
+		if !seen[v.UserID] {
+			accessibleBy = append(accessibleBy, v.UserID)
+			seen[v.UserID] = true
+		}
+	}
+
+	// Add assignment IDs
+	for _, a := range schedule.Assignments {
+		if !seen[a.UserID] {
+			accessibleBy = append(accessibleBy, a.UserID)
+			seen[a.UserID] = true
+		}
+	}
+
+	// Add editor IDs
+	for _, e := range schedule.Editors {
+		if !seen[e.UserID] {
+			accessibleBy = append(accessibleBy, e.UserID)
+			seen[e.UserID] = true
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"type":       string(schedule.Type),
+		"visibility": string(schedule.Visibility),
+		"is_active":  schedule.IsActive,
+	}
+	if schedule.DepartmentID != nil {
+		metadata["department_id"] = *schedule.DepartmentID
+	}
+
+	isPublic := schedule.Visibility == models.VisibilityAll || schedule.IsForAllUsers
+
+	u.searchClient.IndexDocument(&searchclient.IndexRequest{
+		EntityType:   "schedule",
+		EntityID:     schedule.ID,
+		Title:        schedule.Title,
+		Content:      schedule.Description,
+		Metadata:     metadata,
+		AccessibleBy: accessibleBy,
+		IsPublic:     isPublic,
+		CreatorID:    schedule.CreatedBy,
+	})
 }

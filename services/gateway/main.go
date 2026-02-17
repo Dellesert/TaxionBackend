@@ -308,6 +308,13 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			backups.Any("/*path", proxyRequest(proxyConfig.BackupService.URL, proxyConfig.BackupService.Name))
 		}
 
+		// Search routes - proxy to search service
+		search := v1.Group("/search")
+		{
+			search.Any("", proxyRequest(proxyConfig.SearchService.URL, proxyConfig.SearchService.Name))
+			search.Any("/*path", proxyRequest(proxyConfig.SearchService.URL, proxyConfig.SearchService.Name))
+		}
+
 		// WebSocket endpoint - proxy to chat service for real-time communication
 		v1.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 

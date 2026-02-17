@@ -9,6 +9,7 @@ import (
 	"tachyon-messenger/services/calendar/clients"
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
+	searchclient "tachyon-messenger/services/search/client"
 	"tachyon-messenger/shared/logger"
 
 	"gorm.io/gorm"
@@ -54,6 +55,7 @@ type calendarUsecase struct {
 	reminderRepo       repository.ReminderRepository
 	notificationClient *clients.NotificationClient
 	userClient         *clients.UserClient
+	searchClient       *searchclient.SearchClient
 }
 
 // NewCalendarUsecase creates a new calendar usecase
@@ -68,6 +70,7 @@ func NewCalendarUsecase(
 		reminderRepo:       reminderRepo,
 		notificationClient: clients.NewNotificationClient(),
 		userClient:         clients.NewUserClient(),
+		searchClient:       searchclient.NewSearchClient(),
 	}
 }
 
@@ -183,6 +186,9 @@ func (u *calendarUsecase) CreateEvent(userID uint, req *models.CreateEventReques
 	if len(req.ParticipantIDs) > 0 {
 		go u.sendEventCreatedNotification(event, userID, req.ParticipantIDs)
 	}
+
+	// Index event in search service
+	u.indexEventInSearch(createdEvent)
 
 	return createdEvent.ToResponse(), nil
 }
@@ -304,6 +310,9 @@ func (u *calendarUsecase) UpdateEvent(userID, eventID uint, req *models.UpdateEv
 	// Send update notifications to participants (async, don't block)
 	go u.sendEventUpdatedNotification(event, userID, timeChanged)
 
+	// Re-index event in search service
+	u.indexEventInSearch(updatedEvent)
+
 	return updatedEvent.ToResponse(), nil
 }
 
@@ -340,6 +349,9 @@ func (u *calendarUsecase) DeleteEvent(userID, eventID uint) error {
 			"error":    err.Error(),
 		}).Warn("Failed to record event deletion for sync")
 	}
+
+	// Remove event from search index
+	u.searchClient.DeleteDocument("event", eventID)
 
 	return nil
 }
@@ -908,4 +920,40 @@ func (u *calendarUsecase) GetTodayEvents(userID uint, startTime, endTime time.Ti
 	}
 
 	return responses, total, nil
+}
+
+// indexEventInSearch indexes or updates an event in the search service
+func (u *calendarUsecase) indexEventInSearch(event *models.Event) {
+	accessibleBy := []uint{event.CreatedBy}
+
+	// Add participant user IDs
+	for _, p := range event.Participants {
+		if p.UserID != event.CreatedBy {
+			accessibleBy = append(accessibleBy, p.UserID)
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"type":     string(event.Type),
+		"location": event.Location,
+	}
+	if event.AllDay {
+		metadata["all_day"] = true
+	}
+
+	content := event.Description
+	if event.Location != "" {
+		content += " " + event.Location
+	}
+
+	u.searchClient.IndexDocument(&searchclient.IndexRequest{
+		EntityType:   "event",
+		EntityID:     event.ID,
+		Title:        event.Title,
+		Content:      content,
+		Metadata:     metadata,
+		AccessibleBy: accessibleBy,
+		IsPublic:     !event.IsPrivate,
+		CreatorID:    event.CreatedBy,
+	})
 }

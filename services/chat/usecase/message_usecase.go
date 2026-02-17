@@ -12,6 +12,7 @@ import (
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/repository"
 	chatutils "tachyon-messenger/services/chat/utils"
+	searchclient "tachyon-messenger/services/search/client"
 
 	"gorm.io/gorm"
 )
@@ -61,6 +62,7 @@ type messageUsecase struct {
 	wsHub              WebSocketHub
 	fileClient         *client.FileClient
 	notificationClient *client.NotificationClient
+	searchClient       *searchclient.SearchClient
 	baseURL            string
 }
 
@@ -78,6 +80,7 @@ func NewMessageUsecase(messageRepo repository.MessageRepository, chatRepo reposi
 		wsHub:              nil, // Will be set later to avoid circular dependency
 		fileClient:         client.NewFileClient(),
 		notificationClient: notificationClient,
+		searchClient:       searchclient.NewSearchClient(),
 		baseURL:            baseURL,
 	}
 }
@@ -305,6 +308,11 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		}
 	}()
 
+	// Index message in search service (only text messages)
+	if message.Type == models.MessageTypeText && strings.TrimSpace(message.Content) != "" {
+		uc.indexMessageInSearch(message, memberIDs)
+	}
+
 	// Async link preview fetch for text messages with URLs
 	if message.Type == models.MessageTypeText && strings.TrimSpace(message.Content) != "" {
 		if firstURL := chatutils.ExtractFirstURL(message.Content); firstURL != "" {
@@ -513,6 +521,12 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 
 	response := updatedMessage.ToResponseForUser(userID, uc.baseURL)
 
+	// Re-index message in search service
+	if message.Type == models.MessageTypeText {
+		chatMemberIDs, _ := uc.chatRepo.GetChatMemberIDs(message.ChatID)
+		uc.indexMessageInSearch(message, chatMemberIDs)
+	}
+
 	// Broadcast message edit to WebSocket clients
 	if uc.wsHub != nil {
 		// For WebSocket, send version without user-specific filtering (viewerID=0)
@@ -546,6 +560,9 @@ func (uc *messageUsecase) DeleteMessage(userID, messageID uint) error {
 	if err := uc.messageRepo.Delete(messageID); err != nil {
 		return fmt.Errorf("failed to delete message: %w", err)
 	}
+
+	// Remove message from search index
+	uc.searchClient.DeleteDocument("message", messageID)
 
 	return nil
 }
@@ -1846,4 +1863,34 @@ func (uc *messageUsecase) SearchMessages(userID, chatID uint, req *models.Search
 		req.Query, chatID, len(messageResponses), total, offset, hasMore)
 
 	return response, nil
+}
+
+// indexMessageInSearch sends a message to the search service for indexing
+func (uc *messageUsecase) indexMessageInSearch(message *models.Message, chatMemberIDs []uint) {
+	if uc.searchClient == nil {
+		return
+	}
+
+	// Build search content: message content + file name if any
+	content := message.Content
+	if message.FileName != "" {
+		content = content + " " + message.FileName
+	}
+
+	metadata := map[string]interface{}{
+		"chat_id":   message.ChatID,
+		"sender_id": message.SenderID,
+		"type":      string(message.Type),
+	}
+
+	uc.searchClient.IndexDocument(&searchclient.IndexRequest{
+		EntityType:   "message",
+		EntityID:     message.ID,
+		Title:        "",
+		Content:      content,
+		Metadata:     metadata,
+		AccessibleBy: chatMemberIDs,
+		IsPublic:     false,
+		CreatorID:    message.SenderID,
+	})
 }

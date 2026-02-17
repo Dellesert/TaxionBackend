@@ -10,6 +10,7 @@ import (
 
 	"tachyon-messenger/services/chat/models"
 	"tachyon-messenger/services/chat/repository"
+	searchclient "tachyon-messenger/services/search/client"
 
 	"gorm.io/gorm"
 )
@@ -52,10 +53,11 @@ type ChatUsecase interface {
 
 // chatUsecase implements ChatUsecase interface
 type chatUsecase struct {
-	chatRepo    repository.ChatRepository
-	messageRepo repository.MessageRepository
-	baseURL     string
-	wsHub       ChatWebSocketHub
+	chatRepo     repository.ChatRepository
+	messageRepo  repository.MessageRepository
+	baseURL      string
+	wsHub        ChatWebSocketHub
+	searchClient *searchclient.SearchClient
 }
 
 func (uc *chatUsecase) CreatePersonalChat(userID, targetUserID uint) (*models.ChatResponse, error) {
@@ -356,10 +358,11 @@ func NewChatUsecase(chatRepo repository.ChatRepository, messageRepo repository.M
 	}
 
 	return &chatUsecase{
-		chatRepo:    chatRepo,
-		messageRepo: messageRepo,
-		baseURL:     baseURL,
-		wsHub:       nil, // Will be set later via SetWebSocketHub
+		chatRepo:     chatRepo,
+		messageRepo:  messageRepo,
+		baseURL:      baseURL,
+		wsHub:        nil, // Will be set later via SetWebSocketHub
+		searchClient: searchclient.NewSearchClient(),
 	}
 }
 
@@ -452,6 +455,9 @@ func (uc *chatUsecase) CreateChat(userID uint, req *models.CreateChatRequest) (*
 	}
 
 	response := chatWithMembers.ToResponse(uc.baseURL, userID)
+
+	// Index chat in search service
+	uc.indexChatInSearch(chatWithMembers)
 
 	// Broadcast chat_create event to all members
 	if uc.wsHub != nil {
@@ -692,6 +698,9 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 
 	response := updatedChat.ToResponse(uc.baseURL, userID)
 
+	// Re-index chat in search service
+	uc.indexChatInSearch(updatedChat)
+
 	// Broadcast chat_update event to all members
 	if uc.wsHub != nil {
 		fmt.Printf("📢 Broadcasting chat_update for chat %d to all members\n", chatID)
@@ -749,6 +758,8 @@ func (uc *chatUsecase) DeleteChat(userID, chatID uint, clearHistory bool) error 
 		if err := uc.chatRepo.Delete(chatID); err != nil {
 			return fmt.Errorf("failed to delete chat: %w", err)
 		}
+		// Remove chat from search index
+		uc.searchClient.DeleteDocument("chat", chatID)
 	} else {
 		// Non-owner leaves the chat
 		if err := uc.chatRepo.RemoveMember(chatID, userID); err != nil {
@@ -1141,4 +1152,34 @@ func (uc *chatUsecase) GetOrCreateSavedChat(userID uint) (*models.ChatResponse, 
 	response.IsPinned = true
 
 	return response, nil
+}
+
+// indexChatInSearch sends a chat to the search service for indexing
+func (uc *chatUsecase) indexChatInSearch(chat *models.Chat) {
+	if uc.searchClient == nil {
+		return
+	}
+
+	// Build accessible_by from chat members
+	memberIDs := make([]uint, 0, len(chat.Members))
+	for _, m := range chat.Members {
+		if m.IsActive {
+			memberIDs = append(memberIDs, m.UserID)
+		}
+	}
+
+	metadata := map[string]interface{}{
+		"type": string(chat.Type),
+	}
+
+	uc.searchClient.IndexDocument(&searchclient.IndexRequest{
+		EntityType:   "chat",
+		EntityID:     chat.ID,
+		Title:        chat.Name,
+		Content:      chat.Description,
+		Metadata:     metadata,
+		AccessibleBy: memberIDs,
+		IsPublic:     false,
+		CreatorID:    chat.CreatorID,
+	})
 }
