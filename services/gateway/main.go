@@ -15,7 +15,11 @@ import (
 	"tachyon-messenger/shared/middleware"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
+
+// Global Redis client for VPS metrics storage
+var redisClient *redis.Client
 
 func main() {
 	// Initialize logger
@@ -32,6 +36,23 @@ func main() {
 	}
 
 	log.Info("Starting Gateway service...")
+
+	// Initialize Redis client for VPS metrics storage
+	redisClient = redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Host + ":" + cfg.Redis.Port,
+		Password: cfg.Redis.Password,
+		DB:       0,
+	})
+
+	// Test Redis connection
+	ctx := context.Background()
+	if err := redisClient.Ping(ctx).Err(); err != nil {
+		log.Warnf("Failed to connect to Redis for metrics storage: %v", err)
+	} else {
+		log.Info("Connected to Redis for VPS metrics storage")
+		// Start VPS metrics collector background worker
+		go startVPSMetricsCollector(ctx)
+	}
 
 	// Set Gin mode based on environment
 	if os.Getenv("ENVIRONMENT") == "production" {
@@ -310,6 +331,8 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		{
 			// System metrics endpoint - specific route handled by gateway
 			admin.GET("/system/metrics", systemMetricsHandler)
+			// VPS metrics history endpoint
+			admin.GET("/system/vps-history", vpsMetricsHistoryHandler)
 
 			// All other specific admin patterns that should be proxied to user service
 			// (we can't use wildcard /*path here because it conflicts with /system/metrics)
