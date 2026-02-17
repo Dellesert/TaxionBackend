@@ -28,8 +28,8 @@ func RunMigrations(db *database.DB) error {
 	statements := splitSQLStatements(sqlContent)
 
 	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" || strings.HasPrefix(stmt, "--") {
+		stmt = stripLeadingComments(stmt)
+		if stmt == "" {
 			continue
 		}
 
@@ -57,8 +57,8 @@ func splitSQLStatements(sql string) []string {
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 
-		// Skip pure comment lines at statement start
-		if current.Len() == 0 && strings.HasPrefix(trimmed, "--") {
+		// Skip empty lines and comment lines at statement start
+		if current.Len() == 0 && (trimmed == "" || strings.HasPrefix(trimmed, "--")) {
 			continue
 		}
 
@@ -87,6 +87,25 @@ func splitSQLStatements(sql string) []string {
 	}
 
 	return statements
+}
+
+// stripLeadingComments removes leading SQL comment lines and blank lines,
+// then trims the result. Returns "" if the statement is entirely comments.
+func stripLeadingComments(stmt string) string {
+	lines := strings.Split(strings.TrimSpace(stmt), "\n")
+	start := 0
+	for start < len(lines) {
+		trimmed := strings.TrimSpace(lines[start])
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			start++
+			continue
+		}
+		break
+	}
+	if start >= len(lines) {
+		return ""
+	}
+	return strings.TrimSpace(strings.Join(lines[start:], "\n"))
 }
 
 func truncateStr(s string, maxLen int) string {
