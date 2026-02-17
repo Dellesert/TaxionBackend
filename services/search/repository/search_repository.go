@@ -235,6 +235,44 @@ func (r *searchRepository) Search(query string, userID uint, userRole string, en
 
 // CountByCategories returns the count of matching documents per entity type
 func (r *searchRepository) CountByCategories(query string, userID uint, userRole string, types []models.EntityType) (map[models.EntityType]int64, error) {
+	// Diagnostic: total documents in table
+	var totalDocs int64
+	r.db.Raw("SELECT COUNT(*) FROM search_documents").Scan(&totalDocs)
+	logger.Infof("[Search:CountByCategories] Total documents in table: %d", totalDocs)
+
+	if totalDocs > 0 {
+		// Check empty search_vector
+		var emptyVectorCount int64
+		r.db.Raw("SELECT COUNT(*) FROM search_documents WHERE search_vector = ''").Scan(&emptyVectorCount)
+		logger.Infof("[Search:CountByCategories] Documents with empty search_vector: %d / %d", emptyVectorCount, totalDocs)
+
+		// Debug: tsquery result
+		var tsqueryDebug string
+		r.db.Raw("SELECT plainto_tsquery('russian', @query)::text", map[string]interface{}{"query": query}).Scan(&tsqueryDebug)
+		logger.Infof("[Search:CountByCategories] plainto_tsquery('russian', '%s') = %s", query, tsqueryDebug)
+
+		// FTS matches without permissions
+		var ftsMatches int64
+		r.db.Raw(`
+			SELECT COUNT(*) FROM search_documents
+			WHERE search_vector @@ (plainto_tsquery('russian', @query) || plainto_tsquery('english', @query))
+		`, map[string]interface{}{"query": query}).Scan(&ftsMatches)
+		logger.Infof("[Search:CountByCategories] FTS matches (no perms): %d", ftsMatches)
+
+		// Similarity matches without permissions
+		var simMatches int64
+		r.db.Raw(`
+			SELECT COUNT(*) FROM search_documents
+			WHERE similarity(title, @query) > 0.1 OR similarity(content, @query) > 0.05
+		`, map[string]interface{}{"query": query}).Scan(&simMatches)
+		logger.Infof("[Search:CountByCategories] Similarity matches (no perms): %d", simMatches)
+
+		// Sample document titles for debugging
+		var sampleTitles []string
+		r.db.Raw("SELECT title FROM search_documents LIMIT 5").Scan(&sampleTitles)
+		logger.Infof("[Search:CountByCategories] Sample titles: %v", sampleTitles)
+	}
+
 	permissionClause := buildPermissionClause(userRole)
 
 	typeFilter := ""
