@@ -1114,7 +1114,7 @@ func (r *messageRepository) GetChatAttachments(chatID uint, limit, offset int) (
 	// First, count total attachments for this chat
 	countQuery := r.db.Model(&models.MessageAttachment{}).
 		Joins("JOIN messages ON message_attachments.message_id = messages.id").
-		Where("messages.chat_id = ? AND messages.deleted_at IS NULL", chatID)
+		Where("messages.chat_id = ? AND messages.deleted_at IS NULL AND messages.is_deleted = ?", chatID, false)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count attachments: %w", err)
@@ -1123,7 +1123,7 @@ func (r *messageRepository) GetChatAttachments(chatID uint, limit, offset int) (
 	// Then, get paginated attachments
 	query := r.db.
 		Joins("JOIN messages ON message_attachments.message_id = messages.id").
-		Where("messages.chat_id = ? AND messages.deleted_at IS NULL", chatID).
+		Where("messages.chat_id = ? AND messages.deleted_at IS NULL AND messages.is_deleted = ?", chatID, false).
 		Order("message_attachments.created_at DESC").
 		Limit(limit).
 		Offset(offset)
