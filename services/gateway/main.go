@@ -47,12 +47,14 @@ func main() {
 
 	// Test Redis connection
 	ctx := context.Background()
-	if err := redisClient.Ping(ctx).Err(); err != nil {
-		log.Warnf("Failed to connect to Redis for metrics storage: %v", err)
-	} else {
-		log.Info("Connected to Redis for VPS metrics storage")
-		// Start VPS metrics collector background worker
-		go startVPSMetricsCollector(ctx)
+	if redisClient != nil {
+		if err := redisClient.Ping(ctx).Err(); err != nil {
+			log.Warnf("Failed to connect to Redis for metrics storage: %v", err)
+		} else {
+			log.Info("Connected to Redis for VPS metrics storage")
+			// Start VPS metrics collector background worker
+			go startVPSMetricsCollector(ctx)
+		}
 	}
 
 	// Set Gin mode based on environment
