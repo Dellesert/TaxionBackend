@@ -971,8 +971,12 @@ func (uc *messageUsecase) RestoreMessage(userID, messageID uint) error {
 
 	// Broadcast restore to WebSocket clients as message edit
 	if uc.wsHub != nil {
-		// For WebSocket broadcast, send full content since it's being restored
-		response := message.ToResponse(uc.baseURL)
+		// Re-fetch message with all preloads (attachments, reactions, etc.)
+		fullMessage, err := uc.messageRepo.GetWithReactions(messageID)
+		if err != nil {
+			return fmt.Errorf("failed to get full message for broadcast: %w", err)
+		}
+		response := fullMessage.ToResponse(uc.baseURL)
 		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
 	}
 
