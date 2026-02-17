@@ -136,6 +136,7 @@ services:
       - CHAT_SERVICE_PORT=8082
       - ENVIRONMENT=production
       - GIN_MODE=release
+      - SEARCH_SERVICE_URL=http://search-service:8090
     depends_on:
       postgres:
         condition: service_healthy
@@ -179,6 +180,7 @@ services:
       - TASK_SERVICE_PORT=8083
       - ENVIRONMENT=production
       - GIN_MODE=release
+      - SEARCH_SERVICE_URL=http://search-service:8090
     depends_on:
       postgres:
         condition: service_healthy
@@ -268,12 +270,17 @@ services:
       - PORT=8084
       - ENVIRONMENT=production
       - GIN_MODE=release
+      - USER_SERVICE_URL=http://user-service:8081
+      - FILE_SERVICE_URL=http://file-service:8088
+      - SEARCH_SERVICE_URL=http://search-service:8090
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       user-service:
+        condition: service_healthy
+      file-service:
         condition: service_healthy
     networks:
       - tachyon-network-prod
@@ -311,6 +318,7 @@ services:
       - POLL_SERVICE_PORT=8085
       - ENVIRONMENT=production
       - GIN_MODE=release
+      - SEARCH_SERVICE_URL=http://search-service:8090
     depends_on:
       postgres:
         condition: service_healthy
@@ -361,6 +369,10 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
       - SMTP_FROM_NAME=${SMTP_FROM_NAME}
+      # FCM Push Notifications configuration
+      - FCM_ENABLED=${FCM_ENABLED:-false}
+      - FCM_CREDENTIALS_FILE=${FCM_CREDENTIALS_FILE:-/app/credentials/firebase-credentials.json}
+      - FCM_PROJECT_ID=${FCM_PROJECT_ID}
       # Production workers
       - NOTIFICATION_CONCURRENT_WORKERS=${NOTIFICATION_CONCURRENT_WORKERS:-10}
       - NOTIFICATION_QUEUE_SIZE=${NOTIFICATION_QUEUE_SIZE:-2000}
@@ -383,6 +395,7 @@ services:
       retries: 3
     volumes:
       - ./logs/notification:/app/logs
+      - ./credentials/firebase-credentials.json:/app/credentials/firebase-credentials.json:ro
     deploy:
       resources:
         limits:
@@ -490,6 +503,50 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # Global Search Service
+  search-service:
+    image: ghcr.io/mishkajackson/tachyon-search:latest
+    container_name: tachyon-search-service-prod
+    env_file:
+      - .env.production
+    environment:
+      - SERVER_PORT=8090
+      - SEARCH_SERVICE_PORT=8090
+      - PORT=8090
+      - ENVIRONMENT=production
+      - GIN_MODE=release
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-service:
+        condition: service_healthy
+    networks:
+      - tachyon-network-prod
+    restart: always
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    volumes:
+      - ./logs/search:/app/logs
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
   # ==============================================
   # API Gateway (Reverse Proxy)
   # ==============================================
@@ -513,6 +570,7 @@ services:
       - NOTIFICATION_SERVICE_URL=http://notification-service:8087
       - FILE_SERVICE_URL=http://file-service:8088
       - BACKUP_SERVICE_URL=http://backup-service:8089
+      - SEARCH_SERVICE_URL=http://search-service:8090
 
       # Gateway configuration
       - SERVER_PORT=8080
@@ -541,6 +599,8 @@ services:
       notification-service:
         condition: service_healthy
       backup-service:
+        condition: service_healthy
+      search-service:
         condition: service_healthy
     networks:
       - tachyon-network-prod
