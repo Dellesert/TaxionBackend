@@ -61,26 +61,32 @@ type UpdateAppVersionRequest struct {
 
 // AppVersionResponse represents app version response
 type AppVersionResponse struct {
-	ID            uint        `json:"id"`
-	Platform      AppPlatform `json:"platform"`
-	Version       string      `json:"version"`
-	BuildNumber   int         `json:"build_number"`
-	Changelog     string      `json:"changelog,omitempty"`
-	IsCritical    bool        `json:"is_critical"`
-	IsActive      bool        `json:"is_active"`
-	DownloadCount int64       `json:"download_count"`
-	FileSize      int64       `json:"file_size"`
-	Checksum      string      `json:"checksum,omitempty"`
-	StoreURL      string      `json:"store_url,omitempty"`
-	ReleaseDate   time.Time   `json:"release_date"`
-	UploadedByID  uint        `json:"uploaded_by_id"`
+	ID            uint          `json:"id"`
+	Platform      AppPlatform   `json:"platform"`
+	Version       string        `json:"version"`
+	BuildNumber   int           `json:"build_number"`
+	Changelog     string        `json:"changelog,omitempty"`
+	IsCritical    bool          `json:"is_critical"`
+	IsActive      bool          `json:"is_active"`
+	DownloadCount int64         `json:"download_count"`
+	FileSize      int64         `json:"file_size"`
+	Checksum      string        `json:"checksum,omitempty"`
+	StoreURL      string        `json:"store_url,omitempty"`
+	DownloadURL   string        `json:"download_url,omitempty"` // URL for downloading the app
+	ReleaseDate   time.Time     `json:"release_date"`
+	UploadedByID  uint          `json:"uploaded_by_id"`
 	UploadedBy    *UserResponse `json:"uploaded_by,omitempty"`
-	CreatedAt     time.Time   `json:"created_at"`
-	UpdatedAt     time.Time   `json:"updated_at"`
+	CreatedAt     time.Time     `json:"created_at"`
+	UpdatedAt     time.Time     `json:"updated_at"`
 }
 
 // ToResponse converts AppVersion to AppVersionResponse
 func (av *AppVersion) ToResponse() *AppVersionResponse {
+	return av.ToResponseWithBaseURL("")
+}
+
+// ToResponseWithBaseURL converts AppVersion to AppVersionResponse with download URL
+func (av *AppVersion) ToResponseWithBaseURL(baseURL string) *AppVersionResponse {
 	response := &AppVersionResponse{
 		ID:            av.ID,
 		Platform:      av.Platform,
@@ -97,6 +103,16 @@ func (av *AppVersion) ToResponse() *AppVersionResponse {
 		UploadedByID:  av.UploadedByID,
 		CreatedAt:     av.CreatedAt,
 		UpdatedAt:     av.UpdatedAt,
+	}
+
+	// Generate download URL for non-iOS platforms
+	if baseURL != "" && av.Platform != AppPlatformIOS && av.FilePath != "" {
+		response.DownloadURL = baseURL + "/downloads/" + string(av.Platform) + "/" + av.Version
+	}
+
+	// For iOS, use store URL as download URL
+	if av.Platform == AppPlatformIOS && av.StoreURL != "" {
+		response.DownloadURL = av.StoreURL
 	}
 
 	// Include uploader if loaded

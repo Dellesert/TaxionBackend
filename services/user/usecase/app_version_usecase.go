@@ -34,9 +34,10 @@ type AppVersionUsecase interface {
 
 // appVersionUsecase implements AppVersionUsecase interface
 type appVersionUsecase struct {
-	appVersionRepo repository.AppVersionRepository
-	userRepo       repository.UserRepository
+	appVersionRepo  repository.AppVersionRepository
+	userRepo        repository.UserRepository
 	storageBasePath string // Base path for storing app files
+	backendURL      string // Base URL for generating download links
 }
 
 // NewAppVersionUsecase creates a new app version usecase
@@ -50,6 +51,14 @@ func NewAppVersionUsecase(
 		storagePath = "./storage/app-versions"
 	}
 
+	// Get backend URL for generating download links
+	backendURL := os.Getenv("BACKEND_URL")
+	if backendURL == "" {
+		backendURL = os.Getenv("USER_SERVICE_URL")
+	}
+	// Remove trailing slash if present
+	backendURL = strings.TrimSuffix(backendURL, "/")
+
 	// Ensure storage directory exists
 	if err := os.MkdirAll(storagePath, 0755); err != nil {
 		logger.WithFields(map[string]interface{}{
@@ -62,6 +71,7 @@ func NewAppVersionUsecase(
 		appVersionRepo:  appVersionRepo,
 		userRepo:        userRepo,
 		storageBasePath: storagePath,
+		backendURL:      backendURL,
 	}
 }
 
@@ -160,7 +170,7 @@ func (u *appVersionUsecase) CreateAppVersion(
 		versionWithRelations = appVersion
 	}
 
-	return versionWithRelations.ToResponse(), nil
+	return versionWithRelations.ToResponseWithBaseURL(u.backendURL), nil
 }
 
 // GetAppVersion retrieves an app version by ID
@@ -169,7 +179,7 @@ func (u *appVersionUsecase) GetAppVersion(id uint) (*models.AppVersionResponse, 
 	if err != nil {
 		return nil, err
 	}
-	return version.ToResponse(), nil
+	return version.ToResponseWithBaseURL(u.backendURL), nil
 }
 
 // GetByPlatformAndVersion retrieves a specific version by platform and version string
@@ -194,13 +204,13 @@ func (u *appVersionUsecase) GetLatestVersions() (*models.LatestVersionsResponse,
 
 	response := &models.LatestVersionsResponse{}
 	if windows, ok := versions[models.AppPlatformWindows]; ok {
-		response.Windows = windows.ToResponse()
+		response.Windows = windows.ToResponseWithBaseURL(u.backendURL)
 	}
 	if android, ok := versions[models.AppPlatformAndroid]; ok {
-		response.Android = android.ToResponse()
+		response.Android = android.ToResponseWithBaseURL(u.backendURL)
 	}
 	if ios, ok := versions[models.AppPlatformIOS]; ok {
-		response.IOS = ios.ToResponse()
+		response.IOS = ios.ToResponseWithBaseURL(u.backendURL)
 	}
 
 	return response, nil
@@ -217,7 +227,7 @@ func (u *appVersionUsecase) GetLatestByPlatform(platform models.AppPlatform) (*m
 		return nil, err
 	}
 
-	return version.ToResponse(), nil
+	return version.ToResponseWithBaseURL(u.backendURL), nil
 }
 
 // UpdateAppVersion updates app version metadata
@@ -266,7 +276,7 @@ func (u *appVersionUsecase) UpdateAppVersion(id uint, req *models.UpdateAppVersi
 		updatedVersion = version
 	}
 
-	return updatedVersion.ToResponse(), nil
+	return updatedVersion.ToResponseWithBaseURL(u.backendURL), nil
 }
 
 // DeleteAppVersion deletes an app version and its file
@@ -311,7 +321,7 @@ func (u *appVersionUsecase) ListAppVersions(filters map[string]interface{}, page
 	// Convert to response format
 	versionResponses := make([]*models.AppVersionResponse, len(versions))
 	for i, v := range versions {
-		versionResponses[i] = v.ToResponse()
+		versionResponses[i] = v.ToResponseWithBaseURL(u.backendURL)
 	}
 
 	totalPages := int(total) / pageSize
