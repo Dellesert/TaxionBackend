@@ -852,35 +852,6 @@ func (r *messageRepository) MarkAllAsRead(chatID, userID uint) ([]uint, error) {
 	return messageIDs, nil
 }
 
-// GetThreadMessages retrieves messages in a thread (replies to a specific message)
-func (r *messageRepository) GetThreadMessages(replyToID uint, limit, offset int) ([]*models.Message, error) {
-	var messages []*models.Message
-	err := r.db.
-		Preload("Sender").
-		Preload("OriginalSender").
-		Preload("ReplyTo").
-		Preload("ReplyTo.Sender").
-		Preload("ReplyTo.Attachments").
-		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
-			return db.Order("created_at ASC")
-		}).
-		Preload("Reactions.User").
-		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
-			return db.Order("read_at DESC")
-		}).
-		Preload("Attachments").
-		Where("reply_to_id = ? AND is_deleted = ?", replyToID, false).
-		Limit(limit).
-		Offset(offset).
-		Order("created_at ASC").
-		Find(&messages).Error
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get thread messages: %w", err)
-	}
-	return messages, nil
-}
-
 // GetMessageStats returns statistics about messages in a chat
 func (r *messageRepository) GetMessageStats(chatID uint) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
