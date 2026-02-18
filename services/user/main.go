@@ -260,6 +260,7 @@ func main() {
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "user-service", startTime)
 	quickStartHandler := handlers.NewQuickStartHandler(departmentUsecase, subdepartmentUsecase, userUsecase)
 	userGroupHandler := handlers.NewUserGroupHandler(userGroupUsecase)
+	qrAuthHandler := handlers.NewQRAuthHandler(redisClient.Client, userRepo, analyticsClient)
 
 	// Create Gin router
 	router := gin.New()
@@ -274,7 +275,7 @@ func main() {
 	router.Use(metricsHandler.MetricsMiddleware())
 
 	// Setup routes
-	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, appVersionHandler, metricsHandler, quickStartHandler, userGroupHandler, jwtConfig)
+	setupRoutes(router, userHandler, authHandler, profileHandler, departmentHandler, subdepartmentHandler, adminHandler, settingsHandler, sessionHandler, twoFAHandler, passkeyHandler, invitationHandler, passwordResetHandler, smtpHandler, appVersionHandler, metricsHandler, quickStartHandler, userGroupHandler, qrAuthHandler, jwtConfig)
 
 	// Create HTTP server
 	srv := &http.Server{
@@ -309,7 +310,7 @@ func main() {
 }
 
 // setupRoutes configures all routes for the user service
-func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, appVersionHandler *handlers.AppVersionHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, userGroupHandler *handlers.UserGroupHandler, jwtConfig *middleware.JWTConfig) {
+func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHandler *handlers.AuthHandler, profileHandler *handlers.ProfileHandler, departmentHandler *handlers.DepartmentHandler, subdepartmentHandler *handlers.SubdepartmentHandler, adminHandler *handlers.AdminHandler, settingsHandler *handlers.SettingsHandler, sessionHandler *handlers.SessionHandler, twoFAHandler *handlers.TwoFAHandler, passkeyHandler *handlers.PasskeyHandler, invitationHandler *handlers.InvitationHandler, passwordResetHandler *handlers.PasswordResetHandler, smtpHandler *handlers.SMTPHandler, appVersionHandler *handlers.AppVersionHandler, metricsHandler *handlers.MetricsHandler, quickStartHandler *handlers.QuickStartHandler, userGroupHandler *handlers.UserGroupHandler, qrAuthHandler *handlers.QRAuthHandler, jwtConfig *middleware.JWTConfig) {
 	// Health check endpoint
 	router.GET("/health", healthHandler)
 
@@ -352,6 +353,14 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		// 2FA endpoints (public - no auth required)
 		auth.POST("/2fa/send", twoFAHandler.SendCode)
 		auth.POST("/2fa/verify", twoFAHandler.VerifyCode)
+
+		// QR login endpoints
+		qr := auth.Group("/qr")
+		{
+			qr.POST("/generate", qrAuthHandler.GenerateQRToken)         // Public: desktop generates QR
+			qr.GET("/status/:token", qrAuthHandler.GetQRTokenStatus)    // Public: desktop polls status
+			qr.POST("/confirm", middleware.AuthMiddleware(), qrAuthHandler.ConfirmQRLogin) // Auth: mobile confirms
+		}
 
 		// Passkey endpoints
 		passkey := auth.Group("/passkey")
@@ -437,6 +446,14 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 			// 2FA endpoints (public - no auth required)
 			v1Auth.POST("/2fa/send", twoFAHandler.SendCode)
 			v1Auth.POST("/2fa/verify", twoFAHandler.VerifyCode)
+
+			// QR login endpoints (v1)
+			v1QR := v1Auth.Group("/qr")
+			{
+				v1QR.POST("/generate", qrAuthHandler.GenerateQRToken)         // Public: desktop generates QR
+				v1QR.GET("/status/:token", qrAuthHandler.GetQRTokenStatus)    // Public: desktop polls status
+				v1QR.POST("/confirm", middleware.AuthMiddleware(), qrAuthHandler.ConfirmQRLogin) // Auth: mobile confirms
+			}
 
 			// Passkey endpoints (v1)
 			v1Passkey := v1Auth.Group("/passkey")
