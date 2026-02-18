@@ -53,6 +53,9 @@ type MessageUsecase interface {
 
 	// Search messages
 	SearchMessages(userID, chatID uint, req *models.SearchMessagesRequest) (*models.SearchMessagesResponse, error)
+
+	// Thread operations (for channel comments)
+	GetThreadMessages(userID, chatID, threadRootID uint, limit int, beforeID uint) (*models.GetThreadMessagesResponse, error)
 }
 
 // messageUsecase implements MessageUsecase interface
@@ -111,6 +114,36 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	}
 	if !isMember {
 		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Check channel posting permissions
+	chat, err := uc.chatRepo.GetByID(req.ChatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chat: %w", err)
+	}
+	if chat.Type == models.ChatTypeChannel {
+		if req.ThreadRootID == nil {
+			// Root-level post in channel: only admin/owner
+			canPost, err := uc.chatRepo.HasChannelPostAccess(req.ChatID, userID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check channel post access: %w", err)
+			}
+			if !canPost {
+				return nil, fmt.Errorf("only admins can post in channels")
+			}
+		} else {
+			// Thread reply: any member can comment
+			rootMsg, err := uc.messageRepo.GetByID(*req.ThreadRootID)
+			if err != nil {
+				return nil, fmt.Errorf("thread root message not found")
+			}
+			if rootMsg.ChatID != req.ChatID {
+				return nil, fmt.Errorf("thread root message is not in this chat")
+			}
+			if rootMsg.ThreadRootID != nil {
+				return nil, fmt.Errorf("cannot create nested threads")
+			}
+		}
 	}
 
 	// Validate reply-to message if provided
@@ -192,6 +225,7 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		ForwardedFromMessageID: forwardedFromMessageID,
 		OriginalSenderID:       originalSenderID,
 		IsForwarded:            isForwarded,
+		ThreadRootID:           req.ThreadRootID,
 	}
 
 	// Set default type if not provided
@@ -290,12 +324,28 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		fmt.Printf("📢 Broadcasting message ID %d to chat %d from user %d (content: %q)\n",
 			broadcastResponse.ID, req.ChatID, userID, broadcastResponse.Content)
 
-		// New messages are always the latest in the chat
-		wsData := models.WSNewMessageData{
-			Message:  *broadcastResponse,
-			IsLatest: true, // New messages are always the latest
+		if message.ThreadRootID != nil {
+			// Thread message: broadcast as thread event
+			wsData := models.WSNewMessageData{
+				Message:  *broadcastResponse,
+				IsLatest: true,
+			}
+			uc.wsHub.BroadcastToChat(req.ChatID, wsData, models.WSMessageTypeNewThreadMessage, userID)
+
+			// Also broadcast updated root message with new thread_reply_count
+			rootMsg, rootErr := uc.messageRepo.GetWithReactions(*message.ThreadRootID)
+			if rootErr == nil && rootMsg != nil {
+				rootResponse := rootMsg.ToResponse(uc.baseURL)
+				uc.wsHub.BroadcastToChat(req.ChatID, rootResponse, models.WSMessageTypeThreadUpdate, userID)
+			}
+		} else {
+			// Regular message: broadcast as new_message
+			wsData := models.WSNewMessageData{
+				Message:  *broadcastResponse,
+				IsLatest: true,
+			}
+			uc.wsHub.BroadcastToChat(req.ChatID, wsData, models.WSMessageTypeNewMessage, userID)
 		}
-		uc.wsHub.BroadcastToChat(req.ChatID, wsData, models.WSMessageTypeNewMessage, userID)
 		fmt.Printf("✅ BroadcastToChat call completed for message %d\n", response.ID)
 	} else {
 		fmt.Println("❌ wsHub is nil - cannot broadcast!")
@@ -1553,8 +1603,20 @@ func (uc *messageUsecase) GetLatestMessages(userID, chatID uint, req *models.Get
 		limit = 100
 	}
 
-	// Get latest messages
-	messages, total, err := uc.messageRepo.GetLatestMessages(chatID, userID, limit)
+	// Get latest messages (for channels, exclude thread replies from main feed)
+	var messages []*models.Message
+	var total int64
+
+	chat, err := uc.chatRepo.GetByID(chatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	if chat.Type == models.ChatTypeChannel {
+		messages, total, err = uc.messageRepo.GetLatestMessagesExcludeThreads(chatID, userID, limit)
+	} else {
+		messages, total, err = uc.messageRepo.GetLatestMessages(chatID, userID, limit)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest messages: %w", err)
 	}
@@ -1644,8 +1706,18 @@ func (uc *messageUsecase) GetMessagesBeforeID(userID, chatID, beforeID uint, req
 		limit = 100
 	}
 
-	// Get messages before the specified ID
-	messages, err := uc.messageRepo.GetMessagesBeforeID(chatID, userID, beforeID, limit)
+	// Get messages before the specified ID (for channels, exclude thread replies)
+	chat, err := uc.chatRepo.GetByID(chatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	var messages []*models.Message
+	if chat.Type == models.ChatTypeChannel {
+		messages, err = uc.messageRepo.GetMessagesBeforeIDExcludeThreads(chatID, userID, beforeID, limit)
+	} else {
+		messages, err = uc.messageRepo.GetMessagesBeforeID(chatID, userID, beforeID, limit)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages before ID: %w", err)
 	}
@@ -1701,8 +1773,18 @@ func (uc *messageUsecase) GetMessagesAfterID(userID, chatID, afterID uint, req *
 		limit = 100
 	}
 
-	// Get messages after the specified ID
-	messages, err := uc.messageRepo.GetMessagesAfterID(chatID, userID, afterID, limit)
+	// Get messages after the specified ID (for channels, exclude thread replies)
+	chat, err := uc.chatRepo.GetByID(chatID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chat: %w", err)
+	}
+
+	var messages []*models.Message
+	if chat.Type == models.ChatTypeChannel {
+		messages, err = uc.messageRepo.GetMessagesAfterIDExcludeThreads(chatID, userID, afterID, limit)
+	} else {
+		messages, err = uc.messageRepo.GetMessagesAfterID(chatID, userID, afterID, limit)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get messages after ID: %w", err)
 	}
@@ -1863,6 +1945,64 @@ func (uc *messageUsecase) SearchMessages(userID, chatID uint, req *models.Search
 		req.Query, chatID, len(messageResponses), total, offset, hasMore)
 
 	return response, nil
+}
+
+// GetThreadMessages retrieves comments in a thread (channel post)
+func (uc *messageUsecase) GetThreadMessages(userID, chatID, threadRootID uint, limit int, beforeID uint) (*models.GetThreadMessagesResponse, error) {
+	// Check membership
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	// Validate thread root exists and belongs to this chat
+	rootMsg, err := uc.messageRepo.GetWithReactions(threadRootID)
+	if err != nil {
+		return nil, fmt.Errorf("thread root message not found")
+	}
+	if rootMsg.ChatID != chatID {
+		return nil, fmt.Errorf("thread root message is not in this chat")
+	}
+
+	// Set default limit
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	// Get thread messages
+	messages, total, err := uc.messageRepo.GetThreadMessages(threadRootID, userID, limit, beforeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get thread messages: %w", err)
+	}
+
+	// Convert to response format
+	messageResponses := make([]models.MessageResponse, len(messages))
+	for i, msg := range messages {
+		messageResponses[i] = *msg.ToResponseForUser(userID, uc.baseURL)
+	}
+
+	// Check if there are older messages
+	hasOlder := false
+	if len(messages) > 0 && beforeID > 0 {
+		hasOlder = int64(len(messages)) < total
+	} else if len(messages) > 0 {
+		hasOlder = total > int64(len(messages))
+	}
+
+	rootResponse := rootMsg.ToResponseForUser(userID, uc.baseURL)
+
+	return &models.GetThreadMessagesResponse{
+		Messages:    messageResponses,
+		Total:       total,
+		HasOlder:    hasOlder,
+		RootMessage: rootResponse,
+	}, nil
 }
 
 // indexMessageInSearch sends a message to the search service for indexing

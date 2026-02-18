@@ -1986,3 +1986,79 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 
 	c.JSON(http.StatusOK, response)
 }
+
+// GetThreadMessages handles fetching comments in a thread (channel post)
+func (h *MessageHandler) GetThreadMessages(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	chatIDStr := c.Param("id")
+	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	messageIDStr := c.Param("messageId")
+	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse query parameters
+	limit := 30
+	if l, err := strconv.Atoi(c.DefaultQuery("limit", "30")); err == nil && l > 0 && l <= 100 {
+		limit = l
+	}
+
+	var beforeID uint
+	if b, err := strconv.ParseUint(c.DefaultQuery("before", "0"), 10, 32); err == nil {
+		beforeID = uint(b)
+	}
+
+	response, err := h.messageUsecase.GetThreadMessages(userID, uint(chatID), uint(messageID), limit, beforeID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"chat_id":    chatID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to get thread messages")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to get thread messages"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Access denied"
+		}
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Thread not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, response)
+}

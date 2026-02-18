@@ -73,6 +73,12 @@ type MessageRepository interface {
 
 	// Pinned messages
 	GetPinnedMessages(chatID, userID uint) ([]*models.Message, error)
+
+	// Thread operations (for channel comments)
+	GetThreadMessages(threadRootID, userID uint, limit int, beforeID uint) ([]*models.Message, int64, error)
+	GetLatestMessagesExcludeThreads(chatID, userID uint, limit int) ([]*models.Message, int64, error)
+	GetMessagesBeforeIDExcludeThreads(chatID, userID, beforeID uint, limit int) ([]*models.Message, error)
+	GetMessagesAfterIDExcludeThreads(chatID, userID, afterID uint, limit int) ([]*models.Message, error)
 }
 
 // messageRepository implements MessageRepository interface
@@ -1539,6 +1545,182 @@ func (r *messageRepository) GetPinnedMessages(chatID, userID uint) ([]*models.Me
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pinned messages: %w", err)
+	}
+
+	return messages, nil
+}
+
+// GetThreadMessages retrieves comments in a thread (messages with thread_root_id = threadRootID)
+func (r *messageRepository) GetThreadMessages(threadRootID, userID uint, limit int, beforeID uint) ([]*models.Message, int64, error) {
+	var messages []*models.Message
+	var total int64
+
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	// Count total thread messages
+	err := r.db.Model(&models.Message{}).
+		Where("thread_root_id = ?", threadRootID).
+		Where("id NOT IN (?)", deletedSubquery).
+		Count(&total).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count thread messages: %w", err)
+	}
+
+	query := r.db.
+		Preload("Sender").
+		Preload("OriginalSender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Reactions.User").
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("thread_root_id = ?", threadRootID).
+		Where("id NOT IN (?)", deletedSubquery)
+
+	if beforeID > 0 {
+		query = query.Where("id < ?", beforeID)
+	}
+
+	err = query.Order("id ASC").Limit(limit).Find(&messages).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get thread messages: %w", err)
+	}
+
+	return messages, total, nil
+}
+
+// GetLatestMessagesExcludeThreads retrieves latest messages excluding thread replies (for channel feeds)
+func (r *messageRepository) GetLatestMessagesExcludeThreads(chatID, userID uint, limit int) ([]*models.Message, int64, error) {
+	var messages []*models.Message
+	var total int64
+
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.Model(&models.Message{}).
+		Where("chat_id = ?", chatID).
+		Where("thread_root_id IS NULL").
+		Where("id NOT IN (?)", deletedSubquery).
+		Count(&total).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count messages: %w", err)
+	}
+
+	err = r.db.
+		Preload("Sender").
+		Preload("OriginalSender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Reactions.User").
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ?", chatID).
+		Where("thread_root_id IS NULL").
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id DESC").
+		Limit(limit).
+		Find(&messages).Error
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get latest messages: %w", err)
+	}
+
+	// Reverse to chronological order
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, total, nil
+}
+
+// GetMessagesBeforeIDExcludeThreads retrieves older messages excluding thread replies (for channel feeds)
+func (r *messageRepository) GetMessagesBeforeIDExcludeThreads(chatID, userID, beforeID uint, limit int) ([]*models.Message, error) {
+	var messages []*models.Message
+
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.
+		Preload("Sender").
+		Preload("OriginalSender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Reactions.User").
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND id < ?", chatID, beforeID).
+		Where("thread_root_id IS NULL").
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id DESC").
+		Limit(limit).
+		Find(&messages).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages before ID: %w", err)
+	}
+
+	// Reverse to chronological order
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+
+	return messages, nil
+}
+
+// GetMessagesAfterIDExcludeThreads retrieves newer messages excluding thread replies (for channel feeds)
+func (r *messageRepository) GetMessagesAfterIDExcludeThreads(chatID, userID, afterID uint, limit int) ([]*models.Message, error) {
+	var messages []*models.Message
+
+	deletedSubquery := r.db.Model(&models.MessageDeletion{}).
+		Unscoped().
+		Select("message_id").
+		Where("user_id = ?", userID)
+
+	err := r.db.
+		Preload("Sender").
+		Preload("OriginalSender").
+		Preload("ReplyTo").
+		Preload("ReplyTo.Sender").
+		Preload("ReplyTo.Attachments").
+		Preload("Reactions", func(db *gorm.DB) *gorm.DB {
+			return db.Order("created_at ASC")
+		}).
+		Preload("Reactions.User").
+		Preload("ReadReceipts", func(db *gorm.DB) *gorm.DB {
+			return db.Order("read_at DESC")
+		}).
+		Preload("Attachments").
+		Where("chat_id = ? AND id > ?", chatID, afterID).
+		Where("thread_root_id IS NULL").
+		Where("id NOT IN (?)", deletedSubquery).
+		Order("id ASC").
+		Limit(limit).
+		Find(&messages).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get messages after ID: %w", err)
 	}
 
 	return messages, nil

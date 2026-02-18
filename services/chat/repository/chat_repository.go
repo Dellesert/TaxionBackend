@@ -46,6 +46,7 @@ type ChatRepository interface {
 	HasWriteAccess(chatID, userID uint) (bool, error)
 	HasAdminAccess(chatID, userID uint) (bool, error)
 	HasOwnerAccess(chatID, userID uint) (bool, error)
+	HasChannelPostAccess(chatID, userID uint) (bool, error)
 
 	// Sync methods
 	GetDeletedChatIDsSince(since time.Time) ([]uint, error)
@@ -596,6 +597,15 @@ func (r *chatRepository) HasOwnerAccess(chatID, userID uint) (bool, error) {
 // CanModifyChat checks if user can modify chat settings
 func (r *chatRepository) CanModifyChat(chatID, userID uint) (bool, error) {
 	return r.HasAdminAccess(chatID, userID)
+}
+
+// HasChannelPostAccess checks if user can post root messages in a channel (owner or admin only)
+func (r *chatRepository) HasChannelPostAccess(chatID, userID uint) (bool, error) {
+	role, err := r.GetMemberRole(chatID, userID)
+	if err != nil {
+		return false, err
+	}
+	return role == models.ChatMemberRoleOwner || role == models.ChatMemberRoleAdmin, nil
 }
 
 // CanDeleteChat checks if user can delete the chat

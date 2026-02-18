@@ -81,11 +81,17 @@ type Message struct {
 	OriginalSenderID       *uint  `gorm:"index" json:"original_sender_id,omitempty"`
 	IsForwarded            bool   `gorm:"not null;default:false" json:"is_forwarded"`
 
+	// Thread fields for channel comments
+	ThreadRootID      *uint      `gorm:"index" json:"thread_root_id,omitempty"`
+	ThreadReplyCount  int        `gorm:"not null;default:0" json:"thread_reply_count"`
+	ThreadLastReplyAt *time.Time `json:"thread_last_reply_at,omitempty"`
+
 	// Associations
 	Chat           *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
 	Sender         *models.User `gorm:"foreignKey:SenderID" json:"sender,omitempty"`
 	ReplyTo        *Message     `gorm:"foreignKey:ReplyToID" json:"reply_to,omitempty"`
 	OriginalSender *models.User `gorm:"foreignKey:OriginalSenderID" json:"original_sender,omitempty"`
+	ThreadRoot     *Message     `gorm:"foreignKey:ThreadRootID" json:"thread_root,omitempty"`
 
 	// Message reactions and read receipts
 	Reactions    []MessageReaction    `gorm:"foreignKey:MessageID" json:"reactions,omitempty"`
@@ -161,11 +167,24 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 
 // AfterCreate hook is called after creating a message
 func (m *Message) AfterCreate(tx *gorm.DB) error {
-	// Update chat's last_message_at
 	now := time.Now()
-	return tx.Model(&Chat{}).
+
+	// Update chat's last_message_at
+	if err := tx.Model(&Chat{}).
 		Where("id = ?", m.ChatID).
-		Update("last_message_at", now).Error
+		Update("last_message_at", now).Error; err != nil {
+		return err
+	}
+
+	// If this is a thread reply, update the root message's counters
+	if m.ThreadRootID != nil {
+		return tx.Model(&Message{}).
+			Where("id = ?", *m.ThreadRootID).
+			UpdateColumn("thread_reply_count", gorm.Expr("thread_reply_count + 1")).
+			Update("thread_last_reply_at", now).Error
+	}
+
+	return nil
 }
 
 // Request/Response structures
@@ -196,6 +215,9 @@ type SendMessageRequest struct {
 
 	// Forward-related field - ID of the original message being forwarded
 	ForwardFromMessageID *uint `json:"forward_from_message_id,omitempty" validate:"omitempty,min=1"`
+
+	// Thread-related field - ID of the root message for channel thread comments
+	ThreadRootID *uint `json:"thread_root_id,omitempty" validate:"omitempty,min=1"`
 }
 
 // UpdateMessageRequest represents request for updating a message
@@ -350,6 +372,10 @@ type MessageResponse struct {
 	OriginalSenderID       *uint        `json:"original_sender_id,omitempty"`
 	OriginalSender         *models.User `json:"original_sender,omitempty"`
 	IsForwarded            bool         `json:"is_forwarded"`
+	// Thread-related fields
+	ThreadRootID      *uint      `json:"thread_root_id,omitempty"`
+	ThreadReplyCount  int        `json:"thread_reply_count"`
+	ThreadLastReplyAt *time.Time `json:"thread_last_reply_at,omitempty"`
 }
 
 // MessageReactionResponse represents message reaction response
@@ -425,6 +451,10 @@ func (m *Message) toResponse(viewerUserID uint, baseURL ...string) *MessageRespo
 		OriginalSenderID:       m.OriginalSenderID,
 		OriginalSender:         m.OriginalSender,
 		IsForwarded:            m.IsForwarded,
+		// Thread-related fields
+		ThreadRootID:      m.ThreadRootID,
+		ThreadReplyCount:  m.ThreadReplyCount,
+		ThreadLastReplyAt: m.ThreadLastReplyAt,
 		// Initialize arrays to prevent undefined in JSON
 		Reactions:    []MessageReactionResponse{},
 		ReadReceipts: []MessageReadReceiptResponse{},
@@ -529,6 +559,10 @@ const (
 	WSMessageTypeMemberRemove  WSMessageType = "member_remove"
 	WSMessageTypeMemberUpdate  WSMessageType = "member_update"
 
+	// Thread events
+	WSMessageTypeNewThreadMessage WSMessageType = "new_thread_message"
+	WSMessageTypeThreadUpdate     WSMessageType = "thread_update"
+
 	// Presence events (deprecated - keeping for backward compatibility)
 	WSMessageTypeUserJoin      WSMessageType = "user_join"
 	WSMessageTypeUserLeave     WSMessageType = "user_leave"
@@ -548,4 +582,12 @@ type WSMessage struct {
 type WSNewMessageData struct {
 	Message  MessageResponse `json:"message"`
 	IsLatest bool            `json:"is_latest"` // True if this is the latest message in the chat (for auto-scroll)
+}
+
+// GetThreadMessagesResponse represents response for thread messages (channel comments)
+type GetThreadMessagesResponse struct {
+	Messages    []MessageResponse `json:"messages"`
+	Total       int64             `json:"total"`
+	HasOlder    bool              `json:"has_older"`
+	RootMessage *MessageResponse  `json:"root_message"`
 }

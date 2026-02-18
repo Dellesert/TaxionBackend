@@ -204,6 +204,11 @@ func (uc *chatUsecase) JoinChat(userID, chatID uint) error {
 		return fmt.Errorf("cannot join private chat")
 	}
 
+	// Channels are invite-only: members can only be added by owner/admin
+	if chat.Type == models.ChatTypeChannel {
+		return fmt.Errorf("cannot self-join channels; must be added by admin")
+	}
+
 	// For group chats, check if user can join (add business logic as needed)
 	if chat.Type == models.ChatTypeGroup {
 		// Check member count limit if needed
