@@ -417,6 +417,7 @@ func (r *chatRepository) RemoveMember(chatID, userID uint) error {
 func (r *chatRepository) GetChatMembers(chatID uint) ([]*models.ChatMember, error) {
 	var members []*models.ChatMember
 	err := r.db.
+		Preload("User").
 		Where("chat_id = ? AND is_active = ?", chatID, true).
 		Order("CASE role WHEN 'owner' THEN 1 WHEN 'admin' THEN 2 ELSE 3 END, joined_at ASC").
 		Find(&members).Error
