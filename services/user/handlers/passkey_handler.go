@@ -86,14 +86,28 @@ type UpdatePasskeyNameRequest struct {
 
 // getOrigin extracts the origin from the request
 func getOrigin(c *gin.Context) string {
+	// Log all relevant headers for debugging
+	userAgent := c.GetHeader("User-Agent")
+	originHeader := c.GetHeader("Origin")
+	referer := c.GetHeader("Referer")
+	host := c.GetHeader("Host")
+	forwardedHost := c.GetHeader("X-Forwarded-Host")
+
+	logger.WithFields(map[string]interface{}{
+		"user_agent":     userAgent,
+		"origin_header":  originHeader,
+		"referer":        referer,
+		"host":           host,
+		"forwarded_host": forwardedHost,
+	}).Info("getOrigin: incoming request headers")
+
 	// Try Origin header first
-	origin := c.GetHeader("Origin")
-	if origin != "" {
-		return origin
+	if originHeader != "" {
+		logger.WithField("origin", originHeader).Info("getOrigin: using Origin header")
+		return originHeader
 	}
 
 	// Fallback to Referer
-	referer := c.GetHeader("Referer")
 	if referer != "" {
 		// Extract origin from referer (protocol + host)
 		if strings.HasPrefix(referer, "https://") {
@@ -109,24 +123,26 @@ func getOrigin(c *gin.Context) string {
 	}
 
 	// Fallback to X-Forwarded-Host header (set by reverse proxy)
-	forwardedHost := c.GetHeader("X-Forwarded-Host")
 	if forwardedHost != "" {
 		// Assume HTTPS for production
 		return "https://" + forwardedHost
 	}
 
 	// Check Host header - but filter out internal Docker hosts
-	host := c.GetHeader("Host")
 	if host != "" && !isInternalHost(host) {
 		return "https://" + host
 	}
 
-	// For iOS native apps without Origin header, use default production domain
+	// For native apps without Origin header, use default production domain
 	// iOS apps use the domain from Associated Domains (webcredentials)
-	userAgent := c.GetHeader("User-Agent")
 	if isIOSNativeApp(userAgent) {
-		// Return the main iOS app domain
 		logger.WithField("user_agent", userAgent).Info("iOS native app detected, using default origin")
+		return "https://taxion.fusioninsight.cloud"
+	}
+
+	// Android apps using Credential Manager need the same domain as assetlinks.json
+	if isAndroidNativeApp(userAgent) {
+		logger.WithField("user_agent", userAgent).Info("Android native app detected, using default origin")
 		return "https://taxion.fusioninsight.cloud"
 	}
 
@@ -153,6 +169,14 @@ func isIOSNativeApp(userAgent string) bool {
 	return strings.Contains(userAgent, "Darwin") ||
 		strings.Contains(userAgent, "CFNetwork") ||
 		strings.Contains(userAgent, "Tahion") // Your app name
+}
+
+// isAndroidNativeApp checks if the User-Agent indicates an Android native app
+func isAndroidNativeApp(userAgent string) bool {
+	// Android native apps using Credential Manager typically have User-Agent with "Dalvik"
+	// or custom app User-Agent containing "Android"
+	return strings.Contains(userAgent, "Dalvik") ||
+		(strings.Contains(userAgent, "Android") && !strings.Contains(userAgent, "Chrome"))
 }
 
 // findHostEnd finds the end of host in a URL (first / or end of string)

@@ -1,6 +1,8 @@
 package usecase
 
 import (
+	"encoding/hex"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strings"
@@ -48,6 +50,16 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 	}
 	rpOrigins := parseCommaSeparated(rpOriginsStr)
 
+	// Add Android origin if SHA256 fingerprint is configured
+	androidFingerprint := os.Getenv("ANDROID_SHA256_FINGERPRINT")
+	if androidFingerprint != "" {
+		androidOrigin := generateAndroidOrigin(androidFingerprint)
+		if androidOrigin != "" {
+			rpOrigins = append(rpOrigins, androidOrigin)
+			logger.WithField("android_origin", androidOrigin).Info("Added Android app origin for Passkeys")
+		}
+	}
+
 	// Build origin to RP ID mapping
 	originToRPID := make(map[string]string)
 	rpConfigs := make(map[string]*webauthn.WebAuthn)
@@ -55,17 +67,38 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 	// Group origins by their RP ID
 	rpIDToOrigins := make(map[string][]string)
 
+	// Get primary RP ID for Android origins (from first HTTPS origin)
+	var primaryRPID string
 	for _, origin := range rpOrigins {
-		// Extract hostname from origin (e.g., "https://taxion.fusioninsight.cloud" -> "taxion.fusioninsight.cloud")
-		hostname := extractHostname(origin)
+		if strings.HasPrefix(origin, "https://") {
+			primaryRPID = extractHostname(origin)
+			break
+		}
+	}
 
-		// If RP IDs are specified, find matching one; otherwise use hostname as RP ID
+	for _, origin := range rpOrigins {
 		var rpID string
-		if len(rpIDs) > 0 {
-			rpID = findMatchingRPID(hostname, rpIDs)
+
+		// Handle Android origins specially - they use the same RP ID as the web domain
+		if strings.HasPrefix(origin, "android:") {
+			// Android origins use the primary RP ID (the domain from assetlinks.json)
+			if primaryRPID != "" {
+				rpID = primaryRPID
+			} else {
+				logger.Warn("Android origin configured but no HTTPS origin found for RP ID")
+				continue
+			}
 		} else {
-			// Auto-detect: use hostname as RP ID
-			rpID = hostname
+			// Extract hostname from origin (e.g., "https://taxion.fusioninsight.cloud" -> "taxion.fusioninsight.cloud")
+			hostname := extractHostname(origin)
+
+			// If RP IDs are specified, find matching one; otherwise use hostname as RP ID
+			if len(rpIDs) > 0 {
+				rpID = findMatchingRPID(hostname, rpIDs)
+			} else {
+				// Auto-detect: use hostname as RP ID
+				rpID = hostname
+			}
 		}
 
 		originToRPID[origin] = rpID
@@ -177,6 +210,27 @@ func parseCommaSeparated(s string) []string {
 		}
 	}
 	return result
+}
+
+// generateAndroidOrigin creates an Android origin from a SHA256 fingerprint
+// Input format: "4D:73:1B:48:..." or "4d731b48..." (hex with or without colons)
+// Output format: "android:apk-key-hash:TXMbSAx3..."  (base64url encoded)
+func generateAndroidOrigin(sha256Fingerprint string) string {
+	// Remove colons and convert to lowercase
+	hexStr := strings.ReplaceAll(sha256Fingerprint, ":", "")
+	hexStr = strings.ToLower(hexStr)
+
+	// Decode hex to bytes
+	bytes, err := hex.DecodeString(hexStr)
+	if err != nil {
+		logger.WithError(err).Error("Failed to decode SHA256 fingerprint")
+		return ""
+	}
+
+	// Encode to base64url (no padding)
+	b64 := base64.RawURLEncoding.EncodeToString(bytes)
+
+	return "android:apk-key-hash:" + b64
 }
 
 // extractHostname extracts hostname from an origin URL
