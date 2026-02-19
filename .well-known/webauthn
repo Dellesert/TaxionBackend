@@ -1,0 +1,6 @@
+{
+  "origins": [
+    "app://local",
+    "http://localhost:8093"
+  ]
+}

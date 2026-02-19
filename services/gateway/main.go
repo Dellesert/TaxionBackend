@@ -118,6 +118,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 	// .well-known endpoints for iOS/Android Universal Links and Passkeys
 	router.GET("/.well-known/apple-app-site-association", serveAppleAppSiteAssociation)
 	router.GET("/.well-known/assetlinks.json", serveAssetLinks)
+	router.GET("/.well-known/webauthn", serveWebAuthnRelatedOrigins)
 
 	// API v1 routes
 	v1 := router.Group("/api/v1")
@@ -423,4 +424,13 @@ func serveAppleAppSiteAssociation(c *gin.Context) {
 func serveAssetLinks(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 	c.File("./.well-known/assetlinks.json")
+}
+
+// serveWebAuthnRelatedOrigins serves the WebAuthn Related Origins file
+// This allows Electron (app://local) and other origins to use the domain's RP ID for Passkeys
+// See: https://w3c.github.io/webauthn/#sctn-related-origins
+func serveWebAuthnRelatedOrigins(c *gin.Context) {
+	c.Header("Content-Type", "application/json")
+	c.Header("Access-Control-Allow-Origin", "*")
+	c.File("./.well-known/webauthn")
 }

@@ -91,6 +91,25 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 				logger.Warn("Android origin configured but no HTTPS origin found for RP ID")
 				continue
 			}
+		} else if strings.HasPrefix(origin, "app://") || strings.HasPrefix(origin, "electron://") {
+			// Electron app origins (app://local, electron://) use the primary RP ID
+			// This enables Passkey support in Electron desktop apps via WebAuthn Related Origins
+			if primaryRPID != "" {
+				rpID = primaryRPID
+			} else {
+				logger.Warn("Electron origin configured but no HTTPS origin found for RP ID")
+				continue
+			}
+		} else if strings.HasPrefix(origin, "http://localhost") || strings.HasPrefix(origin, "http://127.0.0.1") {
+			// Localhost origins (Electron dev mode) use the primary RP ID
+			// so passkeys are tied to the production domain, not "localhost"
+			if primaryRPID != "" {
+				rpID = primaryRPID
+			} else {
+				// Fallback: use localhost as RP ID if no HTTPS origin exists
+				hostname := extractHostname(origin)
+				rpID = hostname
+			}
 		} else {
 			// Extract hostname from origin (e.g., "https://taxion.fusioninsight.cloud" -> "taxion.fusioninsight.cloud")
 			hostname := extractHostname(origin)
