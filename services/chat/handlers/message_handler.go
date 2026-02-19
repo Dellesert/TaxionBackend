@@ -2021,17 +2021,17 @@ func (h *MessageHandler) GetThreadMessages(c *gin.Context) {
 	}
 
 	// Parse query parameters
-	limit := 30
-	if l, err := strconv.Atoi(c.DefaultQuery("limit", "30")); err == nil && l > 0 && l <= 100 {
+	limit := 25
+	if l, err := strconv.Atoi(c.DefaultQuery("limit", "25")); err == nil && l > 0 && l <= 100 {
 		limit = l
 	}
 
-	var beforeID uint
-	if b, err := strconv.ParseUint(c.DefaultQuery("before", "0"), 10, 32); err == nil {
-		beforeID = uint(b)
+	var afterID uint
+	if a, err := strconv.ParseUint(c.DefaultQuery("after", "0"), 10, 32); err == nil {
+		afterID = uint(a)
 	}
 
-	response, err := h.messageUsecase.GetThreadMessages(userID, uint(chatID), uint(messageID), limit, beforeID)
+	response, err := h.messageUsecase.GetThreadMessages(userID, uint(chatID), uint(messageID), limit, afterID)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id": requestID,

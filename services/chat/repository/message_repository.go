@@ -75,7 +75,7 @@ type MessageRepository interface {
 	GetPinnedMessages(chatID, userID uint) ([]*models.Message, error)
 
 	// Thread operations (for channel comments)
-	GetThreadMessages(threadRootID, userID uint, limit int, beforeID uint) ([]*models.Message, int64, error)
+	GetThreadMessages(threadRootID, userID uint, limit int, afterID uint) ([]*models.Message, int64, error)
 	GetLatestMessagesExcludeThreads(chatID, userID uint, limit int) ([]*models.Message, int64, error)
 	GetMessagesBeforeIDExcludeThreads(chatID, userID, beforeID uint, limit int) ([]*models.Message, error)
 	GetMessagesAfterIDExcludeThreads(chatID, userID, afterID uint, limit int) ([]*models.Message, error)
@@ -1522,7 +1522,8 @@ func (r *messageRepository) GetPinnedMessages(chatID, userID uint) ([]*models.Me
 }
 
 // GetThreadMessages retrieves comments in a thread (messages with thread_root_id = threadRootID)
-func (r *messageRepository) GetThreadMessages(threadRootID, userID uint, limit int, beforeID uint) ([]*models.Message, int64, error) {
+// Uses forward pagination: afterID=0 returns first N messages, afterID>0 returns messages after that ID.
+func (r *messageRepository) GetThreadMessages(threadRootID, userID uint, limit int, afterID uint) ([]*models.Message, int64, error) {
 	var messages []*models.Message
 	var total int64
 
@@ -1557,8 +1558,8 @@ func (r *messageRepository) GetThreadMessages(threadRootID, userID uint, limit i
 		Where("thread_root_id = ?", threadRootID).
 		Where("id NOT IN (?)", deletedSubquery)
 
-	if beforeID > 0 {
-		query = query.Where("id < ?", beforeID)
+	if afterID > 0 {
+		query = query.Where("id > ?", afterID)
 	}
 
 	err = query.Order("id ASC").Limit(limit).Find(&messages).Error

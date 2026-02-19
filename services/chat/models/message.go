@@ -588,6 +588,6 @@ type WSNewMessageData struct {
 type GetThreadMessagesResponse struct {
 	Messages    []MessageResponse `json:"messages"`
 	Total       int64             `json:"total"`
-	HasOlder    bool              `json:"has_older"`
+	HasMore     bool              `json:"has_more"`
 	RootMessage *MessageResponse  `json:"root_message"`
 }

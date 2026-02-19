@@ -55,7 +55,7 @@ type MessageUsecase interface {
 	SearchMessages(userID, chatID uint, req *models.SearchMessagesRequest) (*models.SearchMessagesResponse, error)
 
 	// Thread operations (for channel comments)
-	GetThreadMessages(userID, chatID, threadRootID uint, limit int, beforeID uint) (*models.GetThreadMessagesResponse, error)
+	GetThreadMessages(userID, chatID, threadRootID uint, limit int, afterID uint) (*models.GetThreadMessagesResponse, error)
 }
 
 // messageUsecase implements MessageUsecase interface
@@ -1953,7 +1953,8 @@ func (uc *messageUsecase) SearchMessages(userID, chatID uint, req *models.Search
 }
 
 // GetThreadMessages retrieves comments in a thread (channel post)
-func (uc *messageUsecase) GetThreadMessages(userID, chatID, threadRootID uint, limit int, beforeID uint) (*models.GetThreadMessagesResponse, error) {
+// Uses forward pagination: afterID=0 loads from beginning, afterID>0 loads next page.
+func (uc *messageUsecase) GetThreadMessages(userID, chatID, threadRootID uint, limit int, afterID uint) (*models.GetThreadMessagesResponse, error) {
 	// Check membership
 	isMember, err := uc.chatRepo.IsMember(chatID, userID)
 	if err != nil {
@@ -1974,14 +1975,14 @@ func (uc *messageUsecase) GetThreadMessages(userID, chatID, threadRootID uint, l
 
 	// Set default limit
 	if limit <= 0 {
-		limit = 30
+		limit = 25
 	}
 	if limit > 100 {
 		limit = 100
 	}
 
-	// Get thread messages
-	messages, total, err := uc.messageRepo.GetThreadMessages(threadRootID, userID, limit, beforeID)
+	// Get thread messages (forward pagination)
+	messages, total, err := uc.messageRepo.GetThreadMessages(threadRootID, userID, limit, afterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get thread messages: %w", err)
 	}
@@ -1992,20 +1993,15 @@ func (uc *messageUsecase) GetThreadMessages(userID, chatID, threadRootID uint, l
 		messageResponses[i] = *msg.ToResponseForUser(userID, uc.baseURL)
 	}
 
-	// Check if there are older messages
-	hasOlder := false
-	if len(messages) > 0 && beforeID > 0 {
-		hasOlder = int64(len(messages)) < total
-	} else if len(messages) > 0 {
-		hasOlder = total > int64(len(messages))
-	}
+	// Check if there are more messages after the current page
+	hasMore := int64(len(messages)) == int64(limit)
 
 	rootResponse := rootMsg.ToResponseForUser(userID, uc.baseURL)
 
 	return &models.GetThreadMessagesResponse{
 		Messages:    messageResponses,
 		Total:       total,
-		HasOlder:    hasOlder,
+		HasMore:     hasMore,
 		RootMessage: rootResponse,
 	}, nil
 }
