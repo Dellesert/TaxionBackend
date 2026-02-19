@@ -1471,6 +1471,11 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 		return fmt.Errorf("failed to get chat: %w", err)
 	}
 
+	// Skip notifications for thread comments in channels (channel post comments)
+	if chat.Type == models.ChatTypeChannel && message.ThreadRootID != nil {
+		return nil
+	}
+
 	// Get all chat members
 	memberIDs, err := uc.chatRepo.GetChatMemberIDs(chatID)
 	if err != nil {
