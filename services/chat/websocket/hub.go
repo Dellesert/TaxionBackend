@@ -43,6 +43,7 @@ type TypingIndicator struct {
 	UserID    uint      `json:"user_id"`
 	ChatID    uint      `json:"chat_id"`
 	IsTyping  bool      `json:"is_typing"`
+	Action    string    `json:"action,omitempty"` // "typing", "uploading_photo", "uploading_video"
 	Timestamp time.Time `json:"timestamp"`
 }
 
@@ -770,11 +771,15 @@ func (h *Hub) SendToUser(userID uint, data interface{}, msgType models.WSMessage
 }
 
 // BroadcastTyping broadcasts typing indicator
-func (h *Hub) BroadcastTyping(chatID, userID uint, isTyping bool) {
+func (h *Hub) BroadcastTyping(chatID, userID uint, isTyping bool, action string) {
+	if action == "" {
+		action = "typing"
+	}
 	typingData := &TypingIndicator{
 		UserID:    userID,
 		ChatID:    chatID,
 		IsTyping:  isTyping,
+		Action:    action,
 		Timestamp: time.Now(),
 	}
 

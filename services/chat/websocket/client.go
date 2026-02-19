@@ -205,7 +205,11 @@ func (c *Client) handleWebSocketMessage(wsMsg *models.WSMessage) {
 func (c *Client) handleTypingMessage(wsMsg *models.WSMessage) {
 	if typingData, ok := wsMsg.Data.(map[string]interface{}); ok {
 		if isTyping, exists := typingData["is_typing"].(bool); exists {
-			c.hub.BroadcastTyping(wsMsg.ChatID, c.userID, isTyping)
+			action, _ := typingData["action"].(string)
+			if action == "" {
+				action = "typing"
+			}
+			c.hub.BroadcastTyping(wsMsg.ChatID, c.userID, isTyping, action)
 		}
 	}
 }
