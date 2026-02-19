@@ -345,10 +345,10 @@ func (u *deviceUsecase) validateRegisterDeviceRequest(req *models.RegisterDevice
 
 	// Validate platform
 	switch req.Platform {
-	case models.DevicePlatformIOS, models.DevicePlatformAndroid, models.DevicePlatformWeb:
+	case models.DevicePlatformIOS, models.DevicePlatformAndroid, models.DevicePlatformWeb, models.DevicePlatformElectron:
 		// Valid platform
 	default:
-		return fmt.Errorf("invalid platform: must be ios, android, or web")
+		return fmt.Errorf("invalid platform: must be ios, android, web, or electron")
 	}
 
 	return nil
