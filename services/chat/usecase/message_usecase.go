@@ -247,18 +247,30 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
-	// Unhide the chat for all members when a new message is sent
+	// Unhide the chat for all members when a new regular message is sent (not thread comments)
 	// This ensures that hidden/deleted chats reappear when receiving new messages
-	memberIDs, err := uc.chatRepo.GetChatMemberIDs(req.ChatID)
-	if err != nil {
-		fmt.Printf("⚠️ Failed to get chat members to unhide chat: %v\n", err)
-	} else {
-		for _, memberID := range memberIDs {
-			if err := uc.chatRepo.UpdateHiddenStatus(req.ChatID, memberID, false); err != nil {
-				fmt.Printf("⚠️ Failed to unhide chat %d for user %d: %v\n", req.ChatID, memberID, err)
+	// Thread comments should not unhide/bump chats in the chat list
+	var memberIDs []uint
+	if req.ThreadRootID == nil {
+		var mErr error
+		memberIDs, mErr = uc.chatRepo.GetChatMemberIDs(req.ChatID)
+		if mErr != nil {
+			fmt.Printf("⚠️ Failed to get chat members to unhide chat: %v\n", mErr)
+		} else {
+			for _, memberID := range memberIDs {
+				if err := uc.chatRepo.UpdateHiddenStatus(req.ChatID, memberID, false); err != nil {
+					fmt.Printf("⚠️ Failed to unhide chat %d for user %d: %v\n", req.ChatID, memberID, err)
+				}
 			}
+			fmt.Printf("✅ Chat %d unhidden for %d members\n", req.ChatID, len(memberIDs))
 		}
-		fmt.Printf("✅ Chat %d unhidden for %d members\n", req.ChatID, len(memberIDs))
+	} else {
+		// For thread comments, still get member IDs for search indexing
+		var mErr error
+		memberIDs, mErr = uc.chatRepo.GetChatMemberIDs(req.ChatID)
+		if mErr != nil {
+			fmt.Printf("⚠️ Failed to get chat members for thread comment: %v\n", mErr)
+		}
 	}
 
 	// Process file attachments if FileIDs are provided

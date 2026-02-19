@@ -528,8 +528,9 @@ func (r *messageRepository) GetUnreadCount(chatID, userID uint) (int64, error) {
 	var count int64
 
 	// Get all messages in chat that don't have read receipts from this user
+	// Exclude thread comments (thread_root_id IS NULL) - they should not affect unread count
 	err := r.db.Model(&models.Message{}).
-		Where("chat_id = ? AND sender_id != ? AND is_deleted = ?", chatID, userID, false).
+		Where("chat_id = ? AND sender_id != ? AND is_deleted = ? AND thread_root_id IS NULL", chatID, userID, false).
 		Where("id NOT IN (?)",
 			r.db.Table("message_read_receipts").
 				Select("message_id").
@@ -550,13 +551,14 @@ func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 	var count int64
 
 	// Count unread messages in private chats
+	// Exclude thread comments (thread_root_id IS NULL)
 	var privateUnreadCount int64
 	err := r.db.Model(&models.Message{}).
 		Joins("JOIN chat_members ON messages.chat_id = chat_members.chat_id").
 		Joins("JOIN chats ON chat_members.chat_id = chats.id").
 		Where("chat_members.user_id = ? AND chat_members.is_active = ? AND chat_members.is_hidden = ?", userID, true, false).
 		Where("chats.type = ?", models.ChatTypePrivate).
-		Where("messages.sender_id != ? AND messages.is_deleted = ?", userID, false).
+		Where("messages.sender_id != ? AND messages.is_deleted = ? AND messages.thread_root_id IS NULL", userID, false).
 		Where("messages.id NOT IN (?)",
 			r.db.Table("message_read_receipts").
 				Select("message_id").
@@ -569,6 +571,7 @@ func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 	}
 
 	// Count number of group/channel chats with unread messages
+	// Exclude thread comments (thread_root_id IS NULL)
 	var groupChatsWithUnread int64
 	err = r.db.Table("chats").
 		Joins("JOIN chat_members ON chats.id = chat_members.chat_id").
@@ -578,7 +581,7 @@ func (r *messageRepository) GetTotalUnreadCount(userID uint) (int64, error) {
 			r.db.Table("messages").
 				Select("1").
 				Where("messages.chat_id = chats.id").
-				Where("messages.sender_id != ? AND messages.is_deleted = ?", userID, false).
+				Where("messages.sender_id != ? AND messages.is_deleted = ? AND messages.thread_root_id IS NULL", userID, false).
 				Where("messages.id NOT IN (?)",
 					r.db.Table("message_read_receipts").
 						Select("message_id").
@@ -694,7 +697,7 @@ func (r *messageRepository) GetMessagesByType(chatID uint, messageType models.Me
 
 // Additional helper methods for message management
 
-// GetLatestMessage retrieves the most recent message in a chat
+// GetLatestMessage retrieves the most recent message in a chat (excluding thread comments)
 func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, error) {
 	var message models.Message
 	err := r.db.
@@ -704,7 +707,7 @@ func (r *messageRepository) GetLatestMessage(chatID uint) (*models.Message, erro
 			return db.Order("read_at DESC")
 		}).
 		Preload("Attachments"). // Load attachments for last_message
-		Where("chat_id = ? AND is_deleted = ?", chatID, false).
+		Where("chat_id = ? AND is_deleted = ? AND thread_root_id IS NULL", chatID, false).
 		Order("created_at DESC").
 		First(&message).Error
 
@@ -734,7 +737,7 @@ func (r *messageRepository) GetLatestMessageForUser(chatID, userID uint) (*model
 			return db.Order("read_at DESC")
 		}).
 		Preload("Attachments").
-		Where("chat_id = ? AND is_deleted = ?", chatID, false).
+		Where("chat_id = ? AND is_deleted = ? AND thread_root_id IS NULL", chatID, false).
 		Where("id NOT IN (?)", deletedSubquery).
 		Order("created_at DESC").
 		First(&message).Error

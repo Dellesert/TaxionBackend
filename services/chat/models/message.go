@@ -169,19 +169,20 @@ func (m *Message) BeforeCreate(tx *gorm.DB) error {
 func (m *Message) AfterCreate(tx *gorm.DB) error {
 	now := time.Now()
 
-	// Update chat's last_message_at
-	if err := tx.Model(&Chat{}).
-		Where("id = ?", m.ChatID).
-		Update("last_message_at", now).Error; err != nil {
-		return err
-	}
-
-	// If this is a thread reply, update the root message's counters
+	// If this is a thread reply, only update the root message's counters
+	// Do NOT update chat's last_message_at for thread comments
 	if m.ThreadRootID != nil {
 		return tx.Model(&Message{}).
 			Where("id = ?", *m.ThreadRootID).
 			UpdateColumn("thread_reply_count", gorm.Expr("thread_reply_count + 1")).
 			Update("thread_last_reply_at", now).Error
+	}
+
+	// Update chat's last_message_at only for regular messages (not thread comments)
+	if err := tx.Model(&Chat{}).
+		Where("id = ?", m.ChatID).
+		Update("last_message_at", now).Error; err != nil {
+		return err
 	}
 
 	return nil
