@@ -306,6 +306,9 @@ func setupRoutes(
 		// Progress management
 		protected.PATCH("/tasks/:id/progress", taskHandler.UpdateTaskProgress)
 
+		// Group task assignee status
+		protected.PATCH("/tasks/:id/assignee-status", taskHandler.UpdateAssigneeStatus)
+
 		// Task activities
 		protected.GET("/tasks/:id/activities", activityHandler.GetTaskActivities)
 

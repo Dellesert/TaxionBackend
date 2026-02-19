@@ -59,6 +59,11 @@ type TaskRepository interface {
 	GetNewTasksForUser(userID uint, limit int) ([]*models.Task, int64, error)
 	GetActiveTasksForUser(userID uint, limit int) ([]*models.Task, int64, error)
 	GetOverdueTasksForUser(userID uint, limit int) ([]*models.Task, int64, error)
+
+	// Group task methods
+	GetAssigneeByTaskAndUser(taskID, userID uint) (*models.TaskAssignee, error)
+	UpdateAssignee(assignee *models.TaskAssignee) error
+	GetGroupTaskAssignees(taskID uint) ([]models.TaskAssignee, error)
 }
 
 // TimeRange represents a time period for analytics
@@ -528,6 +533,11 @@ func (r *taskRepository) applyFilters(query *gorm.DB, filter *models.TaskFilterR
 	// Filter by creator (new field)
 	if filter.CreatedByUserID != nil {
 		query = query.Where("created_by_user_id = ?", *filter.CreatedByUserID)
+	}
+
+	// Filter by task type
+	if filter.TaskType != nil {
+		query = query.Where("task_type = ?", *filter.TaskType)
 	}
 
 	// Filter by delegated tasks
@@ -1473,4 +1483,38 @@ func (r *taskRepository) GetOverdueTasksForUser(userID uint, limit int) ([]*mode
 	r.loadAttachmentCounts(tasks)
 
 	return tasks, total, nil
+}
+
+// Group task methods
+
+// GetAssigneeByTaskAndUser retrieves a specific assignee record for a task and user
+func (r *taskRepository) GetAssigneeByTaskAndUser(taskID, userID uint) (*models.TaskAssignee, error) {
+	var assignee models.TaskAssignee
+	err := r.db.Where("task_id = ? AND user_id = ? AND deleted_at IS NULL", taskID, userID).First(&assignee).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("assignee not found")
+		}
+		return nil, fmt.Errorf("failed to get assignee: %w", err)
+	}
+	return &assignee, nil
+}
+
+// UpdateAssignee updates an existing task assignee record
+func (r *taskRepository) UpdateAssignee(assignee *models.TaskAssignee) error {
+	result := r.db.Save(assignee)
+	if result.Error != nil {
+		return fmt.Errorf("failed to update assignee: %w", result.Error)
+	}
+	return nil
+}
+
+// GetGroupTaskAssignees retrieves all assignees for a task
+func (r *taskRepository) GetGroupTaskAssignees(taskID uint) ([]models.TaskAssignee, error) {
+	var assignees []models.TaskAssignee
+	err := r.db.Where("task_id = ? AND deleted_at IS NULL", taskID).Find(&assignees).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group task assignees: %w", err)
+	}
+	return assignees, nil
 }

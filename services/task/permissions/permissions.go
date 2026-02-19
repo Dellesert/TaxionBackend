@@ -22,16 +22,17 @@ const (
 
 // TaskPermissions represents user permissions for a task
 type TaskPermissions struct {
-	CanView              bool `json:"can_view"`               // View task
-	CanViewSubtasks      bool `json:"can_view_subtasks"`      // View all subtasks
-	CanEdit              bool `json:"can_edit"`               // Edit task
-	CanChangeStatus      bool `json:"can_change_status"`      // Change status
-	CanCheckItems        bool `json:"can_check_items"`        // Check checklist items
-	CanCreateSubtasks    bool `json:"can_create_subtasks"`    // Create subtasks
-	CanDelegate          bool `json:"can_delegate"`           // Delegate task
-	CanEmergencyComplete bool `json:"can_emergency_complete"` // Emergency complete
-	CanAssignUsers       bool `json:"can_assign_users"`       // Assign users
-	CanDelete            bool `json:"can_delete"`             // Delete task
+	CanView                  bool `json:"can_view"`                    // View task
+	CanViewSubtasks          bool `json:"can_view_subtasks"`          // View all subtasks
+	CanEdit                  bool `json:"can_edit"`                   // Edit task
+	CanChangeStatus          bool `json:"can_change_status"`          // Change status
+	CanCheckItems            bool `json:"can_check_items"`            // Check checklist items
+	CanCreateSubtasks        bool `json:"can_create_subtasks"`        // Create subtasks
+	CanDelegate              bool `json:"can_delegate"`               // Delegate task
+	CanEmergencyComplete     bool `json:"can_emergency_complete"`     // Emergency complete
+	CanAssignUsers           bool `json:"can_assign_users"`           // Assign users
+	CanDelete                bool `json:"can_delete"`                 // Delete task
+	CanUpdateAssigneeStatus  bool `json:"can_update_assignee_status"` // Update own assignee status (group tasks)
 }
 
 // DelegationInfo represents a user in the delegation chain
@@ -178,30 +179,35 @@ func getCurrentAssigneePermissions(task *models.Task) *TaskPermissions {
 	// If task is completed, only allow viewing
 	if isTaskCompleted(task) {
 		return &TaskPermissions{
-			CanView:              true,
-			CanViewSubtasks:      true,
-			CanEdit:              false,
-			CanChangeStatus:      false,
-			CanCheckItems:        false,
-			CanCreateSubtasks:    false,
-			CanDelegate:          false,
-			CanEmergencyComplete: false,
-			CanAssignUsers:       false,
-			CanDelete:            false,
+			CanView:                 true,
+			CanViewSubtasks:         true,
+			CanEdit:                 false,
+			CanChangeStatus:         false,
+			CanCheckItems:           false,
+			CanCreateSubtasks:       false,
+			CanDelegate:             false,
+			CanEmergencyComplete:    false,
+			CanAssignUsers:          false,
+			CanDelete:               false,
+			CanUpdateAssigneeStatus: false,
 		}
 	}
 
+	// Group task assignees can update their own assignee status
+	isGroupTask := task.TaskType == models.TaskTypeGroup
+
 	return &TaskPermissions{
-		CanView:              true,
-		CanViewSubtasks:      true,
-		CanEdit:              false, // Current assignee cannot edit task details (title, description, etc.)
-		CanChangeStatus:      true,
-		CanCheckItems:        true,
-		CanCreateSubtasks:    true,
-		CanDelegate:          true,
-		CanEmergencyComplete: false,
-		CanAssignUsers:       false, // Only creator can assign users
-		CanDelete:            false,
+		CanView:                 true,
+		CanViewSubtasks:         true,
+		CanEdit:                 false, // Current assignee cannot edit task details (title, description, etc.)
+		CanChangeStatus:         !isGroupTask, // Group task assignees use assignee status instead
+		CanCheckItems:           true,
+		CanCreateSubtasks:       !isGroupTask, // No subtasks for group tasks
+		CanDelegate:             !isGroupTask, // No delegation for group tasks
+		CanEmergencyComplete:    false,
+		CanAssignUsers:          false, // Only creator can assign users
+		CanDelete:               false,
+		CanUpdateAssigneeStatus: isGroupTask,
 	}
 }
 
@@ -384,6 +390,8 @@ func HasPermission(ctx context.Context, task *models.Task, userID uint, action s
 		return perms.CanAssignUsers, nil
 	case "delete":
 		return perms.CanDelete, nil
+	case "update_assignee_status":
+		return perms.CanUpdateAssigneeStatus, nil
 	default:
 		return false, nil
 	}

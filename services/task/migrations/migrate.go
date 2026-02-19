@@ -23,6 +23,11 @@ func RunMigrations(db *database.DB) error {
 		return fmt.Errorf("failed to migrate tasks table: %w", err)
 	}
 
+	// Run group tasks migration
+	if err := migrateGroupTasks(db); err != nil {
+		return fmt.Errorf("failed to migrate group tasks: %w", err)
+	}
+
 	fmt.Println("✅ Custom SQL migrations completed successfully")
 	return nil
 }
@@ -227,6 +232,36 @@ func migrateTasksTable(db *database.DB) error {
 			fmt.Printf("✓ Recalculated progress for parent tasks (checked %d tasks)\n", updatedCount)
 		}
 
+		return nil
+	})
+}
+
+// migrateGroupTasks adds columns for group task support
+func migrateGroupTasks(db *database.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		fmt.Println("📋 Checking group tasks migration...")
+
+		migrations := []string{
+			// Add task_type column to tasks table
+			`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(20) NOT NULL DEFAULT 'regular'`,
+
+			// Add status column to task_assignees table
+			`ALTER TABLE task_assignees ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'pending'`,
+
+			// Add completed_at column to task_assignees table
+			`ALTER TABLE task_assignees ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP`,
+
+			// Add index on task_type for filtering
+			`CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks(task_type)`,
+		}
+
+		for _, m := range migrations {
+			if err := tx.Exec(m).Error; err != nil {
+				fmt.Printf("Warning during group task migration: %v\n", err)
+			}
+		}
+
+		fmt.Println("✓ Group tasks migration completed")
 		return nil
 	})
 }

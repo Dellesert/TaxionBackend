@@ -30,6 +30,22 @@ const (
 	TaskPriorityCritical TaskPriority = "critical"
 )
 
+// TaskType represents the type of a task
+type TaskType string
+
+const (
+	TaskTypeRegular TaskType = "regular"
+	TaskTypeGroup   TaskType = "group"
+)
+
+// AssigneeStatus represents the completion status of an individual assignee in a group task
+type AssigneeStatus string
+
+const (
+	AssigneeStatusPending AssigneeStatus = "pending"
+	AssigneeStatusDone    AssigneeStatus = "done"
+)
+
 // Task represents a task in the system
 type Task struct {
 	models.BaseModel
@@ -37,6 +53,7 @@ type Task struct {
 	Description string       `gorm:"type:text" json:"description,omitempty" validate:"omitempty,max=2000"`
 	Status      TaskStatus   `gorm:"not null;default:'new';size:20" json:"status" validate:"required,oneof=new viewed in_progress review done cancelled"`
 	Priority    TaskPriority `gorm:"not null;default:'medium';size:20" json:"priority" validate:"required,oneof=low medium high critical"`
+	TaskType    TaskType     `gorm:"not null;default:'regular';size:20" json:"task_type" validate:"required,oneof=regular group"`
 
 	// Hierarchy support
 	ParentTaskID *uint `gorm:"index" json:"parent_task_id,omitempty"`
@@ -85,10 +102,12 @@ type Task struct {
 // TaskAssignee represents a user assigned to a task (many-to-many relationship)
 type TaskAssignee struct {
 	models.BaseModel
-	TaskID         uint       `gorm:"not null;index" json:"task_id"`
-	UserID         uint       `gorm:"not null;index" json:"user_id"`
-	AssignedByUserID *uint    `json:"assigned_by_user_id,omitempty"`
-	AssignedAt     time.Time  `gorm:"default:CURRENT_TIMESTAMP" json:"assigned_at"`
+	TaskID           uint           `gorm:"not null;index" json:"task_id"`
+	UserID           uint           `gorm:"not null;index" json:"user_id"`
+	AssignedByUserID *uint          `json:"assigned_by_user_id,omitempty"`
+	AssignedAt       time.Time      `gorm:"default:CURRENT_TIMESTAMP" json:"assigned_at"`
+	Status           AssigneeStatus `gorm:"size:20;default:'pending'" json:"status"`
+	CompletedAt      *time.Time     `json:"completed_at,omitempty"`
 }
 
 // TaskActivity represents an activity/action performed on a task
@@ -173,6 +192,9 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 	if t.Priority == "" {
 		t.Priority = TaskPriorityMedium
 	}
+	if t.TaskType == "" {
+		t.TaskType = TaskTypeRegular
+	}
 
 	// Initialize progress to 0 if not set
 	if t.ProgressPercentage < 0 || t.ProgressPercentage > 100 {
@@ -204,6 +226,7 @@ type CreateTaskRequest struct {
 	Title                string                    `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description          string                    `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
 	Priority             *TaskPriority             `json:"priority,omitempty" binding:"omitempty,oneof=low medium high critical" validate:"omitempty,oneof=low medium high critical"`
+	TaskType             *TaskType                 `json:"task_type,omitempty" binding:"omitempty,oneof=regular group" validate:"omitempty,oneof=regular group"`
 	AssignedToUserID     *uint                     `json:"assigned_to_user_id,omitempty" binding:"omitempty,min=1" validate:"omitempty,min=1"`
 	AssigneeIDs          []uint                    `json:"assignee_ids,omitempty" validate:"omitempty,dive,min=1"`
 	AssignedToDepartment *uint                     `json:"assigned_to_department_id,omitempty" validate:"omitempty,min=1"`
@@ -261,8 +284,23 @@ type TaskPermissions struct {
 	CanCreateSubtasks    bool `json:"can_create_subtasks"`    // Create subtasks
 	CanDelegate          bool `json:"can_delegate"`           // Delegate task
 	CanEmergencyComplete bool `json:"can_emergency_complete"` // Emergency complete
-	CanAssignUsers       bool `json:"can_assign_users"`       // Assign users
-	CanDelete            bool `json:"can_delete"`             // Delete task
+	CanAssignUsers           bool `json:"can_assign_users"`            // Assign users
+	CanDelete                bool `json:"can_delete"`                  // Delete task
+	CanUpdateAssigneeStatus  bool `json:"can_update_assignee_status"`  // Update own status in group task
+}
+
+// GroupAssigneeInfo represents an assignee with their individual status in a group task
+type GroupAssigneeInfo struct {
+	UserID      uint           `json:"user_id"`
+	User        *UserInfo      `json:"user,omitempty"`
+	Status      AssigneeStatus `json:"status"`
+	CompletedAt *time.Time     `json:"completed_at,omitempty"`
+	AssignedAt  time.Time      `json:"assigned_at"`
+}
+
+// UpdateAssigneeStatusRequest represents request for an assignee to update their own status in a group task
+type UpdateAssigneeStatusRequest struct {
+	Status AssigneeStatus `json:"status" binding:"required,oneof=pending done" validate:"required,oneof=pending done"`
 }
 
 // TaskResponse represents a task in API responses
@@ -272,6 +310,12 @@ type TaskResponse struct {
 	Description          string       `json:"description,omitempty"`
 	Status               TaskStatus   `json:"status"`
 	Priority             TaskPriority `json:"priority"`
+	TaskType             TaskType     `json:"task_type"`
+
+	// Group task fields
+	GroupAssignees       []GroupAssigneeInfo `json:"group_assignees,omitempty"`
+	GroupCompletedCount  int                 `json:"group_completed_count,omitempty"`
+	GroupTotalCount      int                 `json:"group_total_count,omitempty"`
 
 	// Hierarchy
 	ParentTaskID         *uint        `json:"parent_task_id,omitempty"`
@@ -341,6 +385,7 @@ func (t *Task) ToResponse() *TaskResponse {
 		Description:               t.Description,
 		Status:                    t.Status,
 		Priority:                  t.Priority,
+		TaskType:                  t.TaskType,
 		ParentTaskID:              t.ParentTaskID,
 		CreatedByUserID:           t.CreatedByUserID,
 		AssignedToUserID:          t.AssignedToUserID,
@@ -371,6 +416,25 @@ func (t *Task) ToResponse() *TaskResponse {
 		for i := range t.Subtasks {
 			response.Subtasks[i] = t.Subtasks[i].ToResponse()
 		}
+	}
+
+	// Populate group task assignee info
+	if t.TaskType == TaskTypeGroup && len(t.Assignees) > 0 {
+		response.GroupAssignees = make([]GroupAssigneeInfo, 0, len(t.Assignees))
+		completedCount := 0
+		for _, a := range t.Assignees {
+			response.GroupAssignees = append(response.GroupAssignees, GroupAssigneeInfo{
+				UserID:      a.UserID,
+				Status:      a.Status,
+				CompletedAt: a.CompletedAt,
+				AssignedAt:  a.AssignedAt,
+			})
+			if a.Status == AssigneeStatusDone {
+				completedCount++
+			}
+		}
+		response.GroupCompletedCount = completedCount
+		response.GroupTotalCount = len(t.Assignees)
 	}
 
 	return response
@@ -417,7 +481,8 @@ type TaskFilterRequest struct {
 	ParentTaskID     *uint `form:"parent_task_id" binding:"omitempty,min=1"`
 	IsSubtask        *bool `form:"is_subtask"`     // true = only subtasks, false = only parent tasks
 	HasSubtasks      *bool `form:"has_subtasks"`   // true = only tasks with subtasks (subtask_count > 0)
-	IsDelegated      *bool `form:"is_delegated"`   // true = only delegated tasks (has delegated_from_user_id or original_assignee_id)
+	IsDelegated      *bool     `form:"is_delegated"`   // true = only delegated tasks (has delegated_from_user_id or original_assignee_id)
+	TaskType         *TaskType `form:"task_type" binding:"omitempty,oneof=regular group"`
 	DueBefore        *time.Time `form:"due_before" time_format:"2006-01-02"`
 	DueAfter         *time.Time `form:"due_after" time_format:"2006-01-02"`
 	Search           string     `form:"search" binding:"omitempty"` // Text search in title and description

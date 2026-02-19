@@ -68,6 +68,9 @@ type TaskUsecase interface {
 	CheckPermission(ctx context.Context, taskID uint, userID uint, action string) (bool, error)
 	EmergencyCompleteTask(ctx context.Context, taskID uint, userID uint) error
 
+	// Group task methods
+	UpdateAssigneeStatus(userID uint, taskID uint, req *models.UpdateAssigneeStatusRequest) (*models.TaskResponse, error)
+
 	// Notification methods
 	SendAttachmentAddedNotification(taskID, userID uint, fileName string)
 }
@@ -162,6 +165,18 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 		task.Priority = models.TaskPriorityMedium
 	}
 
+	// Set task type (default to regular)
+	if req.TaskType != nil {
+		task.TaskType = *req.TaskType
+	} else {
+		task.TaskType = models.TaskTypeRegular
+	}
+
+	// Validate group tasks must have at least 2 assignees
+	if task.TaskType == models.TaskTypeGroup && len(req.AssigneeIDs) < 2 {
+		return nil, fmt.Errorf("validation failed: group tasks must have at least 2 assignees")
+	}
+
 	// Backward compatibility: Set assigned user if provided
 	if req.AssignedTo != nil {
 		task.AssignedTo = req.AssignedTo
@@ -184,6 +199,7 @@ func (u *taskUsecase) CreateTask(userID uint, userRole sharedmodels.Role, userDe
 			assignee := &models.TaskAssignee{
 				TaskID: task.ID,
 				UserID: assigneeID,
+				Status: models.AssigneeStatusPending,
 			}
 			if err := u.taskRepo.CreateAssignee(assignee); err != nil {
 				return nil, fmt.Errorf("failed to create task assignee: %w", err)
@@ -370,6 +386,21 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 				Email:    statusChanger.Email,
 				Avatar:   statusChanger.Avatar,
 				Position: statusChanger.Position,
+			}
+		}
+	}
+
+	// Enrich group assignees with user info
+	if len(response.GroupAssignees) > 0 {
+		for i, ga := range response.GroupAssignees {
+			if user, exists := users[ga.UserID]; exists {
+				response.GroupAssignees[i].User = &models.UserInfo{
+					ID:       user.ID,
+					Name:     user.Name,
+					Email:    user.Email,
+					Avatar:   user.Avatar,
+					Position: user.Position,
+				}
 			}
 		}
 	}
@@ -742,19 +773,59 @@ func (u *taskUsecase) UpdateTask(userID uint, userRole sharedmodels.Role, taskID
 
 	// Update assignees if provided
 	if req.AssigneeIDs != nil {
-		// Delete existing assignees
-		if err := u.taskRepo.DeleteAllAssignees(taskID); err != nil {
-			return nil, fmt.Errorf("failed to delete existing assignees: %w", err)
-		}
-
-		// Create new assignees
-		for _, assigneeID := range req.AssigneeIDs {
-			assignee := &models.TaskAssignee{
-				TaskID: taskID,
-				UserID: assigneeID,
+		if task.TaskType == models.TaskTypeGroup {
+			// For group tasks: preserve existing assignee statuses
+			// Build map of existing assignees
+			existingAssignees, _ := u.taskRepo.GetGroupTaskAssignees(taskID)
+			existingMap := make(map[uint]*models.TaskAssignee)
+			for i := range existingAssignees {
+				existingMap[existingAssignees[i].UserID] = &existingAssignees[i]
 			}
-			if err := u.taskRepo.CreateAssignee(assignee); err != nil {
-				return nil, fmt.Errorf("failed to create task assignee: %w", err)
+
+			// Build set of new assignee IDs
+			newSet := make(map[uint]bool)
+			for _, id := range req.AssigneeIDs {
+				newSet[id] = true
+			}
+
+			// Remove assignees not in new list
+			if err := u.taskRepo.DeleteAllAssignees(taskID); err != nil {
+				return nil, fmt.Errorf("failed to delete existing assignees: %w", err)
+			}
+
+			// Re-create assignees, preserving status for existing ones
+			for _, assigneeID := range req.AssigneeIDs {
+				assignee := &models.TaskAssignee{
+					TaskID: taskID,
+					UserID: assigneeID,
+					Status: models.AssigneeStatusPending,
+				}
+				// Preserve status if this user was already assigned
+				if existing, ok := existingMap[assigneeID]; ok {
+					assignee.Status = existing.Status
+					assignee.CompletedAt = existing.CompletedAt
+				}
+				if err := u.taskRepo.CreateAssignee(assignee); err != nil {
+					return nil, fmt.Errorf("failed to create task assignee: %w", err)
+				}
+			}
+
+			// Recalculate progress for group task
+			u.recalculateGroupTaskProgress(task)
+		} else {
+			// For regular tasks: simple delete-all + recreate
+			if err := u.taskRepo.DeleteAllAssignees(taskID); err != nil {
+				return nil, fmt.Errorf("failed to delete existing assignees: %w", err)
+			}
+
+			for _, assigneeID := range req.AssigneeIDs {
+				assignee := &models.TaskAssignee{
+					TaskID: taskID,
+					UserID: assigneeID,
+				}
+				if err := u.taskRepo.CreateAssignee(assignee); err != nil {
+					return nil, fmt.Errorf("failed to create task assignee: %w", err)
+				}
 			}
 		}
 
@@ -2233,6 +2304,118 @@ func (u *taskUsecase) marshalDetails(details interface{}) (string, error) {
 		return "", err
 	}
 	return string(jsonBytes), nil
+}
+
+// --- GROUP TASK METHODS ---
+
+// UpdateAssigneeStatus allows an assignee to update their own status in a group task
+func (u *taskUsecase) UpdateAssigneeStatus(userID uint, taskID uint, req *models.UpdateAssigneeStatusRequest) (*models.TaskResponse, error) {
+	// 1. Get the task
+	task, err := u.taskRepo.GetByID(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("task not found")
+	}
+
+	// 2. Verify task is a group task
+	if task.TaskType != models.TaskTypeGroup {
+		return nil, fmt.Errorf("validation failed: can only update assignee status on group tasks")
+	}
+
+	// 3. Verify task is not already done/cancelled
+	if task.Status == models.TaskStatusDone || task.Status == models.TaskStatusCancelled {
+		return nil, fmt.Errorf("validation failed: cannot update status on completed or cancelled task")
+	}
+
+	// 4. Get the assignee record for this user
+	assignee, err := u.taskRepo.GetAssigneeByTaskAndUser(taskID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("access denied: you are not an assignee of this task")
+	}
+
+	// 5. Update the assignee status
+	oldStatus := assignee.Status
+	assignee.Status = req.Status
+	if req.Status == models.AssigneeStatusDone {
+		now := time.Now()
+		assignee.CompletedAt = &now
+	} else {
+		assignee.CompletedAt = nil
+	}
+
+	if err := u.taskRepo.UpdateAssignee(assignee); err != nil {
+		return nil, fmt.Errorf("failed to update assignee status: %w", err)
+	}
+
+	// 6. Log activity
+	u.logActivity(taskID, userID, "assignee_status_changed", string(oldStatus), string(req.Status), map[string]interface{}{
+		"assignee_user_id": userID,
+	})
+
+	// 7. Recalculate progress_percentage
+	u.recalculateGroupTaskProgress(task)
+
+	// 8. Check if ALL assignees are done -> auto-complete the task
+	if u.checkAllAssigneesDone(taskID) {
+		task.Status = models.TaskStatusDone
+		now := time.Now()
+		task.CompletedAt = &now
+		task.ProgressPercentage = 100
+		if err := u.taskRepo.Update(task); err != nil {
+			return nil, fmt.Errorf("failed to auto-complete group task: %w", err)
+		}
+		u.logActivity(taskID, userID, "task_status_changed", "in_progress", "done", map[string]interface{}{
+			"reason": "all_assignees_completed",
+		})
+	} else if task.Status == models.TaskStatusNew {
+		// Auto-transition from new to in_progress when first assignee marks done
+		task.Status = models.TaskStatusInProgress
+		if err := u.taskRepo.Update(task); err != nil {
+			fmt.Printf("WARNING: Failed to auto-transition group task to in_progress: %v\n", err)
+		}
+	}
+
+	// 9. Return updated task response
+	updatedTask, err := u.taskRepo.GetByID(taskID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get updated task: %w", err)
+	}
+
+	response := updatedTask.ToResponse()
+	u.enrichTaskWithUserInfo(response)
+
+	return response, nil
+}
+
+// recalculateGroupTaskProgress recalculates progress for a group task based on assignee completion
+func (u *taskUsecase) recalculateGroupTaskProgress(task *models.Task) {
+	assignees, err := u.taskRepo.GetGroupTaskAssignees(task.ID)
+	if err != nil || len(assignees) == 0 {
+		return
+	}
+
+	doneCount := 0
+	for _, a := range assignees {
+		if a.Status == models.AssigneeStatusDone {
+			doneCount++
+		}
+	}
+
+	progress := (doneCount * 100) / len(assignees)
+	u.taskRepo.UpdateProgress(task.ID, progress)
+}
+
+// checkAllAssigneesDone checks if all assignees of a group task have status "done"
+func (u *taskUsecase) checkAllAssigneesDone(taskID uint) bool {
+	assignees, err := u.taskRepo.GetGroupTaskAssignees(taskID)
+	if err != nil || len(assignees) == 0 {
+		return false
+	}
+	for _, a := range assignees {
+		if a.Status != models.AssigneeStatusDone {
+			return false
+		}
+	}
+	return true
 }
 
 // --- ANALYTICS METHODS ---

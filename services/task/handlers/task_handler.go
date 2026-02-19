@@ -926,6 +926,83 @@ func containsSubstring(text, substring string) bool {
 	return false
 }
 
+// UpdateAssigneeStatus handles updating a group task assignee's own status
+// PATCH /api/v1/tasks/:id/assignee-status
+func (h *TaskHandler) UpdateAssigneeStatus(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Parse task ID from URL parameter
+	idStr := c.Param("id")
+	taskID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid task ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req models.UpdateAssigneeStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	task, err := h.taskUsecase.UpdateAssigneeStatus(userID, uint(taskID), &req)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"task_id":    taskID,
+			"status":     req.Status,
+			"error":      err.Error(),
+		}).Error("Failed to update assignee status")
+
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "task not found" {
+			statusCode = http.StatusNotFound
+		} else if containsAccessDeniedError(err.Error()) {
+			statusCode = http.StatusForbidden
+		} else if containsValidationError(err.Error()) {
+			statusCode = http.StatusBadRequest
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to update assignee status",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"task_id":    taskID,
+		"status":     req.Status,
+	}).Info("Assignee status updated successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Assignee status updated successfully",
+		"task":       task,
+		"request_id": requestID,
+	})
+}
+
 // --- NEW HANDLERS FOR HIERARCHY, DELEGATION, AND TRACKING ---
 
 // CreateSubtask creates a subtask under a parent task
