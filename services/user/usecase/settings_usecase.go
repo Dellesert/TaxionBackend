@@ -86,6 +86,7 @@ func (u *settingsUsecase) ApplyPreset(preset models.SecurityLevel, adminID uint)
 	settings.AllowMultiplePasskeys = presetConfig.AllowMultiplePasskeys
 	settings.MaxPasskeysPerUser = presetConfig.MaxPasskeysPerUser
 	settings.SessionDurationHours = presetConfig.SessionDurationHours
+	settings.MaxSessionsPerUser = presetConfig.MaxSessionsPerUser
 	settings.MinPasswordLength = presetConfig.MinPasswordLength
 	settings.RequirePasswordComplexity = presetConfig.RequirePasswordComplexity
 	settings.PasswordExpirationDays = presetConfig.PasswordExpirationDays
@@ -104,13 +105,18 @@ func (u *settingsUsecase) ApplyPreset(preset models.SecurityLevel, adminID uint)
 	newDuration := time.Duration(settings.SessionDurationHours) * time.Hour
 	if err := middleware.UpdateSessionDuration(newDuration); err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to update session duration in runtime")
-		// Don't fail the whole operation, just log the warning
+	}
+
+	// Update max sessions per user in runtime
+	if err := middleware.UpdateMaxSessionsPerUser(settings.MaxSessionsPerUser); err != nil {
+		logger.WithField("error", err.Error()).Warn("Failed to update max sessions per user in runtime")
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"preset":               preset,
-		"admin_id":             adminID,
-		"session_duration_hrs": settings.SessionDurationHours,
+		"preset":                 preset,
+		"admin_id":               adminID,
+		"session_duration_hrs":   settings.SessionDurationHours,
+		"max_sessions_per_user":  settings.MaxSessionsPerUser,
 	}).Info("Security preset applied successfully")
 
 	return settings.ToResponse(), nil
@@ -143,6 +149,9 @@ func (u *settingsUsecase) UpdateCustomSettings(req *models.UpdateCustomSettingsR
 	if req.SessionDurationHours != nil {
 		settings.SessionDurationHours = *req.SessionDurationHours
 	}
+	if req.MaxSessionsPerUser != nil {
+		settings.MaxSessionsPerUser = *req.MaxSessionsPerUser
+	}
 	if req.MinPasswordLength != nil {
 		settings.MinPasswordLength = *req.MinPasswordLength
 	}
@@ -171,13 +180,20 @@ func (u *settingsUsecase) UpdateCustomSettings(req *models.UpdateCustomSettingsR
 		newDuration := time.Duration(settings.SessionDurationHours) * time.Hour
 		if err := middleware.UpdateSessionDuration(newDuration); err != nil {
 			logger.WithField("error", err.Error()).Warn("Failed to update session duration in runtime")
-			// Don't fail the whole operation, just log the warning
+		}
+	}
+
+	// Update max sessions per user in runtime if it was changed
+	if req.MaxSessionsPerUser != nil {
+		if err := middleware.UpdateMaxSessionsPerUser(settings.MaxSessionsPerUser); err != nil {
+			logger.WithField("error", err.Error()).Warn("Failed to update max sessions per user in runtime")
 		}
 	}
 
 	logger.WithFields(map[string]interface{}{
-		"admin_id":             adminID,
-		"session_duration_hrs": settings.SessionDurationHours,
+		"admin_id":               adminID,
+		"session_duration_hrs":   settings.SessionDurationHours,
+		"max_sessions_per_user":  settings.MaxSessionsPerUser,
 	}).Info("Custom security settings updated successfully")
 
 	return settings.ToResponse(), nil
@@ -300,6 +316,11 @@ func (u *settingsUsecase) buildFeatureList(settings *models.SystemSettings) []st
 		features = append(features, fmt.Sprintf("Сессии %d дней неактивности", sessionDays))
 	} else {
 		features = append(features, fmt.Sprintf("Сессии %d часов неактивности", settings.SessionDurationHours))
+	}
+
+	// Max sessions per user
+	if settings.MaxSessionsPerUser > 0 {
+		features = append(features, fmt.Sprintf("До %d активных сессий на пользователя", settings.MaxSessionsPerUser))
 	}
 
 	// Password expiration

@@ -919,10 +919,15 @@ func (h *Hub) cleanup() {
 }
 
 // DisconnectBySessionID finds the WebSocket client connected with the given sessionID,
-// sends a "session_revoked" message, and closes the connection with code 4001.
-func (h *Hub) DisconnectBySessionID(sessionID string) bool {
+// sends a "session_revoked" message with the given reason, and closes the connection with code 4001.
+// The reason parameter allows the client to distinguish between manual deletion and limit eviction.
+func (h *Hub) DisconnectBySessionID(sessionID string, reason string) bool {
 	if sessionID == "" {
 		return false
+	}
+
+	if reason == "" {
+		reason = "session_deleted"
 	}
 
 	h.mutex.RLock()
@@ -945,14 +950,14 @@ func (h *Hub) DisconnectBySessionID(sessionID string) bool {
 		return false
 	}
 
-	log.Printf("Disconnecting WebSocket client for session %s (user %d, conn %s)",
-		sessionID, targetClient.userID, targetClient.connectionID[:8])
+	log.Printf("Disconnecting WebSocket client for session %s (user %d, conn %s, reason: %s)",
+		sessionID, targetClient.userID, targetClient.connectionID[:8], reason)
 
 	// Send session_revoked message
 	revokeMsg, _ := json.Marshal(map[string]interface{}{
 		"type": "session_revoked",
 		"data": map[string]string{
-			"reason": "session_deleted",
+			"reason": reason,
 		},
 		"timestamp": time.Now(),
 	})

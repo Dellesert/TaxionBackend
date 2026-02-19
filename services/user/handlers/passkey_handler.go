@@ -15,6 +15,7 @@ import (
 	sharedErrors "tachyon-messenger/shared/errors"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sessionpkg "tachyon-messenger/shared/session"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -560,7 +561,7 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 	authConfig := middleware.GetAuthConfig()
 	if authConfig != nil && authConfig.SessionStore != nil {
 		ctx := c.Request.Context()
-		session, err := authConfig.SessionStore.CreateSession(
+		session, evictedSessionIDs, err := authConfig.SessionStore.CreateSession(
 			ctx,
 			user.ID,
 			user.Email,
@@ -580,6 +581,9 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 			c.JSON(apiErr.StatusCode, apiErr)
 			return
 		}
+
+		// Notify evicted sessions via WebSocket
+		sessionpkg.NotifyEvictedSessions(evictedSessionIDs, "session_limit_exceeded")
 
 		// Set session cookie
 		c.SetCookie(

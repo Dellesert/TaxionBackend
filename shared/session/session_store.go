@@ -44,11 +44,24 @@ func (s *SessionStore) GetSessionDuration() time.Duration {
 	return s.sessionDuration
 }
 
-// CreateSession creates a new session for a user
-func (s *SessionStore) CreateSession(ctx context.Context, userID uint, email string, role models.Role, ipAddress, userAgent string) (*models.Session, error) {
+// UpdateMaxSessionsPerUser updates the max sessions per user dynamically
+func (s *SessionStore) UpdateMaxSessionsPerUser(n int) {
+	if n > 0 {
+		s.maxSessionsPerUser = n
+	}
+}
+
+// GetMaxSessionsPerUser returns current max sessions per user
+func (s *SessionStore) GetMaxSessionsPerUser() int {
+	return s.maxSessionsPerUser
+}
+
+// CreateSession creates a new session for a user.
+// Returns the new session, a list of evicted session IDs (if the limit was exceeded), and an error.
+func (s *SessionStore) CreateSession(ctx context.Context, userID uint, email string, role models.Role, ipAddress, userAgent string) (*models.Session, []string, error) {
 	sessionID, err := generateSessionID()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate session ID: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate session ID: %w", err)
 	}
 
 	now := time.Now()
@@ -71,12 +84,12 @@ func (s *SessionStore) CreateSession(ctx context.Context, userID uint, email str
 	sessionKey := sessionKey(sessionID)
 	sessionData, err := json.Marshal(session)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal session: %w", err)
+		return nil, nil, fmt.Errorf("failed to marshal session: %w", err)
 	}
 
 	err = s.client.Set(ctx, sessionKey, sessionData, s.sessionDuration).Err()
 	if err != nil {
-		return nil, fmt.Errorf("failed to store session in Redis: %w", err)
+		return nil, nil, fmt.Errorf("failed to store session in Redis: %w", err)
 	}
 
 	// Add to user's session list
@@ -88,16 +101,16 @@ func (s *SessionStore) CreateSession(ctx context.Context, userID uint, email str
 	if err != nil {
 		// Clean up session if we can't add to user list
 		s.client.Del(ctx, sessionKey)
-		return nil, fmt.Errorf("failed to add session to user list: %w", err)
+		return nil, nil, fmt.Errorf("failed to add session to user list: %w", err)
 	}
 
 	// Set expiration for user sessions list
 	s.client.Expire(ctx, userSessionsKey, s.sessionDuration+24*time.Hour)
 
 	// Limit concurrent sessions per user
-	s.limitUserSessions(ctx, userID)
+	evictedSessionIDs := s.limitUserSessions(ctx, userID)
 
-	return session, nil
+	return session, evictedSessionIDs, nil
 }
 
 // GetSession retrieves a session by session ID
@@ -223,28 +236,33 @@ func (s *SessionStore) GetUserSessions(ctx context.Context, userID uint) ([]*mod
 	return sessions, nil
 }
 
-// limitUserSessions limits the number of concurrent sessions per user
-func (s *SessionStore) limitUserSessions(ctx context.Context, userID uint) {
+// limitUserSessions limits the number of concurrent sessions per user.
+// Returns the list of evicted session IDs.
+func (s *SessionStore) limitUserSessions(ctx context.Context, userID uint) []string {
 	userSessionsKey := userSessionsKey(userID)
 
 	// Get count of user sessions
 	count, err := s.client.ZCard(ctx, userSessionsKey).Result()
 	if err != nil || count <= int64(s.maxSessionsPerUser) {
-		return
+		return nil
 	}
 
 	// Remove oldest sessions
 	toRemove := count - int64(s.maxSessionsPerUser)
 	oldSessions, err := s.client.ZRange(ctx, userSessionsKey, 0, toRemove-1).Result()
 	if err != nil {
-		return
+		return nil
 	}
 
+	evicted := make([]string, 0, len(oldSessions))
 	for _, sessionID := range oldSessions {
 		sessionKey := sessionKey(sessionID)
 		s.client.Del(ctx, sessionKey)
 		s.client.ZRem(ctx, userSessionsKey, sessionID)
+		evicted = append(evicted, sessionID)
 	}
+
+	return evicted
 }
 
 // UpdateSessionName updates the custom name of a session

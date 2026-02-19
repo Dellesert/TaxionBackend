@@ -116,6 +116,34 @@ func GetSessionDuration() time.Duration {
 	return globalAuthConfig.SessionStore.GetSessionDuration()
 }
 
+// UpdateMaxSessionsPerUser updates the max sessions per user dynamically (called when settings change)
+func UpdateMaxSessionsPerUser(n int) error {
+	authConfigMutex.Lock()
+	defer authConfigMutex.Unlock()
+
+	if globalAuthConfig == nil {
+		return fmt.Errorf("auth config not initialized")
+	}
+
+	if globalAuthConfig.SessionStore == nil {
+		return fmt.Errorf("session store not available")
+	}
+
+	globalAuthConfig.SessionStore.UpdateMaxSessionsPerUser(n)
+	return nil
+}
+
+// GetMaxSessionsPerUser returns current max sessions per user
+func GetMaxSessionsPerUser() int {
+	authConfigMutex.RLock()
+	defer authConfigMutex.RUnlock()
+
+	if globalAuthConfig == nil || globalAuthConfig.SessionStore == nil {
+		return 5 // Default
+	}
+	return globalAuthConfig.SessionStore.GetMaxSessionsPerUser()
+}
+
 // AuthMiddleware creates unified authentication middleware that supports both JWT and session
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {

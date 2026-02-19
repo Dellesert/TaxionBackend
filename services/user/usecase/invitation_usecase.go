@@ -15,6 +15,7 @@ import (
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
+	sessionpkg "tachyon-messenger/shared/session"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -319,7 +320,7 @@ func (u *invitationUsecase) AcceptInvitation(token string, req *models.AcceptInv
 		authConfig := middleware.GetAuthConfig()
 		if authConfig != nil && authConfig.SessionStore != nil {
 			ctx := context.Background()
-			session, err := authConfig.SessionStore.CreateSession(
+			session, evictedSessionIDs, err := authConfig.SessionStore.CreateSession(
 				ctx,
 				user.ID,
 				user.Email,
@@ -330,6 +331,9 @@ func (u *invitationUsecase) AcceptInvitation(token string, req *models.AcceptInv
 			if err != nil {
 				return nil, fmt.Errorf("failed to create session: %w", err)
 			}
+
+			// Notify evicted sessions via WebSocket
+			sessionpkg.NotifyEvictedSessions(evictedSessionIDs, "session_limit_exceeded")
 
 			response.Session = &sharedmodels.SessionResponse{
 				SessionID: session.SessionID,

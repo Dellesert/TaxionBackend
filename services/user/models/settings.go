@@ -53,7 +53,8 @@ type SystemSettings struct {
 	MaxPasskeysPerUser    int  `gorm:"not null;default:5" json:"max_passkeys_per_user"`
 
 	// Session settings
-	SessionDurationHours int `gorm:"not null;default:72" json:"session_duration_hours"`
+	SessionDurationHours  int `gorm:"not null;default:72" json:"session_duration_hours"`
+	MaxSessionsPerUser    int `gorm:"not null;default:5" json:"max_sessions_per_user"`
 
 	// Password policy
 	MinPasswordLength         int  `gorm:"not null;default:8" json:"min_password_length"`
@@ -79,6 +80,7 @@ type SystemAuthSettings struct {
 	AllowMultiplePasskeys     bool             `json:"allow_multiple_passkeys"`
 	MaxPasskeysPerUser        int              `json:"max_passkeys_per_user"`
 	SessionDurationHours      int              `json:"session_duration_hours"`
+	MaxSessionsPerUser        int              `json:"max_sessions_per_user"`
 	MinPasswordLength         int              `json:"min_password_length"`
 	RequirePasswordComplexity bool             `json:"require_password_complexity"`
 	PasswordExpirationDays    int              `json:"password_expiration_days"`
@@ -124,6 +126,7 @@ func (s *SystemSettings) ToResponse() *SystemAuthSettings {
 		AllowMultiplePasskeys:     s.AllowMultiplePasskeys,
 		MaxPasskeysPerUser:        s.MaxPasskeysPerUser,
 		SessionDurationHours:      s.SessionDurationHours,
+		MaxSessionsPerUser:        s.MaxSessionsPerUser,
 		MinPasswordLength:         s.MinPasswordLength,
 		RequirePasswordComplexity: s.RequirePasswordComplexity,
 		PasswordExpirationDays:    s.PasswordExpirationDays,
@@ -154,6 +157,7 @@ func GetSecurityPresets() map[SecurityLevel]SystemAuthSettings {
 			AllowMultiplePasskeys:     false,
 			MaxPasskeysPerUser:        0,
 			SessionDurationHours:      4320, // 180 days (6 months)
+			MaxSessionsPerUser:        10,
 			MinPasswordLength:         6,
 			RequirePasswordComplexity: false,
 			PasswordExpirationDays:    0, // never expire
@@ -168,6 +172,7 @@ func GetSecurityPresets() map[SecurityLevel]SystemAuthSettings {
 			AllowMultiplePasskeys:     true,
 			MaxPasskeysPerUser:        5,
 			SessionDurationHours:      2160, // 90 days (3 months)
+			MaxSessionsPerUser:        5,
 			MinPasswordLength:         8,
 			RequirePasswordComplexity: true,
 			PasswordExpirationDays:    0, // never expire (optional for medium)
@@ -182,6 +187,7 @@ func GetSecurityPresets() map[SecurityLevel]SystemAuthSettings {
 			AllowMultiplePasskeys:     true,
 			MaxPasskeysPerUser:        10,
 			SessionDurationHours:      720, // 30 days (1 month)
+			MaxSessionsPerUser:        3,
 			MinPasswordLength:         12,
 			RequirePasswordComplexity: true,
 			PasswordExpirationDays:    90, // 90 days for maximum security
@@ -205,6 +211,7 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 				"Без обязательной двухфакторной аутентификации",
 				"Простые требования к паролю (минимум 6 символов)",
 				"Длительные сессии (180 дней неактивности)",
+				"До 10 активных сессий на пользователя",
 				"Пароли не истекают",
 			},
 			Settings: presets[SecurityLevelMinimal],
@@ -221,6 +228,7 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 				"До 5 passkey на пользователя",
 				"Средние требования к паролю (минимум 8 символов, сложность)",
 				"Сессии 90 дней неактивности",
+				"До 5 активных сессий на пользователя",
 				"Пароли не истекают",
 			},
 			Settings: presets[SecurityLevelMedium],
@@ -237,6 +245,7 @@ func GetSecurityPresetsInfo() []SecurityPresetInfo {
 				"До 10 passkey на пользователя",
 				"Строгие требования к паролю (минимум 12 символов, сложность)",
 				"Сессии 30 дней неактивности",
+				"До 3 активных сессий на пользователя",
 				"Обязательная смена пароля каждые 90 дней",
 			},
 			Settings: presets[SecurityLevelMaximum],
@@ -257,6 +266,7 @@ type UpdateCustomSettingsRequest struct {
 	AllowMultiplePasskeys     *bool             `json:"allow_multiple_passkeys,omitempty"`
 	MaxPasskeysPerUser        *int              `json:"max_passkeys_per_user,omitempty" binding:"omitempty,min=0,max=20"`
 	SessionDurationHours      *int              `json:"session_duration_hours,omitempty" binding:"omitempty,min=1,max=720"`
+	MaxSessionsPerUser        *int              `json:"max_sessions_per_user,omitempty" binding:"omitempty,min=1,max=20"`
 	MinPasswordLength         *int              `json:"min_password_length,omitempty" binding:"omitempty,min=6,max=128"`
 	RequirePasswordComplexity *bool             `json:"require_password_complexity,omitempty"`
 	PasswordExpirationDays    *int              `json:"password_expiration_days,omitempty" binding:"omitempty,min=0,max=365"`

@@ -14,6 +14,7 @@ import (
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
+	sessionpkg "tachyon-messenger/shared/session"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -313,7 +314,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	}
 
 	// Use the desktop's IP and User-Agent that were captured when QR was generated
-	newSession, err := authConfig.SessionStore.CreateSession(
+	newSession, evictedSessionIDs, err := authConfig.SessionStore.CreateSession(
 		ctx,
 		user.ID,
 		user.Email,
@@ -334,6 +335,9 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 		})
 		return
 	}
+
+	// Notify evicted sessions via WebSocket
+	sessionpkg.NotifyEvictedSessions(evictedSessionIDs, "session_limit_exceeded")
 
 	// Update QR token status to confirmed
 	qrToken.Status = qrStatusConfirmed

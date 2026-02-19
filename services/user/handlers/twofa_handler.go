@@ -10,6 +10,7 @@ import (
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
+	sessionpkg "tachyon-messenger/shared/session"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -211,7 +212,7 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 		authConfig := middleware.GetAuthConfig()
 		if authConfig != nil && authConfig.SessionStore != nil {
 			ctx := c.Request.Context()
-			session, err := authConfig.SessionStore.CreateSession(
+			session, evictedSessionIDs, err := authConfig.SessionStore.CreateSession(
 				ctx,
 				user.ID,
 				user.Email,
@@ -230,6 +231,9 @@ func (h *TwoFAHandler) VerifyCode(c *gin.Context) {
 				c.JSON(apiErr.StatusCode, apiErr)
 				return
 			}
+
+			// Notify evicted sessions via WebSocket
+			sessionpkg.NotifyEvictedSessions(evictedSessionIDs, "session_limit_exceeded")
 
 			// Set session cookie
 			c.SetCookie(

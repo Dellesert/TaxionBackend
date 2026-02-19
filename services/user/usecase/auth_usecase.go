@@ -13,6 +13,7 @@ import (
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
 	sharedmodels "tachyon-messenger/shared/models"
+	sessionpkg "tachyon-messenger/shared/session"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -222,7 +223,7 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 		authConfig := middleware.GetAuthConfig()
 		if authConfig != nil && authConfig.SessionStore != nil {
 			ctx := context.Background()
-			session, err := authConfig.SessionStore.CreateSession(
+			session, evictedSessionIDs, err := authConfig.SessionStore.CreateSession(
 				ctx,
 				user.ID,
 				user.Email,
@@ -233,6 +234,9 @@ func (a *authUsecase) Login(email, password, ipAddress, userAgent string) (*shar
 			if err != nil {
 				return nil, fmt.Errorf("failed to create session: %w", err)
 			}
+
+			// Notify evicted sessions via WebSocket
+			sessionpkg.NotifyEvictedSessions(evictedSessionIDs, "session_limit_exceeded")
 
 			response.Session = &sharedmodels.SessionResponse{
 				SessionID: session.SessionID,
@@ -361,7 +365,7 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 		authConfig := middleware.GetAuthConfig()
 		if authConfig != nil && authConfig.SessionStore != nil {
 			ctx := context.Background()
-			session, err := authConfig.SessionStore.CreateSession(
+			session, evictedSessionIDs, err := authConfig.SessionStore.CreateSession(
 				ctx,
 				user.ID,
 				user.Email,
@@ -372,6 +376,9 @@ func (a *authUsecase) LoginSuperAdmin(email, password, ipAddress, userAgent stri
 			if err != nil {
 				return nil, fmt.Errorf("failed to create session: %w", err)
 			}
+
+			// Notify evicted sessions via WebSocket
+			sessionpkg.NotifyEvictedSessions(evictedSessionIDs, "session_limit_exceeded")
 
 			response.Session = &sharedmodels.SessionResponse{
 				SessionID: session.SessionID,

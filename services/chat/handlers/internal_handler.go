@@ -76,6 +76,7 @@ func (h *InternalHandler) BroadcastToUser(c *gin.Context) {
 // DisconnectSessionRequest represents a request to disconnect a WebSocket by session ID
 type DisconnectSessionRequest struct {
 	SessionID string `json:"session_id" binding:"required"`
+	Reason    string `json:"reason,omitempty"` // e.g. "session_deleted", "session_limit_exceeded"
 }
 
 // DisconnectSession disconnects the WebSocket connection associated with a session
@@ -98,20 +99,28 @@ func (h *InternalHandler) DisconnectSession(c *gin.Context) {
 		return
 	}
 
+	// Default reason if not provided
+	reason := req.Reason
+	if reason == "" {
+		reason = "session_deleted"
+	}
+
 	logger.WithFields(map[string]interface{}{
 		"request_id": requestID,
 		"session_id": req.SessionID,
+		"reason":     reason,
 	}).Info("Disconnecting WebSocket for revoked session")
 
 	found := false
 	if h.hub != nil {
-		found = h.hub.DisconnectBySessionID(req.SessionID)
+		found = h.hub.DisconnectBySessionID(req.SessionID, reason)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message":      "Session disconnect processed",
-		"session_id":   req.SessionID,
+		"message":       "Session disconnect processed",
+		"session_id":    req.SessionID,
+		"reason":        reason,
 		"was_connected": found,
-		"request_id":   requestID,
+		"request_id":    requestID,
 	})
 }

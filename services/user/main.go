@@ -208,6 +208,15 @@ func main() {
 	authMode := sharedmodels.AuthMode(cfg.Auth.Mode)
 	middleware.InitAuthConfig(authMode, jwtConfig, redisClient.Client, sessionDuration)
 
+	// Apply max sessions per user from database settings
+	if err == nil && dbSettings.MaxSessionsPerUser > 0 {
+		if updateErr := middleware.UpdateMaxSessionsPerUser(dbSettings.MaxSessionsPerUser); updateErr != nil {
+			log.Warnf("Failed to set max sessions per user: %v", updateErr)
+		} else {
+			log.Infof("Using max sessions per user from database: %d", dbSettings.MaxSessionsPerUser)
+		}
+	}
+
 	log.Infof("Authentication initialized in %s mode", authMode)
 
 	// Initialize WebAuthn service

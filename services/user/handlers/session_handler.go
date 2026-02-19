@@ -40,6 +40,7 @@ func notifyWebSocketDisconnect(sessionID string) {
 
 		payload, _ := json.Marshal(map[string]string{
 			"session_id": sessionID,
+			"reason":     "session_deleted",
 		})
 
 		url := fmt.Sprintf("%s/api/v1/internal/ws/disconnect-session", chatServiceURL)
