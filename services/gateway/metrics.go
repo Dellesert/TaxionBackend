@@ -131,6 +131,7 @@ func systemMetricsHandler(c *gin.Context) {
 		proxyConfig.FileService,
 		proxyConfig.AnalyticsService,
 		proxyConfig.BackupService,
+		proxyConfig.SearchService,
 	}
 
 	for _, service := range services {

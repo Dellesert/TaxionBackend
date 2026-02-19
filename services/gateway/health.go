@@ -62,6 +62,7 @@ func servicesHealthHandler(c *gin.Context) {
 		proxyConfig.FileService,
 		proxyConfig.AnalyticsService,
 		proxyConfig.BackupService,
+		proxyConfig.SearchService,
 	}
 
 	// Check health of each service
