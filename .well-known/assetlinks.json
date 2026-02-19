@@ -11,5 +11,18 @@
         "4D:73:1B:48:0C:77:3C:84:D9:24:70:B8:77:FC:55:33:02:70:BD:47:5F:95:45:31:FB:03:B2:AB:EF:57:BB:EA"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.dellesert.tachyonmessenger.dev",
+      "sha256_cert_fingerprints": [
+        "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C"
+      ]
+    }
   }
 ]
