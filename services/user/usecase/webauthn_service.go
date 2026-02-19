@@ -50,13 +50,16 @@ func NewWebAuthnService() (*WebAuthnService, error) {
 	}
 	rpOrigins := parseCommaSeparated(rpOriginsStr)
 
-	// Add Android origin if SHA256 fingerprint is configured
-	androidFingerprint := os.Getenv("ANDROID_SHA256_FINGERPRINT")
-	if androidFingerprint != "" {
-		androidOrigin := generateAndroidOrigin(androidFingerprint)
-		if androidOrigin != "" {
-			rpOrigins = append(rpOrigins, androidOrigin)
-			logger.WithField("android_origin", androidOrigin).Info("Added Android app origin for Passkeys")
+	// Add Android origins if SHA256 fingerprints are configured
+	// Supports multiple fingerprints separated by commas (e.g., for dev and release builds)
+	androidFingerprints := os.Getenv("ANDROID_SHA256_FINGERPRINT")
+	if androidFingerprints != "" {
+		for _, fp := range parseCommaSeparated(androidFingerprints) {
+			androidOrigin := generateAndroidOrigin(fp)
+			if androidOrigin != "" {
+				rpOrigins = append(rpOrigins, androidOrigin)
+				logger.WithField("android_origin", androidOrigin).Info("Added Android app origin for Passkeys")
+			}
 		}
 	}
 
