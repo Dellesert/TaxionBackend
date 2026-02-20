@@ -853,14 +853,25 @@ func (r *userGroupRepository) AddMembers(groupID uint, userIDs []uint) error {
 	}
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for _, userID := range userIDs {
+			// Check if record exists (including soft-deleted) to avoid unique constraint violation
+			var existing models.UserGroupMember
+			err := tx.Unscoped().Where("group_id = ? AND user_id = ?", groupID, userID).First(&existing).Error
+			if err == nil {
+				// Record exists — restore if soft-deleted
+				if existing.DeletedAt.Valid {
+					if err := tx.Unscoped().Model(&existing).Updates(map[string]interface{}{"deleted_at": nil}).Error; err != nil {
+						return fmt.Errorf("failed to restore member %d in group: %w", userID, err)
+					}
+				}
+				continue
+			}
+			// No record exists, create new one
 			member := models.UserGroupMember{
 				GroupID: groupID,
 				UserID:  userID,
 			}
-			// Use FirstOrCreate to avoid duplicate errors
-			result := tx.Where("group_id = ? AND user_id = ?", groupID, userID).FirstOrCreate(&member)
-			if result.Error != nil {
-				return fmt.Errorf("failed to add member %d to group: %w", userID, result.Error)
+			if err := tx.Create(&member).Error; err != nil {
+				return fmt.Errorf("failed to add member %d to group: %w", userID, err)
 			}
 		}
 		return nil
@@ -872,7 +883,8 @@ func (r *userGroupRepository) RemoveMembers(groupID uint, userIDs []uint) error 
 	if len(userIDs) == 0 {
 		return nil
 	}
-	result := r.db.Where("group_id = ? AND user_id IN ?", groupID, userIDs).Delete(&models.UserGroupMember{})
+	// Hard delete to avoid soft-deleted records conflicting with unique index on re-add
+	result := r.db.Unscoped().Where("group_id = ? AND user_id IN ?", groupID, userIDs).Delete(&models.UserGroupMember{})
 	if result.Error != nil {
 		return fmt.Errorf("failed to remove members from group: %w", result.Error)
 	}
@@ -882,8 +894,8 @@ func (r *userGroupRepository) RemoveMembers(groupID uint, userIDs []uint) error 
 // SetMembers replaces all members of a group with the given user IDs
 func (r *userGroupRepository) SetMembers(groupID uint, userIDs []uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Remove all existing members
-		if err := tx.Where("group_id = ?", groupID).Delete(&models.UserGroupMember{}).Error; err != nil {
+		// Hard delete all existing members (Unscoped to avoid soft-delete + unique index conflict)
+		if err := tx.Unscoped().Where("group_id = ?", groupID).Delete(&models.UserGroupMember{}).Error; err != nil {
 			return fmt.Errorf("failed to clear group members: %w", err)
 		}
 		// Add new members
