@@ -803,3 +803,28 @@ func (h *UserHandler) CleanupStatuses(c *gin.Context) {
 		"request_id":        requestID,
 	})
 }
+
+// GetUsersWithBirthdays returns all active users who have a birth_date set (internal endpoint)
+// GET /internal/users/birthdays
+func (h *UserHandler) GetUsersWithBirthdays(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	users, err := h.userUsecase.GetUsersWithBirthdays()
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get users with birthdays")
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get users with birthdays",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"users":      users,
+		"request_id": requestID,
+	})
+}

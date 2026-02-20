@@ -38,6 +38,7 @@ type UserRepository interface {
 	UpdatePasskeyStatus(userID uint, enabled bool) error
 	ResetAllOnlineStatuses() (int64, error)
 	CleanupDisconnectedStatuses(connectedUserIDs []uint) (int64, error)
+	GetUsersWithBirthdays() ([]*models.User, error)
 }
 
 // DepartmentRepository defines the interface for department data operations
@@ -742,6 +743,19 @@ func (r *userRepository) CleanupDisconnectedStatuses(connectedUserIDs []uint) (i
 	}
 
 	return result.RowsAffected, nil
+}
+
+// GetUsersWithBirthdays retrieves all active users who have a birth_date set
+func (r *userRepository) GetUsersWithBirthdays() ([]*models.User, error) {
+	var users []*models.User
+	err := r.db.
+		Select("id, name, first_name, last_name, avatar, birth_date, department_id").
+		Where("birth_date IS NOT NULL AND is_active = ?", true).
+		Find(&users).Error
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with birthdays: %w", err)
+	}
+	return users, nil
 }
 
 // ============= User Group Repository =============

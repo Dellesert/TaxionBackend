@@ -26,6 +26,7 @@ type UserUsecase interface {
 	DeleteUser(id uint) error
 	ResetAllOnlineStatuses() (int64, error)
 	CleanupDisconnectedStatuses(connectedUserIDs []uint) (int64, error)
+	GetUsersWithBirthdays() ([]*models.BirthdayUserInfo, error)
 }
 
 // userUsecase implements UserUsecase interface
@@ -463,4 +464,31 @@ func (u *userUsecase) CleanupDisconnectedStatuses(connectedUserIDs []uint) (int6
 		return 0, fmt.Errorf("failed to cleanup disconnected statuses: %w", err)
 	}
 	return count, nil
+}
+
+// GetUsersWithBirthdays retrieves all active users who have a birth_date set
+func (u *userUsecase) GetUsersWithBirthdays() ([]*models.BirthdayUserInfo, error) {
+	users, err := u.userRepo.GetUsersWithBirthdays()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with birthdays: %w", err)
+	}
+
+	result := make([]*models.BirthdayUserInfo, 0, len(users))
+	for _, user := range users {
+		if user.BirthDate == nil {
+			continue
+		}
+		info := &models.BirthdayUserInfo{
+			ID:           user.ID,
+			Name:         user.Name,
+			FirstName:    user.FirstName,
+			LastName:     user.LastName,
+			Avatar:       user.Avatar,
+			BirthDate:    user.BirthDate.Format("2006-01-02"),
+			DepartmentID: user.DepartmentID,
+		}
+		result = append(result, info)
+	}
+
+	return result, nil
 }

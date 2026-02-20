@@ -18,6 +18,7 @@ const (
 	EventTypeSchedule     EventType = "schedule"     // Schedule-related event
 	EventTypeAbsence      EventType = "absence"      // Absence-related event (vacation, sick leave, etc.)
 	EventTypeSubstitution EventType = "substitution" // Substitution event (when user substitutes for absent colleague)
+	EventTypeBirthday     EventType = "birthday"     // Birthday event (auto-generated from user birth dates)
 )
 
 // ParticipantStatus represents the participation status

@@ -345,6 +345,17 @@ func (s *Subdepartment) ToResponse() *SubdepartmentResponse {
 	return response
 }
 
+// BirthdayUserInfo represents lightweight user info for birthday calendar integration
+type BirthdayUserInfo struct {
+	ID           uint   `json:"id"`
+	Name         string `json:"name"`
+	FirstName    string `json:"first_name,omitempty"`
+	LastName     string `json:"last_name,omitempty"`
+	Avatar       string `json:"avatar,omitempty"`
+	BirthDate    string `json:"birth_date"`
+	DepartmentID *uint  `json:"department_id,omitempty"`
+}
+
 // Profile related request structures
 
 // UpdateProfileRequest represents profile update request payload

@@ -380,10 +380,20 @@ func (u *calendarUsecase) GetUserCalendar(userID uint, startDate, endDate time.T
 		responses[i] = event.ToResponse()
 	}
 
+	// Append birthday events
+	birthdayEvents, err := u.generateBirthdayEvents(startDate, endDate)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"error": err.Error(),
+		}).Warn("Failed to generate birthday events, continuing without them")
+	} else {
+		responses = append(responses, birthdayEvents...)
+	}
+
 	return &models.EventListResponse{
 		Events: responses,
-		Total:  int64(len(events)),
-		Limit:  len(events),
+		Total:  int64(len(responses)),
+		Limit:  len(responses),
 		Offset: 0,
 	}, nil
 }
@@ -415,6 +425,19 @@ func (u *calendarUsecase) GetUserEvents(userID uint, filter *models.EventFilterR
 	responses := make([]*models.EventResponse, len(events))
 	for i, event := range events {
 		responses[i] = event.ToResponse()
+	}
+
+	// Append birthday events if date range is specified and type filter is not set or is birthday
+	if filter.Start != nil && filter.End != nil && (filter.Type == nil || *filter.Type == models.EventTypeBirthday) {
+		birthdayEvents, err := u.generateBirthdayEvents(*filter.Start, *filter.End)
+		if err != nil {
+			logger.WithFields(map[string]interface{}{
+				"error": err.Error(),
+			}).Warn("Failed to generate birthday events, continuing without them")
+		} else {
+			responses = append(responses, birthdayEvents...)
+			total += int64(len(birthdayEvents))
+		}
 	}
 
 	return &models.EventListResponse{
@@ -685,6 +708,62 @@ func (u *calendarUsecase) CheckTimeConflict(userID uint, startTime, endTime time
 	return u.eventRepo.CheckTimeConflict(userID, startTime, endTime, excludeEventID)
 }
 
+// generateBirthdayEvents generates virtual birthday events for users whose birthdays
+// fall within the given date range. Events are not stored in DB.
+func (u *calendarUsecase) generateBirthdayEvents(startDate, endDate time.Time) ([]*models.EventResponse, error) {
+	users, err := u.userClient.GetUsersWithBirthdays()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get users with birthdays: %w", err)
+	}
+
+	var events []*models.EventResponse
+
+	for _, user := range users {
+		birthDate, err := time.Parse("2006-01-02", user.BirthDate)
+		if err != nil {
+			continue
+		}
+
+		birthMonth := birthDate.Month()
+		birthDay := birthDate.Day()
+
+		// Check each year in the range
+		for year := startDate.Year(); year <= endDate.Year(); year++ {
+			birthdayThisYear := time.Date(year, birthMonth, birthDay, 0, 0, 0, 0, startDate.Location())
+
+			// Check if this birthday falls within the requested range
+			if birthdayThisYear.Before(startDate) || birthdayThisYear.After(endDate) {
+				continue
+			}
+
+			// Build display name
+			displayName := user.Name
+			if user.FirstName != "" && user.LastName != "" {
+				displayName = user.FirstName + " " + user.LastName
+			}
+
+			birthdayEnd := time.Date(year, birthMonth, birthDay, 23, 59, 59, 0, startDate.Location())
+
+			event := &models.EventResponse{
+				ID:        uint(user.ID*100000) + uint(year),
+				Title:     "День рождения — " + displayName,
+				StartTime: birthdayThisYear,
+				EndTime:   birthdayEnd,
+				AllDay:    true,
+				Type:      models.EventTypeBirthday,
+				Color:     "#E91E63",
+				CreatedBy: user.ID,
+				CreatedAt: birthdayThisYear,
+				UpdatedAt: birthdayThisYear,
+			}
+
+			events = append(events, event)
+		}
+	}
+
+	return events, nil
+}
+
 // Helper methods
 
 // hasEventAccess checks if user has access to the event
@@ -855,7 +934,7 @@ func (u *calendarUsecase) validateCreateReminderRequest(req *models.CreateRemind
 // isValidEventType checks if the event type is valid
 func (u *calendarUsecase) isValidEventType(eventType models.EventType) bool {
 	switch eventType {
-	case models.EventTypePersonal, models.EventTypeMeeting, models.EventTypeDeadline, models.EventTypeSchedule, models.EventTypeAbsence:
+	case models.EventTypePersonal, models.EventTypeMeeting, models.EventTypeDeadline, models.EventTypeSchedule, models.EventTypeAbsence, models.EventTypeBirthday:
 		return true
 	default:
 		return false

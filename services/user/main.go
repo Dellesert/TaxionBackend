@@ -408,6 +408,8 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		internal.POST("/users/cleanup-statuses", userHandler.CleanupStatuses)
 		// Get user group members for calendar-service
 		internal.GET("/user-groups/:id/members", userGroupHandler.GetGroup)
+		// Get users with birthdays for calendar-service
+		internal.GET("/users/birthdays", userHandler.GetUsersWithBirthdays)
 	}
 
 	// API v1 routes
