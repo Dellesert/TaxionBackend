@@ -393,7 +393,7 @@ func (er *EventReminder) ToResponse() *EventReminderResponse {
 
 // EventFilterRequest represents filtering parameters for events
 type EventFilterRequest struct {
-	Type *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline schedule absence substitution"`
+	Type *EventType `form:"type" binding:"omitempty,oneof=personal meeting deadline schedule absence substitution birthday"`
 	// Date range filters (alternative naming)
 	Start *time.Time `form:"start" time_format:"2006-01-02T15:04:05Z07:00"` // Alias for date range start
 	End   *time.Time `form:"end" time_format:"2006-01-02T15:04:05Z07:00"`   // Alias for date range end

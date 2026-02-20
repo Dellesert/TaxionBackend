@@ -20,6 +20,7 @@ import (
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedsentry "tachyon-messenger/shared/sentry"
 	sharedmodels "tachyon-messenger/shared/models"
 	sharedredis "tachyon-messenger/shared/redis"
 	"tachyon-messenger/shared/analytics"
@@ -46,6 +47,12 @@ func main() {
 	}
 
 	log.Info("Starting Task service...")
+
+	// Initialize Sentry
+	if err := sharedsentry.Init(cfg.Sentry.DSN, "task-service"); err != nil {
+		log.Warnf("Sentry initialization failed: %v", err)
+	}
+	defer sharedsentry.Flush()
 
 	// Connect to database
 	dbConfig := database.DefaultConfig(cfg.Database.URL)

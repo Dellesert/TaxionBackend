@@ -13,6 +13,7 @@ import (
 	"tachyon-messenger/shared/config"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedsentry "tachyon-messenger/shared/sentry"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -36,6 +37,12 @@ func main() {
 	}
 
 	log.Info("Starting Gateway service...")
+
+	// Initialize Sentry
+	if err := sharedsentry.Init(cfg.Sentry.DSN, "gateway"); err != nil {
+		log.Warnf("Sentry initialization failed: %v", err)
+	}
+	defer sharedsentry.Flush()
 
 	// Initialize Redis client for VPS metrics storage
 	redisOpts, err := redis.ParseURL(cfg.Redis.URL)

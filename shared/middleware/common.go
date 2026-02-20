@@ -1,11 +1,15 @@
 package middleware
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"tachyon-messenger/shared/logger"
+
+	"github.com/getsentry/sentry-go"
+	sentrygin "github.com/getsentry/sentry-go/gin"
 
 	"github.com/gin-contrib/requestid"
 	"github.com/gin-gonic/gin"
@@ -93,10 +97,24 @@ func RecoveryMiddleware() gin.HandlerFunc {
 			"method":     c.Request.Method,
 		}).Error("Panic recovered")
 
+		// Capture panic in Sentry
+		if hub := sentrygin.GetHubFromContext(c); hub != nil {
+			hub.RecoverWithContext(c.Request.Context(), recovered)
+		} else if recovered != nil {
+			sentry.CaptureException(fmt.Errorf("panic: %v", recovered))
+		}
+
 		c.JSON(500, gin.H{
 			"error":      "Internal server error",
 			"request_id": requestID,
 		})
+	})
+}
+
+// SentryMiddleware returns the sentrygin middleware for capturing errors and traces
+func SentryMiddleware() gin.HandlerFunc {
+	return sentrygin.New(sentrygin.Options{
+		Repanic: true,
 	})
 }
 
@@ -182,6 +200,9 @@ func LoggerMiddlewareWithRequestID() gin.HandlerFunc {
 // SetupCommonMiddleware sets up all common middleware in the correct order
 // This version includes CORS - use for Gateway only
 func SetupCommonMiddleware(r *gin.Engine) {
+	// Sentry must be before recovery to capture panics
+	r.Use(SentryMiddleware())
+
 	// Recovery should be first to catch any panics
 	r.Use(RecoveryMiddleware())
 
@@ -198,6 +219,9 @@ func SetupCommonMiddleware(r *gin.Engine) {
 // SetupCommonMiddlewareWithoutCORS sets up common middleware without CORS
 // Use this for microservices - Gateway handles CORS
 func SetupCommonMiddlewareWithoutCORS(r *gin.Engine) {
+	// Sentry must be before recovery to capture panics
+	r.Use(SentryMiddleware())
+
 	// Recovery should be first to catch any panics
 	r.Use(RecoveryMiddleware())
 

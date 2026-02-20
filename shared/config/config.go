@@ -17,6 +17,12 @@ type Config struct {
 	Server   ServerConfig
 	Auth     AuthConfig
 	Poll     PollConfig
+	Sentry   SentryConfig
+}
+
+// SentryConfig holds Sentry configuration
+type SentryConfig struct {
+	DSN string
 }
 
 // DatabaseConfig holds database configuration
@@ -106,6 +112,7 @@ func LoadConfig() (*Config, error) {
 	serverPort := os.Getenv("SERVER_PORT")
 	authMode := os.Getenv("AUTH_MODE")
 	sessionDuration := os.Getenv("SESSION_DURATION_HOURS")
+	sentryDSN := os.Getenv("SENTRY_DSN")
 	pollAutoCloseInterval := os.Getenv("POLL_AUTO_CLOSE_INTERVAL_MINUTES")
 
 	// Parse session duration
@@ -172,6 +179,9 @@ func LoadConfig() (*Config, error) {
 		},
 		Poll: PollConfig{
 			AutoCloseCheckInterval: pollAutoCloseMinutes,
+		},
+		Sentry: SentryConfig{
+			DSN: sentryDSN,
 		},
 	}
 

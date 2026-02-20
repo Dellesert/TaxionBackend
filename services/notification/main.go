@@ -21,6 +21,7 @@ import (
 	"tachyon-messenger/shared/database"
 	"tachyon-messenger/shared/logger"
 	"tachyon-messenger/shared/middleware"
+	sharedsentry "tachyon-messenger/shared/sentry"
 	sharedmodels "tachyon-messenger/shared/models"
 	sharedredis "tachyon-messenger/shared/redis"
 	"tachyon-messenger/shared/redis"
@@ -99,6 +100,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
+
+	// Initialize Sentry
+	if err := sharedsentry.Init(cfg.Sentry.DSN, "notification-service"); err != nil {
+		log.Warnf("Sentry initialization failed: %v", err)
+	}
+	defer sharedsentry.Flush()
 
 	// Connect to database
 	db, err := database.Connect(database.DefaultConfig(cfg.Database.URL))
