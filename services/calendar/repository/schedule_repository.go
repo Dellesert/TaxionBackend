@@ -873,13 +873,8 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 
 	var crossEntries []*models.ScheduleEntry
 	if err := crossQuery.Find(&crossEntries).Error; err != nil {
-		logrus.WithError(err).Error("[ConflictCheck] Failed to query cross-schedule conflicts")
 		return nil, err
 	}
-
-	logrus.WithFields(logrus.Fields{
-		"cross_conflicts_found": len(crossEntries),
-	}).Info("[ConflictCheck] Cross-schedule check done")
 
 	allConflicts = append(allConflicts, crossEntries...)
 
