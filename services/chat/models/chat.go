@@ -329,7 +329,7 @@ type CreateGroupChatRequest struct {
 // UserMutePreference stores global mute preferences for a user
 type UserMutePreference struct {
 	models.BaseModel
-	UserID               uint       `gorm:"not null;uniqueIndex" json:"user_id"`
+	UserID               uint       `gorm:"not null" json:"user_id"`
 	MuteAllChannelsUntil *time.Time `gorm:"type:timestamptz" json:"mute_all_channels_until,omitempty"`
 	MuteAllGroupsUntil   *time.Time `gorm:"type:timestamptz" json:"mute_all_groups_until,omitempty"`
 }
