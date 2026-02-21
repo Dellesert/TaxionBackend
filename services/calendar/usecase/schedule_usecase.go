@@ -569,7 +569,7 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		if len(entryWarnings) > 0 && !entryForce {
 			batchWarnings = append(batchWarnings, models.BatchEntryWarning{
 				UserID:   entryReq.UserID,
-				Date:     entryReq.Date.Format("2006-01-02"),
+				Date:     entryReq.Date.Format("02.01.2006"),
 				Warnings: entryWarnings,
 			})
 			skipped++
