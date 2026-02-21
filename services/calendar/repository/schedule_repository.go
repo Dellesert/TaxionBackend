@@ -7,7 +7,6 @@ import (
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/shared/database"
 
-	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -889,14 +888,8 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 
 	var sameEntries []*models.ScheduleEntry
 	if err := sameQuery.Find(&sameEntries).Error; err != nil {
-		logrus.WithError(err).Error("[ConflictCheck] Failed to query same-schedule conflicts")
 		return nil, err
 	}
-
-	logrus.WithFields(logrus.Fields{
-		"same_conflicts_found": len(sameEntries),
-		"total_conflicts":      len(allConflicts) + len(sameEntries),
-	}).Info("[ConflictCheck] Same-schedule check done")
 
 	allConflicts = append(allConflicts, sameEntries...)
 
