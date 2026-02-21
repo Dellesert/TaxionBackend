@@ -840,17 +840,6 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 		return nil, err
 	}
 
-	logrus.WithFields(logrus.Fields{
-		"user_id":         userID,
-		"date":            date.Format("2006-01-02"),
-		"shift_type":      shiftType,
-		"schedule_type":   scheduleType,
-		"schedule_id":     scheduleID,
-		"start_time":      startTime.Format("15:04"),
-		"end_time":        endTime.Format("15:04"),
-		"compatible_types": compatibleTypes,
-	}).Info("[ConflictCheck] Checking for conflicts")
-
 	var allConflicts []*models.ScheduleEntry
 
 	// 1. Cross-schedule conflicts: different schedule with incompatible type
