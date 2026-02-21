@@ -774,15 +774,18 @@ func (r *scheduleRepository) HasEntriesForMonth(scheduleID uint, userID uint, ye
 }
 
 // GetRecurringSchedulesForUser retrieves all recurring schedules where user is assigned
+// or has template entries, or the schedule applies to all users
 func (r *scheduleRepository) GetRecurringSchedulesForUser(userID uint) ([]*models.Schedule, error) {
 	var schedules []*models.Schedule
 
 	err := r.db.
 		Preload("Template").
 		Preload("Template.Entries").
-		Joins("JOIN schedule_assignments ON schedule_assignments.schedule_id = schedules.id").
-		Where("schedule_assignments.user_id = ? AND schedules.mode = ? AND schedules.is_active = ?",
-			userID, models.ScheduleModeRecurring, true).
+		Where("schedules.mode = ? AND schedules.is_active = ?", models.ScheduleModeRecurring, true).
+		Where(`schedules.is_for_all_users = true
+			OR schedules.id IN (SELECT sa.schedule_id FROM schedule_assignments sa WHERE sa.user_id = ?)
+			OR schedules.template_id IN (SELECT ste.template_id FROM schedule_template_entries ste WHERE ste.user_id = ?)`,
+			userID, userID).
 		Find(&schedules).Error
 
 	if err != nil {
