@@ -976,7 +976,7 @@ func (u *scheduleUsecase) ensureEntriesGenerated(schedule *models.Schedule, user
 
 	for _, month := range months {
 		// Check if entries already exist for this month
-		hasEntries, err := u.scheduleRepo.HasEntriesForMonth(schedule.ID, month.Year, month.Month)
+		hasEntries, err := u.scheduleRepo.HasEntriesForMonth(schedule.ID, userID, month.Year, month.Month)
 		if err != nil {
 			continue
 		}
