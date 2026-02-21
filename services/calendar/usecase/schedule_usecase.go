@@ -1122,6 +1122,10 @@ func (u *scheduleUsecase) filterEntriesByAbsences(entries []*models.ScheduleEntr
 func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startTime, endTime time.Time, shiftType models.ShiftType, scheduleType models.ScheduleType, scheduleID uint, excludeEntryID *uint) ([]models.ScheduleEntryWarning, error) {
 	var warnings []models.ScheduleEntryWarning
 
+	// Ensure recurring schedule entries are generated for this user/date
+	// so the conflict check can find them in schedule_entries table
+	u.ensureRecurringEntriesForConflictCheck(userID, date)
+
 	// Check absence
 	isAbsent, absence, err := u.absenceRepo.IsUserAbsent(userID, date)
 	if err != nil {
@@ -1153,6 +1157,24 @@ func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startT
 	}
 
 	return warnings, nil
+}
+
+// ensureRecurringEntriesForConflictCheck generates recurring schedule entries
+// for the user on the given date so that conflict checks can find them
+func (u *scheduleUsecase) ensureRecurringEntriesForConflictCheck(userID uint, date time.Time) {
+	recurringSchedules, err := u.scheduleRepo.GetRecurringSchedulesForUser(userID)
+	if err != nil {
+		return
+	}
+
+	for _, schedule := range recurringSchedules {
+		if schedule.TemplateID != nil {
+			// Generate entries for the month containing the date
+			startOfMonth := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, time.Local)
+			endOfMonth := startOfMonth.AddDate(0, 1, -1)
+			_ = u.ensureEntriesGenerated(schedule, userID, startOfMonth, endOfMonth)
+		}
+	}
 }
 
 // calculateShiftTimes calculates start and end times based on shift type
