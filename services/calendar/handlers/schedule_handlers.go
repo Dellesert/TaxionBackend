@@ -592,7 +592,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 	var batchReq models.BatchCreateScheduleEntriesRequest
 	if err := json.Unmarshal(rawBody, &batchReq); err == nil && len(batchReq.Entries) > 0 {
 		// Batch creation
-		entries, err := h.scheduleUsecase.CreateScheduleEntries(userID, uint(scheduleID), &batchReq)
+		result, err := h.scheduleUsecase.CreateScheduleEntries(userID, uint(scheduleID), &batchReq)
 		if err != nil {
 			logger.WithFields(map[string]interface{}{
 				"request_id":  requestID,
@@ -611,7 +611,9 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 
 		c.JSON(http.StatusCreated, gin.H{
 			"message":    "Schedule entries created successfully",
-			"entries":    entries,
+			"entries":    result.Entries,
+			"warnings":   result.Warnings,
+			"skipped":    result.Skipped,
 			"request_id": requestID,
 		})
 		return
@@ -628,7 +630,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 		return
 	}
 
-	entry, err := h.scheduleUsecase.CreateScheduleEntry(userID, uint(scheduleID), &req)
+	result, err := h.scheduleUsecase.CreateScheduleEntry(userID, uint(scheduleID), &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id":  requestID,
@@ -650,9 +652,22 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 		return
 	}
 
+	if !result.Created {
+		// Warnings present, entry not created — return 200 with warnings for confirmation
+		c.JSON(http.StatusOK, gin.H{
+			"entry":      nil,
+			"warnings":   result.Warnings,
+			"created":    false,
+			"request_id": requestID,
+		})
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message":    "Schedule entry created successfully",
-		"entry":      entry,
+		"entry":      result.Entry,
+		"warnings":   result.Warnings,
+		"created":    true,
 		"request_id": requestID,
 	})
 }
@@ -855,7 +870,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 		return
 	}
 
-	entry, err := h.scheduleUsecase.UpdateScheduleEntry(userID, uint(scheduleID), uint(entryID), &req)
+	result, err := h.scheduleUsecase.UpdateScheduleEntry(userID, uint(scheduleID), uint(entryID), &req)
 	if err != nil {
 		logger.WithFields(map[string]interface{}{
 			"request_id":  requestID,
@@ -880,9 +895,22 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 		return
 	}
 
+	if !result.Created {
+		// Warnings present, entry not updated — return 200 with warnings for confirmation
+		c.JSON(http.StatusOK, gin.H{
+			"entry":      result.Entry,
+			"warnings":   result.Warnings,
+			"created":    false,
+			"request_id": requestID,
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Schedule entry updated successfully",
-		"entry":      entry,
+		"entry":      result.Entry,
+		"warnings":   result.Warnings,
+		"created":    true,
 		"request_id": requestID,
 	})
 }

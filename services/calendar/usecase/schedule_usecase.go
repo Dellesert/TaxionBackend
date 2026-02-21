@@ -23,10 +23,10 @@ type ScheduleUsecase interface {
 	DeleteSchedule(userID, scheduleID uint) error
 
 	// Schedule entry management
-	CreateScheduleEntry(userID, scheduleID uint, req *models.CreateScheduleEntryRequest) (*models.ScheduleEntryResponse, error)
-	CreateScheduleEntries(userID, scheduleID uint, req *models.BatchCreateScheduleEntriesRequest) ([]*models.ScheduleEntryResponse, error)
+	CreateScheduleEntry(userID, scheduleID uint, req *models.CreateScheduleEntryRequest) (*models.ScheduleEntryWithWarningsResponse, error)
+	CreateScheduleEntries(userID, scheduleID uint, req *models.BatchCreateScheduleEntriesRequest) (*models.BatchCreateEntriesWithWarningsResponse, error)
 	GetScheduleEntries(userID, scheduleID uint, filter EntryFilterParams) (*models.ScheduleEntryListResponse, error)
-	UpdateScheduleEntry(userID, scheduleID, entryID uint, req *models.UpdateScheduleEntryRequest) (*models.ScheduleEntryResponse, error)
+	UpdateScheduleEntry(userID, scheduleID, entryID uint, req *models.UpdateScheduleEntryRequest) (*models.ScheduleEntryWithWarningsResponse, error)
 	DeleteScheduleEntry(userID, scheduleID, entryID uint) error
 	GetMyScheduleEntries(userID uint, startDate, endDate time.Time) ([]*models.ScheduleEntryResponse, error)
 
@@ -406,45 +406,35 @@ func (u *scheduleUsecase) DeleteSchedule(userID, scheduleID uint) error {
 }
 
 // CreateScheduleEntry creates a new schedule entry and associated calendar event
-func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *models.CreateScheduleEntryRequest) (*models.ScheduleEntryResponse, error) {
+func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *models.CreateScheduleEntryRequest) (*models.ScheduleEntryWithWarningsResponse, error) {
 	// Get schedule
 	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if user is absent on this date
-	isAbsent, absence, err := u.absenceRepo.IsUserAbsent(req.UserID, req.Date)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check absence: %w", err)
-	}
-	if isAbsent {
-		return nil, fmt.Errorf("пользователь в отсутствии (%s) с %s по %s",
-			GetAbsenceTypeName(absence.Type),
-			absence.StartDate.Format("02.01"),
-			absence.EndDate.Format("02.01"))
-	}
-
-	// Calculate start and end times based on shift type
+	// Calculate start and end times based on shift type (needed for conflict check)
 	startTime, endTime, err := u.calculateShiftTimes(schedule, req.Date, req.ShiftType, req.StartTime, req.EndTime)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check for schedule conflicts with incompatible schedule types
-	conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(req.UserID, req.Date, startTime, endTime, schedule.Type, nil)
+	// Check for soft validation warnings (absence, conflict)
+	warnings, err := u.checkEntryWarnings(req.UserID, req.Date, startTime, endTime, schedule.Type, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check schedule conflict: %w", err)
-	}
-	if len(conflictingEntries) > 0 {
-		conflict := conflictingEntries[0]
-		return nil, fmt.Errorf("пользователь уже стоит в графике \"%s\" с %s до %s",
-			conflict.Schedule.Title,
-			conflict.StartTime.Format("15:04"),
-			conflict.EndTime.Format("15:04"))
+		return nil, err
 	}
 
-	// Create schedule entry
+	// If warnings exist and force is not set, return warnings without creating
+	if len(warnings) > 0 && !req.Force {
+		return &models.ScheduleEntryWithWarningsResponse{
+			Entry:    nil,
+			Warnings: warnings,
+			Created:  false,
+		}, nil
+	}
+
+	// Create schedule entry (no warnings, or force=true)
 	entry := &models.ScheduleEntry{
 		ScheduleID:  scheduleID,
 		UserID:      req.UserID,
@@ -486,11 +476,15 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 	// Send notification to the user asynchronously
 	go u.sendScheduleEntryNotification(schedule, createdEntry, userID)
 
-	return createdEntry.ToResponse(), nil
+	return &models.ScheduleEntryWithWarningsResponse{
+		Entry:    createdEntry.ToResponse(),
+		Warnings: warnings,
+		Created:  true,
+	}, nil
 }
 
 // CreateScheduleEntries creates multiple schedule entries in batch
-func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *models.BatchCreateScheduleEntriesRequest) ([]*models.ScheduleEntryResponse, error) {
+func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *models.BatchCreateScheduleEntriesRequest) (*models.BatchCreateEntriesWithWarningsResponse, error) {
 	// Get schedule
 	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
 	if err != nil {
@@ -499,6 +493,8 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 
 	entries := make([]*models.ScheduleEntry, 0, len(req.Entries))
 	responses := make([]*models.ScheduleEntryResponse, 0, len(req.Entries))
+	var batchWarnings []models.BatchEntryWarning
+	skipped := 0
 
 	// Collect all user IDs and date range
 	var userIDs []uint
@@ -524,34 +520,60 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		return nil, fmt.Errorf("failed to get absences: %w", err)
 	}
 
-	for _, entryReq := range req.Entries {
-		// Check if user is absent on this date
-		if userAbsences, ok := absenceMap[entryReq.UserID]; ok {
-			isAbsent := false
-			for _, absence := range userAbsences {
-				if !entryReq.Date.Before(absence.StartDate) && !entryReq.Date.After(absence.EndDate) {
-					isAbsent = true
-					break
-				}
-			}
-			if isAbsent {
-				continue // Skip entries for absent users
-			}
-		}
+	// Use force from batch request if individual entry doesn't have it set
+	force := req.Force
 
+	for _, entryReq := range req.Entries {
 		// Calculate shift times
 		startTime, endTime, err := u.calculateShiftTimes(schedule, entryReq.Date, entryReq.ShiftType, entryReq.StartTime, entryReq.EndTime)
 		if err != nil {
 			continue // Skip invalid entries
 		}
 
-		// Check for schedule conflicts with incompatible schedule types
+		// Check for soft validation warnings
+		var entryWarnings []models.ScheduleEntryWarning
+
+		// Check absence from pre-loaded map
+		if userAbsences, ok := absenceMap[entryReq.UserID]; ok {
+			for _, absence := range userAbsences {
+				if !entryReq.Date.Before(absence.StartDate) && !entryReq.Date.After(absence.EndDate) {
+					entryWarnings = append(entryWarnings, models.ScheduleEntryWarning{
+						Type: models.WarningTypeAbsence,
+						Message: fmt.Sprintf("пользователь в отсутствии (%s) с %s по %s",
+							GetAbsenceTypeName(absence.Type),
+							absence.StartDate.Format("02.01"),
+							absence.EndDate.Format("02.01")),
+					})
+					break
+				}
+			}
+		}
+
+		// Check for schedule conflicts
 		conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(entryReq.UserID, entryReq.Date, startTime, endTime, schedule.Type, nil)
 		if err != nil {
 			continue // Skip on error
 		}
-		if len(conflictingEntries) > 0 {
-			continue // Skip entries with conflicts
+		for _, conflict := range conflictingEntries {
+			entryWarnings = append(entryWarnings, models.ScheduleEntryWarning{
+				Type: models.WarningTypeConflict,
+				Message: fmt.Sprintf("пользователь уже стоит в графике \"%s\" с %s до %s",
+					conflict.Schedule.Title,
+					conflict.StartTime.Format("15:04"),
+					conflict.EndTime.Format("15:04")),
+			})
+		}
+
+		// If warnings exist and force not set, skip entry and record warnings
+		entryForce := force || entryReq.Force
+		if len(entryWarnings) > 0 && !entryForce {
+			batchWarnings = append(batchWarnings, models.BatchEntryWarning{
+				UserID:   entryReq.UserID,
+				Date:     entryReq.Date.Format("2006-01-02"),
+				Warnings: entryWarnings,
+			})
+			skipped++
+			continue
 		}
 
 		// Create entry
@@ -596,7 +618,11 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 	// Send notifications to all affected users asynchronously
 	go u.sendBatchScheduleEntryNotifications(schedule, entries, userID)
 
-	return responses, nil
+	return &models.BatchCreateEntriesWithWarningsResponse{
+		Entries:  responses,
+		Warnings: batchWarnings,
+		Skipped:  skipped,
+	}, nil
 }
 
 // GetScheduleEntries retrieves entries for a schedule
@@ -631,7 +657,7 @@ func (u *scheduleUsecase) GetScheduleEntries(userID, scheduleID uint, filter Ent
 }
 
 // UpdateScheduleEntry updates an existing schedule entry
-func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, req *models.UpdateScheduleEntryRequest) (*models.ScheduleEntryResponse, error) {
+func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, req *models.UpdateScheduleEntryRequest) (*models.ScheduleEntryWithWarningsResponse, error) {
 	// Get existing entry
 	entry, err := u.scheduleRepo.GetScheduleEntry(entryID)
 	if err != nil {
@@ -695,6 +721,21 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		entry.EndTime = endTime
 	}
 
+	// Check for soft validation warnings (absence, conflict)
+	warnings, err := u.checkEntryWarnings(entry.UserID, entry.Date, entry.StartTime, entry.EndTime, schedule.Type, &entryID)
+	if err != nil {
+		return nil, err
+	}
+
+	// If warnings exist and force is not set, return warnings without updating
+	if len(warnings) > 0 && !req.Force {
+		return &models.ScheduleEntryWithWarningsResponse{
+			Entry:    entry.ToResponse(),
+			Warnings: warnings,
+			Created:  false,
+		}, nil
+	}
+
 	// Save updated entry - use Select to explicitly update user_id
 	if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, userChanged); err != nil {
 		return nil, fmt.Errorf("failed to update schedule entry: %w", err)
@@ -751,7 +792,11 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 	// Send notification about the change asynchronously
 	go u.sendScheduleEntryUpdatedNotification(schedule, oldEntry, updatedEntry, userID)
 
-	return updatedEntry.ToResponse(), nil
+	return &models.ScheduleEntryWithWarningsResponse{
+		Entry:    updatedEntry.ToResponse(),
+		Warnings: warnings,
+		Created:  true,
+	}, nil
 }
 
 // DeleteScheduleEntry deletes a schedule entry
@@ -1072,6 +1117,43 @@ func (u *scheduleUsecase) filterEntriesByAbsences(entries []*models.ScheduleEntr
 }
 
 // Helper functions
+
+// checkEntryWarnings collects soft validation warnings for a schedule entry (absence, conflict)
+func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]models.ScheduleEntryWarning, error) {
+	var warnings []models.ScheduleEntryWarning
+
+	// Check absence
+	isAbsent, absence, err := u.absenceRepo.IsUserAbsent(userID, date)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check absence: %w", err)
+	}
+	if isAbsent {
+		warnings = append(warnings, models.ScheduleEntryWarning{
+			Type: models.WarningTypeAbsence,
+			Message: fmt.Sprintf("пользователь в отсутствии (%s) с %s по %s",
+				GetAbsenceTypeName(absence.Type),
+				absence.StartDate.Format("02.01"),
+				absence.EndDate.Format("02.01")),
+		})
+	}
+
+	// Check conflicts
+	conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(userID, date, startTime, endTime, scheduleType, excludeEntryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check schedule conflict: %w", err)
+	}
+	for _, conflict := range conflictingEntries {
+		warnings = append(warnings, models.ScheduleEntryWarning{
+			Type: models.WarningTypeConflict,
+			Message: fmt.Sprintf("пользователь уже стоит в графике \"%s\" с %s до %s",
+				conflict.Schedule.Title,
+				conflict.StartTime.Format("15:04"),
+				conflict.EndTime.Format("15:04")),
+		})
+	}
+
+	return warnings, nil
+}
 
 // calculateShiftTimes calculates start and end times based on shift type
 func (u *scheduleUsecase) calculateShiftTimes(schedule *models.Schedule, date time.Time, shiftType models.ShiftType, customStart, customEnd *string) (time.Time, time.Time, error) {

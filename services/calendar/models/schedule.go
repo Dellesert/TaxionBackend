@@ -382,11 +382,13 @@ type CreateScheduleEntryRequest struct {
 	Title       string    `json:"title,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
 	Description string    `json:"description,omitempty" binding:"omitempty,max=1000" validate:"omitempty,max=1000"`
 	Location    string    `json:"location,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	Force       bool      `json:"force,omitempty"` // Skip soft validation warnings (absence/conflict)
 }
 
 // BatchCreateScheduleEntriesRequest represents batch creation request
 type BatchCreateScheduleEntriesRequest struct {
 	Entries []CreateScheduleEntryRequest `json:"entries" binding:"required,min=1,dive" validate:"required,min=1,dive"`
+	Force   bool                         `json:"force,omitempty"` // Skip soft validation for all entries
 }
 
 // UpdateScheduleEntryRequest represents request for updating a schedule entry
@@ -399,6 +401,7 @@ type UpdateScheduleEntryRequest struct {
 	Title       *string    `json:"title,omitempty" binding:"omitempty,max=255" validate:"omitempty,max=255"`
 	Description *string    `json:"description,omitempty" binding:"omitempty,max=1000" validate:"omitempty,max=1000"`
 	Location    *string    `json:"location,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
+	Force       bool       `json:"force,omitempty"` // Skip soft validation warnings (absence/conflict)
 }
 
 // ScheduleResponse represents a schedule in API responses
@@ -543,6 +546,41 @@ type ScheduleEntryListResponse struct {
 	Total   int64                    `json:"total"`
 	Limit   int                      `json:"limit"`
 	Offset  int                      `json:"offset"`
+}
+
+// WarningType represents the type of schedule entry warning
+type WarningType string
+
+const (
+	WarningTypeAbsence  WarningType = "absence"
+	WarningTypeConflict WarningType = "conflict"
+)
+
+// ScheduleEntryWarning represents a soft validation warning
+type ScheduleEntryWarning struct {
+	Type    WarningType `json:"type"`
+	Message string      `json:"message"`
+}
+
+// ScheduleEntryWithWarningsResponse wraps entry response with optional warnings
+type ScheduleEntryWithWarningsResponse struct {
+	Entry    *ScheduleEntryResponse `json:"entry"`              // nil when warnings present and force=false
+	Warnings []ScheduleEntryWarning `json:"warnings,omitempty"` // present when soft validation issues found
+	Created  bool                   `json:"created"`            // true if entry was actually created/updated
+}
+
+// BatchEntryWarning associates warnings with a specific entry in a batch
+type BatchEntryWarning struct {
+	UserID   uint                   `json:"user_id"`
+	Date     string                 `json:"date"`
+	Warnings []ScheduleEntryWarning `json:"warnings"`
+}
+
+// BatchCreateEntriesWithWarningsResponse wraps batch entry results
+type BatchCreateEntriesWithWarningsResponse struct {
+	Entries  []*ScheduleEntryResponse `json:"entries"`            // Successfully created entries
+	Warnings []BatchEntryWarning      `json:"warnings,omitempty"` // Warnings for skipped entries
+	Skipped  int                      `json:"skipped"`            // Number of entries skipped due to warnings
 }
 
 // Template Request/Response Models
