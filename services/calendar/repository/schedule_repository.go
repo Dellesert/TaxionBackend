@@ -7,6 +7,7 @@ import (
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/shared/database"
 
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
@@ -836,6 +837,17 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 		return nil, err
 	}
 
+	logrus.WithFields(logrus.Fields{
+		"user_id":         userID,
+		"date":            date.Format("2006-01-02"),
+		"shift_type":      shiftType,
+		"schedule_type":   scheduleType,
+		"schedule_id":     scheduleID,
+		"start_time":      startTime.Format("15:04"),
+		"end_time":        endTime.Format("15:04"),
+		"compatible_types": compatibleTypes,
+	}).Info("[ConflictCheck] Checking for conflicts")
+
 	var allConflicts []*models.ScheduleEntry
 
 	// 1. Cross-schedule conflicts: different schedule with incompatible type
@@ -869,8 +881,14 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 
 	var crossEntries []*models.ScheduleEntry
 	if err := crossQuery.Find(&crossEntries).Error; err != nil {
+		logrus.WithError(err).Error("[ConflictCheck] Failed to query cross-schedule conflicts")
 		return nil, err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"cross_conflicts_found": len(crossEntries),
+	}).Info("[ConflictCheck] Cross-schedule check done")
+
 	allConflicts = append(allConflicts, crossEntries...)
 
 	// 2. Same-schedule conflicts: time overlap within the same schedule
@@ -884,8 +902,15 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 
 	var sameEntries []*models.ScheduleEntry
 	if err := sameQuery.Find(&sameEntries).Error; err != nil {
+		logrus.WithError(err).Error("[ConflictCheck] Failed to query same-schedule conflicts")
 		return nil, err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"same_conflicts_found": len(sameEntries),
+		"total_conflicts":      len(allConflicts) + len(sameEntries),
+	}).Info("[ConflictCheck] Same-schedule check done")
+
 	allConflicts = append(allConflicts, sameEntries...)
 
 	return allConflicts, nil
