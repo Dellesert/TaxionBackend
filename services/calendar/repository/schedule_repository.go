@@ -67,7 +67,7 @@ type ScheduleRepository interface {
 	DeleteTemplateEntry(id uint) error
 
 	// Recurring schedule support
-	HasEntriesForMonth(scheduleID uint, year int, month time.Month) (bool, error)
+	HasEntriesForMonth(scheduleID uint, userID uint, year int, month time.Month) (bool, error)
 	GetRecurringSchedulesForUser(userID uint) ([]*models.Schedule, error)
 	DeleteEntriesForMonth(scheduleID uint, year int, month time.Month) error
 
@@ -756,14 +756,14 @@ func (r *scheduleRepository) DeleteTemplateEntry(id uint) error {
 	return nil
 }
 
-// HasEntriesForMonth checks if a schedule has entries for a specific month
-func (r *scheduleRepository) HasEntriesForMonth(scheduleID uint, year int, month time.Month) (bool, error) {
+// HasEntriesForMonth checks if a schedule has entries for a specific user in a specific month
+func (r *scheduleRepository) HasEntriesForMonth(scheduleID uint, userID uint, year int, month time.Month) (bool, error) {
 	startOfMonth := time.Date(year, month, 1, 0, 0, 0, 0, time.Local)
 	endOfMonth := startOfMonth.AddDate(0, 1, -1)
 
 	var count int64
 	err := r.db.Model(&models.ScheduleEntry{}).
-		Where("schedule_id = ? AND date >= ? AND date <= ?", scheduleID, startOfMonth, endOfMonth).
+		Where("schedule_id = ? AND user_id = ? AND date >= ? AND date <= ?", scheduleID, userID, startOfMonth, endOfMonth).
 		Count(&count).Error
 
 	if err != nil {
