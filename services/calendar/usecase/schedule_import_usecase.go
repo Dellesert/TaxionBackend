@@ -59,7 +59,7 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		color = getDefaultColorForType(req.Type)
 	}
 
-	// Create schedule
+	// Create schedule as draft (will be published after review)
 	schedule := &models.Schedule{
 		Title:        req.Title,
 		Description:  req.Description,
@@ -70,6 +70,7 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		EndDate:      req.EndDate,
 		Color:        color,
 		IsActive:     true,
+		Status:       models.ScheduleStatusDraft,
 		ImportedFrom: &metadata.FileName,
 		MorningStart: morningStart,
 		MorningEnd:   morningEnd,
@@ -115,8 +116,7 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		"user_id":        userID,
 	}).Info("Schedule imported successfully")
 
-	// Send notifications to all participants about the new schedule
-	go u.sendScheduleImportedNotification(createdSchedule, entries, userID)
+	// Draft schedules: notifications happen on publish via PublishSchedule()
 
 	return &models.ImportScheduleResponse{
 		Schedule:     createdSchedule.ToResponse(),
@@ -154,6 +154,7 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		EndDate:      req.EndDate,
 		Color:        color,
 		IsActive:     true,
+		Status:       models.ScheduleStatusDraft,
 		MorningStart: morningStart,
 		MorningEnd:   morningEnd,
 		EveningStart: eveningStart,

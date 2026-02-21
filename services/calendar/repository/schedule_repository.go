@@ -82,6 +82,7 @@ type ScheduleRepository interface {
 type ScheduleFilter struct {
 	Type         *models.ScheduleType
 	IsActive     *bool
+	Status       *models.ScheduleStatus
 	CreatedBy    *uint
 	DepartmentID *uint
 	StartDate    *time.Time
@@ -162,6 +163,9 @@ func (r *scheduleRepository) GetSchedules(filter ScheduleFilter) ([]*models.Sche
 	}
 	if filter.IsActive != nil {
 		query = query.Where("is_active = ?", *filter.IsActive)
+	}
+	if filter.Status != nil {
+		query = query.Where("status = ?", *filter.Status)
 	}
 	if filter.CreatedBy != nil {
 		query = query.Where("created_by = ?", *filter.CreatedBy)
@@ -382,8 +386,9 @@ func (r *scheduleRepository) GetUserScheduleEntries(userID uint, startDate, endD
 
 	err := r.db.
 		Preload("Schedule").
-		Where("user_id = ? AND date >= ? AND date <= ?", userID, startDate, endDate).
-		Order("date ASC, start_time ASC").
+		Joins("JOIN schedules ON schedules.id = schedule_entries.schedule_id AND schedules.deleted_at IS NULL AND schedules.status = ?", models.ScheduleStatusPublished).
+		Where("schedule_entries.user_id = ? AND schedule_entries.date >= ? AND schedule_entries.date <= ?", userID, startDate, endDate).
+		Order("schedule_entries.date ASC, schedule_entries.start_time ASC").
 		Find(&entries).Error
 
 	if err != nil {
@@ -780,7 +785,7 @@ func (r *scheduleRepository) GetRecurringSchedulesForUser(userID uint) ([]*model
 	err := r.db.
 		Preload("Template").
 		Preload("Template.Entries").
-		Where("schedules.mode = ? AND schedules.is_active = ?", models.ScheduleModeRecurring, true).
+		Where("schedules.mode = ? AND schedules.is_active = ? AND schedules.status = ?", models.ScheduleModeRecurring, true, models.ScheduleStatusPublished).
 		Where(`schedules.is_for_all_users = true
 			OR schedules.id IN (SELECT sa.schedule_id FROM schedule_assignments sa WHERE sa.user_id = ?)
 			OR schedules.template_id IN (SELECT ste.template_id FROM schedule_template_entries ste WHERE ste.user_id = ?)`,
@@ -903,7 +908,7 @@ func (r *scheduleRepository) GetAllEntriesForDate(date time.Time) ([]*models.Sch
 	err := r.db.
 		Preload("User").
 		Preload("Schedule").
-		Joins("JOIN schedules ON schedules.id = schedule_entries.schedule_id AND schedules.deleted_at IS NULL AND schedules.is_active = ?", true).
+		Joins("JOIN schedules ON schedules.id = schedule_entries.schedule_id AND schedules.deleted_at IS NULL AND schedules.is_active = ? AND schedules.status = ?", true, models.ScheduleStatusPublished).
 		Where("schedule_entries.date = ?", date).
 		Order("schedules.type ASC, schedule_entries.start_time ASC").
 		Find(&entries).Error

@@ -48,6 +48,14 @@ const (
 	ScheduleModeMonthly   ScheduleMode = "monthly"   // Ежемесячный (загружается вручную каждый месяц)
 )
 
+// ScheduleStatus represents the publication status of a schedule
+type ScheduleStatus string
+
+const (
+	ScheduleStatusDraft     ScheduleStatus = "draft"     // Черновик (виден только создателю и админам)
+	ScheduleStatusPublished ScheduleStatus = "published" // Опубликован (виден всем согласно настройкам видимости)
+)
+
 // Schedule represents a work schedule
 type Schedule struct {
 	sharedmodels.BaseModel
@@ -64,6 +72,8 @@ type Schedule struct {
 	UserGroupID   *uint              `gorm:"index" json:"user_group_id,omitempty" validate:"omitempty,min=1"`
 	Color         string             `gorm:"size:7;default:'#4CAF50'" json:"color" validate:"omitempty,len=7"`
 	IsActive      bool               `gorm:"not null;default:true;index" json:"is_active"`
+	Status        ScheduleStatus     `gorm:"not null;default:'published';size:20;index" json:"status"`
+	PublishedAt   *time.Time         `json:"published_at,omitempty"`
 	Mode          ScheduleMode       `gorm:"not null;default:'monthly';size:20" json:"mode" validate:"omitempty,oneof=recurring monthly"`
 	TemplateID    *uint              `gorm:"index" json:"template_id,omitempty" validate:"omitempty,min=1"`
 	ImportedFrom  *string            `gorm:"size:500" json:"imported_from,omitempty"`
@@ -114,6 +124,9 @@ func (s *Schedule) BeforeCreate(tx *gorm.DB) error {
 	}
 	if s.EveningEnd == "" {
 		s.EveningEnd = "18:00"
+	}
+	if s.Status == "" {
+		s.Status = ScheduleStatusPublished
 	}
 	if s.Mode == "" {
 		// Set default mode based on schedule type
@@ -421,6 +434,8 @@ type ScheduleResponse struct {
 	UserGroupID    *uint                     `json:"user_group_id,omitempty"`
 	Color          string                    `json:"color"`
 	IsActive       bool                      `json:"is_active"`
+	Status         ScheduleStatus            `json:"status"`
+	PublishedAt    *time.Time                `json:"published_at,omitempty"`
 	Mode           ScheduleMode              `json:"mode"`
 	TemplateID     *uint                     `json:"template_id,omitempty"`
 	Template       *ScheduleTemplateResponse `json:"template,omitempty"`
@@ -454,6 +469,8 @@ func (s *Schedule) ToResponse() *ScheduleResponse {
 		UserGroupID:    s.UserGroupID,
 		Color:          s.Color,
 		IsActive:       s.IsActive,
+		Status:         s.Status,
+		PublishedAt:    s.PublishedAt,
 		Mode:           s.Mode,
 		TemplateID:     s.TemplateID,
 		ImportedFrom:   s.ImportedFrom,

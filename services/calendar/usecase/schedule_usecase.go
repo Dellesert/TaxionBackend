@@ -17,6 +17,7 @@ import (
 type ScheduleUsecase interface {
 	// Schedule management
 	CreateSchedule(userID uint, req *models.CreateScheduleRequest) (*models.ScheduleResponse, error)
+	PublishSchedule(userID, scheduleID uint) (*models.ScheduleResponse, error)
 	GetScheduleByID(userID, scheduleID uint) (*models.ScheduleResponse, error)
 	GetSchedules(userID uint, userRole sharedmodels.Role, filter ScheduleFilterParams) (*models.ScheduleListResponse, error)
 	UpdateSchedule(userID, scheduleID uint, req *models.UpdateScheduleRequest) (*models.ScheduleResponse, error)
@@ -45,6 +46,7 @@ type ScheduleUsecase interface {
 type ScheduleFilterParams struct {
 	Type         *models.ScheduleType
 	IsActive     *bool
+	Status       *models.ScheduleStatus
 	DepartmentID *uint
 	StartDate    *time.Time
 	EndDate      *time.Time
@@ -108,6 +110,7 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 		UserGroupID:   req.UserGroupID,
 		TemplateID:    req.TemplateID,
 		IsActive:      true,
+		Status:        models.ScheduleStatusDraft,
 	}
 
 	// Set visibility (default to management)
@@ -195,13 +198,52 @@ func (u *scheduleUsecase) CreateSchedule(userID uint, req *models.CreateSchedule
 		return nil, fmt.Errorf("failed to get created schedule: %w", err)
 	}
 
-	// Send notifications to participants asynchronously
-	go u.sendScheduleCreatedNotification(createdSchedule, userID)
-
-	// Index schedule in search service
-	u.indexScheduleInSearch(createdSchedule)
+	// Draft schedules: notifications and search indexing happen on publish
+	// See PublishSchedule()
 
 	return createdSchedule.ToResponse(), nil
+}
+
+// PublishSchedule transitions a draft schedule to published status
+func (u *scheduleUsecase) PublishSchedule(userID, scheduleID uint) (*models.ScheduleResponse, error) {
+	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if already published
+	if schedule.Status == models.ScheduleStatusPublished {
+		return nil, errors.New("schedule is already published")
+	}
+
+	// Transition to published
+	now := time.Now()
+	schedule.Status = models.ScheduleStatusPublished
+	schedule.PublishedAt = &now
+
+	if err := u.scheduleRepo.UpdateSchedule(schedule); err != nil {
+		return nil, fmt.Errorf("failed to publish schedule: %w", err)
+	}
+
+	// Get schedule with full data for notification and response
+	publishedSchedule, err := u.scheduleRepo.GetScheduleWithPermissions(schedule.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get published schedule: %w", err)
+	}
+
+	// Send schedule-level notifications
+	go u.sendScheduleCreatedNotification(publishedSchedule, userID)
+
+	// Send entry-level notifications to participants if entries exist
+	entries, _, err := u.scheduleRepo.GetScheduleEntries(scheduleID, repository.EntryFilter{})
+	if err == nil && len(entries) > 0 {
+		go u.sendBatchScheduleEntryNotifications(publishedSchedule, entries, userID)
+	}
+
+	// Index in search
+	u.indexScheduleInSearch(publishedSchedule)
+
+	return publishedSchedule.ToResponse(), nil
 }
 
 // GetScheduleByID retrieves a schedule by ID with permission check
@@ -240,6 +282,7 @@ func (u *scheduleUsecase) GetSchedules(userID uint, userRole sharedmodels.Role, 
 	repoFilter := repository.ScheduleFilter{
 		Type:         filter.Type,
 		IsActive:     filter.IsActive,
+		Status:       filter.Status,
 		DepartmentID: filter.DepartmentID,
 		StartDate:    filter.StartDate,
 		EndDate:      filter.EndDate,
@@ -364,8 +407,10 @@ func (u *scheduleUsecase) UpdateSchedule(userID, scheduleID uint, req *models.Up
 		return nil, fmt.Errorf("failed to get updated schedule: %w", err)
 	}
 
-	// Re-index schedule in search service
-	u.indexScheduleInSearch(updatedSchedule)
+	// Only index published schedules in search
+	if updatedSchedule.Status == models.ScheduleStatusPublished {
+		u.indexScheduleInSearch(updatedSchedule)
+	}
 
 	return updatedSchedule.ToResponse(), nil
 }
@@ -473,8 +518,10 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 		return nil, fmt.Errorf("failed to get created entry: %w", err)
 	}
 
-	// Send notification to the user asynchronously
-	go u.sendScheduleEntryNotification(schedule, createdEntry, userID)
+	// Only send notifications for published schedules
+	if schedule.Status == models.ScheduleStatusPublished {
+		go u.sendScheduleEntryNotification(schedule, createdEntry, userID)
+	}
 
 	return &models.ScheduleEntryWithWarningsResponse{
 		Entry:    createdEntry.ToResponse(),
@@ -615,8 +662,10 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		}
 	}
 
-	// Send notifications to all affected users asynchronously
-	go u.sendBatchScheduleEntryNotifications(schedule, entries, userID)
+	// Only send notifications for published schedules
+	if schedule.Status == models.ScheduleStatusPublished {
+		go u.sendBatchScheduleEntryNotifications(schedule, entries, userID)
+	}
 
 	return &models.BatchCreateEntriesWithWarningsResponse{
 		Entries:  responses,
@@ -789,8 +838,10 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		return nil, fmt.Errorf("failed to get updated entry: %w", err)
 	}
 
-	// Send notification about the change asynchronously
-	go u.sendScheduleEntryUpdatedNotification(schedule, oldEntry, updatedEntry, userID)
+	// Only send notifications for published schedules
+	if schedule.Status == models.ScheduleStatusPublished {
+		go u.sendScheduleEntryUpdatedNotification(schedule, oldEntry, updatedEntry, userID)
+	}
 
 	return &models.ScheduleEntryWithWarningsResponse{
 		Entry:    updatedEntry.ToResponse(),
@@ -825,8 +876,10 @@ func (u *scheduleUsecase) DeleteScheduleEntry(userID, scheduleID, entryID uint) 
 		}
 	}
 
-	// Send notification about cancellation asynchronously (before deletion)
-	go u.sendScheduleEntryCancelledNotification(schedule, entry, userID)
+	// Only send notifications for published schedules
+	if schedule.Status == models.ScheduleStatusPublished {
+		go u.sendScheduleEntryCancelledNotification(schedule, entry, userID)
+	}
 
 	// Delete entry
 	if err := u.scheduleRepo.DeleteScheduleEntry(entryID); err != nil {
@@ -1277,6 +1330,14 @@ func isManagement(role sharedmodels.Role) bool {
 
 // canViewScheduleObj checks if user can view an already-loaded schedule object
 func (u *scheduleUsecase) canViewScheduleObj(userID uint, schedule *models.Schedule, userRole sharedmodels.Role) (bool, error) {
+	// Draft schedules are only visible to creator + admin + super_admin
+	if schedule.Status == models.ScheduleStatusDraft {
+		if userRole == sharedmodels.RoleSuperAdmin || userRole == sharedmodels.RoleAdmin {
+			return true, nil
+		}
+		return schedule.CreatedBy == userID, nil
+	}
+
 	// Super admin and admin can view all
 	if userRole == sharedmodels.RoleSuperAdmin || userRole == sharedmodels.RoleAdmin {
 		return true, nil

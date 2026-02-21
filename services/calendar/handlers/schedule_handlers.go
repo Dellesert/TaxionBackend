@@ -159,6 +159,11 @@ func (h *ScheduleHandler) GetSchedules(c *gin.Context) {
 		filter.IsActive = &isActive
 	}
 
+	if statusStr := c.Query("status"); statusStr != "" {
+		status := models.ScheduleStatus(statusStr)
+		filter.Status = &status
+	}
+
 	if deptIDStr := c.Query("department_id"); deptIDStr != "" {
 		if deptID, err := strconv.ParseUint(deptIDStr, 10, 32); err == nil {
 			deptIDUint := uint(deptID)
@@ -503,6 +508,90 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":    "Schedule deleted successfully",
+		"request_id": requestID,
+	})
+}
+
+// PublishSchedule handles publishing a draft schedule
+// POST /api/v1/schedules/:id/publish
+func (h *ScheduleHandler) PublishSchedule(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	userRole, err := middleware.GetUserRoleFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Unauthorized",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid schedule ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Check edit permission
+	canEdit, err := h.scheduleUsecase.CanEditSchedule(userID, uint(scheduleID), userRole)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		}
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to publish schedule",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	if !canEdit {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error":      "У вас нет прав на публикацию этого графика",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	schedule, err := h.scheduleUsecase.PublishSchedule(userID, uint(scheduleID))
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if containsNotFoundError(err.Error()) {
+			statusCode = http.StatusNotFound
+		} else if containsValidationError(err.Error()) {
+			statusCode = http.StatusBadRequest
+		}
+		c.JSON(statusCode, gin.H{
+			"error":      "Failed to publish schedule",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":  requestID,
+		"user_id":     userID,
+		"schedule_id": scheduleID,
+	}).Info("Schedule published successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Schedule published successfully",
+		"schedule":   schedule,
 		"request_id": requestID,
 	})
 }
