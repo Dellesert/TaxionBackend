@@ -75,7 +75,6 @@ func main() {
 		&models.MessageReaction{},
 		&models.MessageReadReceipt{},
 		&models.MessageAttachment{},
-		&models.UserMutePreference{},
 	); err != nil {
 		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
