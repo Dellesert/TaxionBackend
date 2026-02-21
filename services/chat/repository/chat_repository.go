@@ -40,6 +40,12 @@ type ChatRepository interface {
 	UpdateFavoriteStatus(chatID, userID uint, isFavorite bool) error
 	UpdatePinnedStatus(chatID, userID uint, isPinned bool) error
 	UpdateHiddenStatus(chatID, userID uint, isHidden bool) error
+	UpdateMutedUntil(chatID, userID uint, mutedUntil *time.Time) error
+	GetMemberMutedUntil(chatID, userID uint) (*time.Time, error)
+
+	// Global mute preferences
+	GetUserMutePreference(userID uint) (*models.UserMutePreference, error)
+	UpsertUserMutePreference(pref *models.UserMutePreference) error
 
 	// Access control methods
 	HasReadAccess(chatID, userID uint) (bool, error)
@@ -751,5 +757,60 @@ func (r *chatRepository) ClearLastMessage(chatID uint) error {
 		return fmt.Errorf("failed to clear last message: %w", result.Error)
 	}
 
+	return nil
+}
+
+// UpdateMutedUntil updates the muted_until timestamp for a chat member
+func (r *chatRepository) UpdateMutedUntil(chatID, userID uint, mutedUntil *time.Time) error {
+	result := r.db.Model(&models.ChatMember{}).
+		Where("chat_id = ? AND user_id = ? AND is_active = ?", chatID, userID, true).
+		Update("muted_until", mutedUntil)
+
+	if result.Error != nil {
+		return fmt.Errorf("failed to update muted_until: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return fmt.Errorf("chat member not found")
+	}
+	return nil
+}
+
+// GetMemberMutedUntil retrieves the muted_until value for a specific chat member
+func (r *chatRepository) GetMemberMutedUntil(chatID, userID uint) (*time.Time, error) {
+	var member models.ChatMember
+	err := r.db.Where("chat_id = ? AND user_id = ? AND is_active = ?", chatID, userID, true).
+		Select("muted_until").
+		First(&member).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get member muted_until: %w", err)
+	}
+	return member.MutedUntil, nil
+}
+
+// GetUserMutePreference retrieves global mute preferences for a user
+func (r *chatRepository) GetUserMutePreference(userID uint) (*models.UserMutePreference, error) {
+	var pref models.UserMutePreference
+	err := r.db.Where("user_id = ?", userID).First(&pref).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to get user mute preference: %w", err)
+	}
+	return &pref, nil
+}
+
+// UpsertUserMutePreference creates or updates global mute preferences for a user
+func (r *chatRepository) UpsertUserMutePreference(pref *models.UserMutePreference) error {
+	result := r.db.Where("user_id = ?", pref.UserID).Assign(map[string]interface{}{
+		"mute_all_channels_until": pref.MuteAllChannelsUntil,
+		"mute_all_groups_until":   pref.MuteAllGroupsUntil,
+	}).FirstOrCreate(pref)
+	if result.Error != nil {
+		return fmt.Errorf("failed to upsert user mute preference: %w", result.Error)
+	}
 	return nil
 }

@@ -47,6 +47,12 @@ type ChatUsecase interface {
 	GetTotalUnreadCount(userID uint) (int64, error)
 	SetWebSocketHub(hub ChatWebSocketHub)
 
+	// Mute methods
+	MuteChat(userID, chatID uint, duration string) (*time.Time, error)
+	UnmuteChat(userID, chatID uint) error
+	GetGlobalMutePreferences(userID uint) (*models.GlobalMuteResponse, error)
+	UpdateGlobalMutePreferences(userID uint, req *models.UpdateGlobalMuteRequest) (*models.GlobalMuteResponse, error)
+
 	// Sync methods
 	GetDeletedChatIDsSince(since time.Time) ([]uint, error)
 }
@@ -509,13 +515,16 @@ func (uc *chatUsecase) GetUserChats(userID uint, limit, offset int, chatType str
 			response.UnreadCount = 0
 		}
 
-		// Get favorite and pinned status for current user
+		// Get favorite, pinned and muted status for current user
 		response.IsFavorite = false
 		response.IsPinned = false
+		response.IsMuted = false
 		for _, member := range chat.Members {
 			if member.UserID == userID {
 				response.IsFavorite = member.IsFavorite
 				response.IsPinned = member.IsPinned
+				response.IsMuted = models.IsMutedUntil(member.MutedUntil)
+				response.MutedUntil = member.MutedUntil
 				break
 			}
 		}
@@ -567,13 +576,16 @@ func (uc *chatUsecase) GetUserChatsWithSync(userID uint, limit, offset int, chat
 			response.UnreadCount = 0
 		}
 
-		// Get favorite and pinned status for current user
+		// Get favorite, pinned and muted status for current user
 		response.IsFavorite = false
 		response.IsPinned = false
+		response.IsMuted = false
 		for _, member := range chat.Members {
 			if member.UserID == userID {
 				response.IsFavorite = member.IsFavorite
 				response.IsPinned = member.IsPinned
+				response.IsMuted = models.IsMutedUntil(member.MutedUntil)
+				response.MutedUntil = member.MutedUntil
 				break
 			}
 		}
@@ -623,13 +635,16 @@ func (uc *chatUsecase) GetPinnedChats(userID uint, chatType string) ([]models.Ch
 			response.UnreadCount = 0
 		}
 
-		// Set favorite and pinned status for current user
+		// Set favorite, pinned and muted status for current user
 		response.IsFavorite = false
 		response.IsPinned = true // All chats from this method are pinned
+		response.IsMuted = false
 		for _, member := range chat.Members {
 			if member.UserID == userID {
 				response.IsFavorite = member.IsFavorite
 				response.IsPinned = member.IsPinned
+				response.IsMuted = models.IsMutedUntil(member.MutedUntil)
+				response.MutedUntil = member.MutedUntil
 				break
 			}
 		}
@@ -988,6 +1003,98 @@ func (uc *chatUsecase) TogglePinned(userID, chatID uint, isPinned bool) error {
 	}
 
 	return nil
+}
+
+// MuteChat mutes notifications for a specific chat
+func (uc *chatUsecase) MuteChat(userID, chatID uint, duration string) (*time.Time, error) {
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return nil, fmt.Errorf("user is not a member of this chat")
+	}
+
+	mutedUntil, err := models.ComputeMutedUntil(duration)
+	if err != nil {
+		return nil, fmt.Errorf("invalid mute duration: %w", err)
+	}
+
+	if err := uc.chatRepo.UpdateMutedUntil(chatID, userID, mutedUntil); err != nil {
+		return nil, fmt.Errorf("failed to mute chat: %w", err)
+	}
+
+	return mutedUntil, nil
+}
+
+// UnmuteChat removes mute for a specific chat
+func (uc *chatUsecase) UnmuteChat(userID, chatID uint) error {
+	isMember, err := uc.chatRepo.IsMember(chatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to check membership: %w", err)
+	}
+	if !isMember {
+		return fmt.Errorf("user is not a member of this chat")
+	}
+
+	if err := uc.chatRepo.UpdateMutedUntil(chatID, userID, nil); err != nil {
+		return fmt.Errorf("failed to unmute chat: %w", err)
+	}
+
+	return nil
+}
+
+// GetGlobalMutePreferences returns the user's global mute settings
+func (uc *chatUsecase) GetGlobalMutePreferences(userID uint) (*models.GlobalMuteResponse, error) {
+	pref, err := uc.chatRepo.GetUserMutePreference(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mute preferences: %w", err)
+	}
+
+	if pref == nil {
+		return &models.GlobalMuteResponse{}, nil
+	}
+
+	return &models.GlobalMuteResponse{
+		MuteAllChannelsUntil: pref.MuteAllChannelsUntil,
+		MuteAllGroupsUntil:   pref.MuteAllGroupsUntil,
+	}, nil
+}
+
+// UpdateGlobalMutePreferences updates global channel/group mute settings
+func (uc *chatUsecase) UpdateGlobalMutePreferences(userID uint, req *models.UpdateGlobalMuteRequest) (*models.GlobalMuteResponse, error) {
+	pref, err := uc.chatRepo.GetUserMutePreference(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mute preferences: %w", err)
+	}
+	if pref == nil {
+		pref = &models.UserMutePreference{UserID: userID}
+	}
+
+	if req.MuteAllChannels != nil {
+		mutedUntil, err := models.ComputeMutedUntil(*req.MuteAllChannels)
+		if err != nil {
+			return nil, fmt.Errorf("invalid channel mute duration: %w", err)
+		}
+		pref.MuteAllChannelsUntil = mutedUntil
+	}
+
+	if req.MuteAllGroups != nil {
+		mutedUntil, err := models.ComputeMutedUntil(*req.MuteAllGroups)
+		if err != nil {
+			return nil, fmt.Errorf("invalid group mute duration: %w", err)
+		}
+		pref.MuteAllGroupsUntil = mutedUntil
+	}
+
+	if err := uc.chatRepo.UpsertUserMutePreference(pref); err != nil {
+		return nil, fmt.Errorf("failed to update mute preferences: %w", err)
+	}
+
+	return &models.GlobalMuteResponse{
+		MuteAllChannelsUntil: pref.MuteAllChannelsUntil,
+		MuteAllGroupsUntil:   pref.MuteAllGroupsUntil,
+	}, nil
 }
 
 // validateCreateChatRequest validates chat creation request

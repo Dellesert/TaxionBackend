@@ -1,6 +1,7 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	"tachyon-messenger/shared/models"
@@ -51,7 +52,8 @@ type ChatMember struct {
 	IsActive   bool           `gorm:"not null;default:true" json:"is_active"`
 	IsFavorite bool           `gorm:"not null;default:false" json:"is_favorite"`
 	IsPinned   bool           `gorm:"not null;default:false" json:"is_pinned"`
-	IsHidden   bool           `gorm:"not null;default:false" json:"is_hidden"` // Allows user to hide chat without leaving
+	IsHidden   bool           `gorm:"not null;default:false" json:"is_hidden"`   // Allows user to hide chat without leaving
+	MutedUntil *time.Time     `gorm:"type:timestamptz" json:"muted_until,omitempty"` // NULL = not muted, timestamp = muted until
 
 	// Associations
 	Chat *Chat        `gorm:"foreignKey:ChatID" json:"chat,omitempty"`
@@ -134,6 +136,8 @@ type ChatResponse struct {
 	IsActive      bool                 `json:"is_active"`
 	IsFavorite    bool                 `json:"is_favorite"`
 	IsPinned      bool                 `json:"is_pinned"`
+	IsMuted       bool                 `json:"is_muted"`
+	MutedUntil    *time.Time           `json:"muted_until,omitempty"`
 	LastMessageAt *time.Time           `json:"last_message_at,omitempty"`
 	LastMessage   *MessageResponse     `json:"last_message,omitempty"`
 	UnreadCount   int64                `json:"unread_count"`
@@ -169,6 +173,7 @@ type ChatMemberResponse struct {
 	IsActive   bool                `json:"is_active"`
 	IsFavorite bool                `json:"is_favorite"`
 	IsPinned   bool                `json:"is_pinned"`
+	MutedUntil *time.Time          `json:"muted_until,omitempty"`
 }
 
 // ToResponse converts Chat to ChatResponse
@@ -278,6 +283,7 @@ func (cm *ChatMember) ToResponse() *ChatMemberResponse {
 		IsActive:   cm.IsActive,
 		IsFavorite: cm.IsFavorite,
 		IsPinned:   cm.IsPinned,
+		MutedUntil: cm.MutedUntil,
 	}
 	// Include user info if loaded
 	if cm.User != nil {
@@ -318,4 +324,57 @@ type CreateGroupChatRequest struct {
 	Name        string `json:"name" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
 	Description string `json:"description,omitempty" binding:"omitempty,max=500" validate:"omitempty,max=500"`
 	MemberIDs   []uint `json:"member_ids" binding:"required,min=1" validate:"required,min=1,dive,min=1"`
+}
+
+// UserMutePreference stores global mute preferences for a user
+type UserMutePreference struct {
+	models.BaseModel
+	UserID               uint       `gorm:"not null;uniqueIndex" json:"user_id"`
+	MuteAllChannelsUntil *time.Time `gorm:"type:timestamptz" json:"mute_all_channels_until,omitempty"`
+	MuteAllGroupsUntil   *time.Time `gorm:"type:timestamptz" json:"mute_all_groups_until,omitempty"`
+}
+
+// TableName returns the table name for UserMutePreference model
+func (UserMutePreference) TableName() string {
+	return "user_mute_preferences"
+}
+
+// MuteChatRequest represents the request body for muting a chat
+type MuteChatRequest struct {
+	Duration string `json:"duration" binding:"required,oneof=1h 12h forever"`
+}
+
+// UpdateGlobalMuteRequest represents the request for updating global mute settings
+type UpdateGlobalMuteRequest struct {
+	MuteAllChannels *string `json:"mute_all_channels,omitempty" binding:"omitempty,oneof=1h 12h forever off"`
+	MuteAllGroups   *string `json:"mute_all_groups,omitempty" binding:"omitempty,oneof=1h 12h forever off"`
+}
+
+// GlobalMuteResponse represents the response for global mute settings
+type GlobalMuteResponse struct {
+	MuteAllChannelsUntil *time.Time `json:"mute_all_channels_until,omitempty"`
+	MuteAllGroupsUntil   *time.Time `json:"mute_all_groups_until,omitempty"`
+}
+
+// ComputeMutedUntil calculates the muted_until timestamp from a duration string
+func ComputeMutedUntil(duration string) (*time.Time, error) {
+	var mutedUntil time.Time
+	switch duration {
+	case "1h":
+		mutedUntil = time.Now().Add(1 * time.Hour)
+	case "12h":
+		mutedUntil = time.Now().Add(12 * time.Hour)
+	case "forever":
+		mutedUntil = time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC)
+	case "off":
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("invalid duration: %s", duration)
+	}
+	return &mutedUntil, nil
+}
+
+// IsMutedUntil checks if a muted_until timestamp means the user is currently muted
+func IsMutedUntil(mutedUntil *time.Time) bool {
+	return mutedUntil != nil && mutedUntil.After(time.Now())
 }

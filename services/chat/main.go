@@ -75,6 +75,7 @@ func main() {
 		&models.MessageReaction{},
 		&models.MessageReadReceipt{},
 		&models.MessageAttachment{},
+		&models.UserMutePreference{},
 	); err != nil {
 		log.Fatalf("Failed to run GORM migrations: %v", err)
 	}
@@ -231,12 +232,16 @@ func setupRoutes(router *gin.Engine, chatHandler *handlers.ChatHandler, messageH
 			chats.GET("/saved", chatHandler.GetSavedChat)            // GET /api/v1/chats/saved
 			chats.GET("/pinned", chatHandler.GetPinnedChats)         // GET /api/v1/chats/pinned
 			chats.GET("/unread-count", chatHandler.GetTotalUnreadCount) // GET /api/v1/chats/unread-count
+			chats.GET("/mute-preferences", chatHandler.GetGlobalMutePreferences)    // GET /api/v1/chats/mute-preferences
+			chats.PUT("/mute-preferences", chatHandler.UpdateGlobalMutePreferences) // PUT /api/v1/chats/mute-preferences
 			chats.POST("", chatHandler.CreateChat)                   // POST /api/v1/chats
 			chats.POST("/direct/:userId", chatHandler.GetOrCreateDirectChat)  // POST /api/v1/chats/direct/:userId
 			chats.POST("/task/:taskId", chatHandler.GetOrCreateTaskChat)      // POST /api/v1/chats/task/:taskId
 			chats.POST("/:id/join", chatHandler.JoinChat)            // POST /api/v1/chats/:id/join
 			chats.PUT("/:id/favorite", chatHandler.ToggleFavorite)   // PUT /api/v1/chats/:id/favorite
 			chats.PUT("/:id/pinned", chatHandler.TogglePinned)       // PUT /api/v1/chats/:id/pinned
+			chats.PUT("/:id/mute", chatHandler.MuteChat)             // PUT /api/v1/chats/:id/mute
+			chats.PUT("/:id/unmute", chatHandler.UnmuteChat)         // PUT /api/v1/chats/:id/unmute
 			chats.GET("/:id", chatHandler.GetChat)                   // GET /api/v1/chats/:id
 			chats.PUT("/:id", chatHandler.UpdateChat)                // PUT /api/v1/chats/:id
 			chats.DELETE("/:id", chatHandler.DeleteChat)             // DELETE /api/v1/chats/:id

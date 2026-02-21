@@ -1566,7 +1566,29 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 			notificationTitle = "💬 Ответ на ваше сообщение"
 		}
 
-		// NEW: If user is actively viewing this chat, skip PUSH notification but keep in_app
+		// Check per-chat mute
+		memberMutedUntil, err := uc.chatRepo.GetMemberMutedUntil(chatID, memberID)
+		if err == nil && models.IsMutedUntil(memberMutedUntil) {
+			fmt.Printf("🔇 User %d has chat %d muted until %v - skipping notification\n", memberID, chatID, memberMutedUntil)
+			continue
+		}
+
+		// Check global mute preferences (channels and groups)
+		if chat.Type == models.ChatTypeChannel || chat.Type == models.ChatTypeGroup {
+			globalPref, err := uc.chatRepo.GetUserMutePreference(memberID)
+			if err == nil && globalPref != nil {
+				if chat.Type == models.ChatTypeChannel && models.IsMutedUntil(globalPref.MuteAllChannelsUntil) {
+					fmt.Printf("🔇 User %d has all channels muted - skipping notification\n", memberID)
+					continue
+				}
+				if chat.Type == models.ChatTypeGroup && models.IsMutedUntil(globalPref.MuteAllGroupsUntil) {
+					fmt.Printf("🔇 User %d has all groups muted - skipping notification\n", memberID)
+					continue
+				}
+			}
+		}
+
+		// If user is actively viewing this chat, skip PUSH notification but keep in_app
 		channels := []string{"in_app", "push"}
 		if uc.isUserActiveInChat(memberID, chatID) {
 			fmt.Printf("⏭️ User %d is actively viewing chat %d - sending in_app only (no push)\n", memberID, chatID)

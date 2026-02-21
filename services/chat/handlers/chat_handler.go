@@ -1244,6 +1244,197 @@ func (h *ChatHandler) TogglePinned(c *gin.Context) {
 	})
 }
 
+// MuteChat handles muting a chat for a user
+func (h *ChatHandler) MuteChat(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	idStr := c.Param("id")
+	chatID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req models.MuteChatRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body. Duration must be one of: 1h, 12h, forever",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	mutedUntil, err := h.chatUsecase.MuteChat(userID, uint(chatID), req.Duration)
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to mute chat"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "User is not a member of this chat"
+		} else if strings.Contains(err.Error(), "invalid") {
+			statusCode = http.StatusBadRequest
+			errorMessage = err.Error()
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id":  requestID,
+		"user_id":     userID,
+		"chat_id":     chatID,
+		"muted_until": mutedUntil,
+	}).Info("Chat muted successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Chat muted successfully",
+		"muted_until": mutedUntil,
+		"request_id":  requestID,
+	})
+}
+
+// UnmuteChat handles unmuting a chat for a user
+func (h *ChatHandler) UnmuteChat(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	idStr := c.Param("id")
+	chatID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid chat ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.chatUsecase.UnmuteChat(userID, uint(chatID))
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to unmute chat"
+
+		if strings.Contains(err.Error(), "not a member") {
+			statusCode = http.StatusForbidden
+			errorMessage = "User is not a member of this chat"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"chat_id":    chatID,
+	}).Info("Chat unmuted successfully")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Chat unmuted successfully",
+		"request_id": requestID,
+	})
+}
+
+// GetGlobalMutePreferences handles getting global mute settings
+func (h *ChatHandler) GetGlobalMutePreferences(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	prefs, err := h.chatUsecase.GetGlobalMutePreferences(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      "Failed to get mute preferences",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"preferences": prefs,
+		"request_id":  requestID,
+	})
+}
+
+// UpdateGlobalMutePreferences handles updating global mute settings
+func (h *ChatHandler) UpdateGlobalMutePreferences(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	var req models.UpdateGlobalMuteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid request body. Values must be one of: 1h, 12h, forever, off",
+			"details":    err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	prefs, err := h.chatUsecase.UpdateGlobalMutePreferences(userID, &req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":      err.Error(),
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+	}).Info("Global mute preferences updated")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":     "Mute preferences updated successfully",
+		"preferences": prefs,
+		"request_id":  requestID,
+	})
+}
+
 // GetChatAttachments handles getting all attachments for a chat
 func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
 	requestID := requestid.Get(c)

@@ -59,13 +59,16 @@ func (uc *chatUsecase) GetOrCreateDirectChat(userID, targetUserID uint) (*models
 			response.UnreadCount = unreadCount
 		}
 
-		// Get favorite and pinned status for current user
+		// Get favorite, pinned and muted status for current user
 		response.IsFavorite = false
 		response.IsPinned = false
+		response.IsMuted = false
 		for _, member := range existingChat.Members {
 			if member.UserID == userID {
 				response.IsFavorite = member.IsFavorite
 				response.IsPinned = member.IsPinned
+				response.IsMuted = models.IsMutedUntil(member.MutedUntil)
+				response.MutedUntil = member.MutedUntil
 				break
 			}
 		}
@@ -121,13 +124,16 @@ func (uc *chatUsecase) GetOrCreateTaskChat(userID, taskID uint) (*models.ChatRes
 			response.UnreadCount = unreadCount
 		}
 
-		// Get favorite and pinned status for current user
+		// Get favorite, pinned and muted status for current user
 		response.IsFavorite = false
 		response.IsPinned = false
+		response.IsMuted = false
 		for _, member := range existingChat.Members {
 			if member.UserID == userID {
 				response.IsFavorite = member.IsFavorite
 				response.IsPinned = member.IsPinned
+				response.IsMuted = models.IsMutedUntil(member.MutedUntil)
+				response.MutedUntil = member.MutedUntil
 				break
 			}
 		}
