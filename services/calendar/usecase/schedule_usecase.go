@@ -420,7 +420,7 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 	}
 
 	// Check for soft validation warnings (absence, conflict)
-	warnings, err := u.checkEntryWarnings(req.UserID, req.Date, startTime, endTime, schedule.Type, nil)
+	warnings, err := u.checkEntryWarnings(req.UserID, req.Date, startTime, endTime, req.ShiftType, schedule.Type, scheduleID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -550,7 +550,7 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		}
 
 		// Check for schedule conflicts
-		conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(entryReq.UserID, entryReq.Date, startTime, endTime, schedule.Type, nil)
+		conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(entryReq.UserID, entryReq.Date, startTime, endTime, entryReq.ShiftType, schedule.Type, scheduleID, nil)
 		if err != nil {
 			continue // Skip on error
 		}
@@ -722,7 +722,7 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 	}
 
 	// Check for soft validation warnings (absence, conflict)
-	warnings, err := u.checkEntryWarnings(entry.UserID, entry.Date, entry.StartTime, entry.EndTime, schedule.Type, &entryID)
+	warnings, err := u.checkEntryWarnings(entry.UserID, entry.Date, entry.StartTime, entry.EndTime, entry.ShiftType, schedule.Type, scheduleID, &entryID)
 	if err != nil {
 		return nil, err
 	}
@@ -1119,7 +1119,7 @@ func (u *scheduleUsecase) filterEntriesByAbsences(entries []*models.ScheduleEntr
 // Helper functions
 
 // checkEntryWarnings collects soft validation warnings for a schedule entry (absence, conflict)
-func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]models.ScheduleEntryWarning, error) {
+func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startTime, endTime time.Time, shiftType models.ShiftType, scheduleType models.ScheduleType, scheduleID uint, excludeEntryID *uint) ([]models.ScheduleEntryWarning, error) {
 	var warnings []models.ScheduleEntryWarning
 
 	// Check absence
@@ -1138,7 +1138,7 @@ func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startT
 	}
 
 	// Check conflicts
-	conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(userID, date, startTime, endTime, scheduleType, excludeEntryID)
+	conflictingEntries, err := u.scheduleRepo.GetConflictingEntries(userID, date, startTime, endTime, shiftType, scheduleType, scheduleID, excludeEntryID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check schedule conflict: %w", err)
 	}

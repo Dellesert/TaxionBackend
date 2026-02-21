@@ -72,7 +72,7 @@ type ScheduleRepository interface {
 
 	// Schedule type compatibility
 	AreScheduleTypesCompatible(type1, type2 models.ScheduleType) (bool, error)
-	GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]*models.ScheduleEntry, error)
+	GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, shiftType models.ShiftType, scheduleType models.ScheduleType, scheduleID uint, excludeEntryID *uint) ([]*models.ScheduleEntry, error)
 
 	// Daily summary
 	GetAllEntriesForDate(date time.Time) ([]*models.ScheduleEntry, error)
@@ -820,8 +820,13 @@ func (r *scheduleRepository) AreScheduleTypesCompatible(type1, type2 models.Sche
 	return count > 0, nil
 }
 
-// GetConflictingEntries returns schedule entries that conflict by time and are not compatible by type
-func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, scheduleType models.ScheduleType, excludeEntryID *uint) ([]*models.ScheduleEntry, error) {
+// GetConflictingEntries returns schedule entries that conflict with the given entry.
+// For cross-schedule conflicts (different schedules with incompatible types):
+//   - Non-custom shifts: checks shift type overlap (morning↔morning, morning↔full_day, etc.)
+//   - Custom shifts: checks actual time overlap
+//
+// For same-schedule conflicts: checks actual time overlap
+func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, startTime, endTime time.Time, shiftType models.ShiftType, scheduleType models.ScheduleType, scheduleID uint, excludeEntryID *uint) ([]*models.ScheduleEntry, error) {
 	// Get compatible types for the given schedule type
 	var compatibleTypes []models.ScheduleType
 	err := r.db.Model(&models.ScheduleTypeCompatibility{}).
@@ -831,32 +836,59 @@ func (r *scheduleRepository) GetConflictingEntries(userID uint, date time.Time, 
 		return nil, err
 	}
 
-	// Build subquery for schedule IDs with incompatible types
-	// Incompatible = NOT in compatibleTypes list (same type is also incompatible)
-	subQuery := r.db.Model(&models.Schedule{}).Select("id")
+	var allConflicts []*models.ScheduleEntry
+
+	// 1. Cross-schedule conflicts: different schedule with incompatible type
+	crossSubQuery := r.db.Model(&models.Schedule{}).Select("id").
+		Where("id != ?", scheduleID)
 	if len(compatibleTypes) > 0 {
-		subQuery = subQuery.Where("type NOT IN ?", compatibleTypes)
+		crossSubQuery = crossSubQuery.Where("type NOT IN ?", compatibleTypes)
 	}
-	// If no compatible types defined, all schedules are potentially incompatible
 
-	// Build query for conflicting entries
-	query := r.db.Preload("Schedule").
+	crossQuery := r.db.Preload("Schedule").
 		Where("user_id = ? AND date = ?", userID, date).
-		Where("((start_time < ? AND end_time > ?) OR (start_time < ? AND end_time > ?) OR (start_time >= ? AND end_time <= ?))",
-			endTime, startTime, endTime, endTime, startTime, endTime).
-		Where("schedule_id IN (?)", subQuery)
+		Where("schedule_id IN (?)", crossSubQuery)
 
-	// Exclude entry being updated
-	if excludeEntryID != nil {
-		query = query.Where("id != ?", *excludeEntryID)
+	// Shift type overlap logic:
+	// - Both non-custom: conflict if same shift type OR either is full_day
+	// - At least one custom: fall back to time overlap check
+	if shiftType == models.ShiftCustom {
+		// New entry is custom — check time overlap with all entries
+		crossQuery = crossQuery.Where("(start_time < ? AND end_time > ?)", endTime, startTime)
+	} else {
+		// New entry is morning/evening/full_day — check shift type overlap OR time overlap for custom entries
+		crossQuery = crossQuery.Where(
+			"((shift_type != 'custom' AND (shift_type = ? OR shift_type = 'full_day' OR ? = 'full_day')) OR (shift_type = 'custom' AND start_time < ? AND end_time > ?))",
+			string(shiftType), string(shiftType), endTime, startTime,
+		)
 	}
 
-	var entries []*models.ScheduleEntry
-	if err := query.Find(&entries).Error; err != nil {
+	if excludeEntryID != nil {
+		crossQuery = crossQuery.Where("id != ?", *excludeEntryID)
+	}
+
+	var crossEntries []*models.ScheduleEntry
+	if err := crossQuery.Find(&crossEntries).Error; err != nil {
 		return nil, err
 	}
+	allConflicts = append(allConflicts, crossEntries...)
 
-	return entries, nil
+	// 2. Same-schedule conflicts: time overlap within the same schedule
+	sameQuery := r.db.Preload("Schedule").
+		Where("user_id = ? AND date = ? AND schedule_id = ?", userID, date, scheduleID).
+		Where("(start_time < ? AND end_time > ?)", endTime, startTime)
+
+	if excludeEntryID != nil {
+		sameQuery = sameQuery.Where("id != ?", *excludeEntryID)
+	}
+
+	var sameEntries []*models.ScheduleEntry
+	if err := sameQuery.Find(&sameEntries).Error; err != nil {
+		return nil, err
+	}
+	allConflicts = append(allConflicts, sameEntries...)
+
+	return allConflicts, nil
 }
 
 // GetAllEntriesForDate retrieves all schedule entries for a specific date across all active schedules
