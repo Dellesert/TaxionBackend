@@ -11,6 +11,8 @@ import (
 	"tachyon-messenger/services/calendar/repository"
 	searchclient "tachyon-messenger/services/search/client"
 	sharedmodels "tachyon-messenger/shared/models"
+
+	"github.com/sirupsen/logrus"
 )
 
 // ScheduleUsecase defines the interface for schedule business logic
@@ -962,14 +964,23 @@ func (u *scheduleUsecase) GetDailySummary(date time.Time) (*models.DailySummaryR
 // ensureEntriesGenerated ensures that entries exist for a recurring schedule in the given period
 func (u *scheduleUsecase) ensureEntriesGenerated(schedule *models.Schedule, userID uint, startDate, endDate time.Time) error {
 	if schedule.TemplateID == nil {
+		logrus.WithField("schedule_id", schedule.ID).Warn("[ConflictCheck] ensureEntriesGenerated: template_id is nil")
 		return errors.New("recurring schedule must have a template")
 	}
 
 	// Get template with entries
 	template, err := u.scheduleRepo.GetTemplateWithEntries(*schedule.TemplateID)
 	if err != nil {
+		logrus.WithError(err).WithField("template_id", *schedule.TemplateID).Error("[ConflictCheck] GetTemplateWithEntries FAILED")
 		return err
 	}
+
+	logrus.WithFields(logrus.Fields{
+		"template_id":     template.ID,
+		"entries_count":   len(template.Entries),
+		"schedule_id":     schedule.ID,
+		"user_id":         userID,
+	}).Info("[ConflictCheck] ensureEntriesGenerated: template loaded")
 
 	// Get months that need generation
 	months := u.getMonthsInRange(startDate, endDate)
@@ -978,13 +989,21 @@ func (u *scheduleUsecase) ensureEntriesGenerated(schedule *models.Schedule, user
 		// Check if entries already exist for this month
 		hasEntries, err := u.scheduleRepo.HasEntriesForMonth(schedule.ID, userID, month.Year, month.Month)
 		if err != nil {
+			logrus.WithError(err).Error("[ConflictCheck] HasEntriesForMonth FAILED")
 			continue
 		}
 
+		logrus.WithFields(logrus.Fields{
+			"schedule_id": schedule.ID,
+			"user_id":     userID,
+			"year":        month.Year,
+			"month":       month.Month,
+			"has_entries": hasEntries,
+		}).Info("[ConflictCheck] HasEntriesForMonth result")
+
 		if !hasEntries {
-			// Generate entries from template for this month
 			if err := u.generateMonthEntries(schedule, template, userID, month.Year, month.Month); err != nil {
-				// Log but continue
+				logrus.WithError(err).Error("[ConflictCheck] generateMonthEntries FAILED")
 			}
 		}
 	}
@@ -1070,9 +1089,19 @@ func (u *scheduleUsecase) generateMonthEntries(schedule *models.Schedule, templa
 		currentDate = currentDate.AddDate(0, 0, 1)
 	}
 
+	logrus.WithFields(logrus.Fields{
+		"schedule_id":    schedule.ID,
+		"user_id":        userID,
+		"year":           year,
+		"month":          month,
+		"entries_generated": len(entries),
+		"template_entries": len(template.Entries),
+	}).Info("[ConflictCheck] generateMonthEntries result")
+
 	// Save all entries
 	if len(entries) > 0 {
 		if err := u.scheduleRepo.CreateScheduleEntries(entries); err != nil {
+			logrus.WithError(err).Error("[ConflictCheck] CreateScheduleEntries FAILED")
 			return err
 		}
 
@@ -1162,19 +1191,53 @@ func (u *scheduleUsecase) checkEntryWarnings(userID uint, date time.Time, startT
 // ensureRecurringEntriesForConflictCheck generates recurring schedule entries
 // for the user on the given date so that conflict checks can find them
 func (u *scheduleUsecase) ensureRecurringEntriesForConflictCheck(userID uint, date time.Time) {
+	logrus.WithFields(logrus.Fields{
+		"user_id": userID,
+		"date":    date.Format("2006-01-02"),
+	}).Info("[ConflictCheck] ensureRecurringEntriesForConflictCheck START")
+
 	recurringSchedules, err := u.scheduleRepo.GetRecurringSchedulesForUser(userID)
 	if err != nil {
+		logrus.WithError(err).Error("[ConflictCheck] GetRecurringSchedulesForUser FAILED")
 		return
 	}
 
+	logrus.WithField("count", len(recurringSchedules)).Info("[ConflictCheck] Recurring schedules found")
+
 	for _, schedule := range recurringSchedules {
+		logrus.WithFields(logrus.Fields{
+			"schedule_id":   schedule.ID,
+			"schedule_title": schedule.Title,
+			"schedule_type": schedule.Type,
+			"template_id":   schedule.TemplateID,
+			"has_template":  schedule.Template != nil,
+		}).Info("[ConflictCheck] Processing recurring schedule")
+
 		if schedule.TemplateID != nil {
-			// Generate entries for the month containing the date
+			if schedule.Template != nil {
+				logrus.WithField("template_entries_count", len(schedule.Template.Entries)).Info("[ConflictCheck] Template loaded")
+				for i, te := range schedule.Template.Entries {
+					logrus.WithFields(logrus.Fields{
+						"idx":        i,
+						"day_of_week": te.DayOfWeek,
+						"user_id":    te.UserID,
+						"start_time": te.StartTime,
+						"end_time":   te.EndTime,
+					}).Info("[ConflictCheck] Template entry")
+				}
+			}
+
 			startOfMonth := time.Date(date.Year(), date.Month(), 1, 0, 0, 0, 0, time.Local)
 			endOfMonth := startOfMonth.AddDate(0, 1, -1)
-			_ = u.ensureEntriesGenerated(schedule, userID, startOfMonth, endOfMonth)
+			if err := u.ensureEntriesGenerated(schedule, userID, startOfMonth, endOfMonth); err != nil {
+				logrus.WithError(err).WithField("schedule_id", schedule.ID).Error("[ConflictCheck] ensureEntriesGenerated FAILED")
+			}
+		} else {
+			logrus.WithField("schedule_id", schedule.ID).Warn("[ConflictCheck] Recurring schedule has NO template_id, skipping")
 		}
 	}
+
+	logrus.Info("[ConflictCheck] ensureRecurringEntriesForConflictCheck DONE")
 }
 
 // calculateShiftTimes calculates start and end times based on shift type
