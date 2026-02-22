@@ -41,6 +41,7 @@ jobs:
           - analytics
           - gateway
           - backup
+          - search
 
     steps:
       - name: Checkout repository

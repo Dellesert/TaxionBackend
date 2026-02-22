@@ -323,6 +323,12 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 			search.Any("/*path", proxyRequest(proxyConfig.SearchService.URL, proxyConfig.SearchService.Name))
 		}
 
+		// Internal search routes (reindex etc.) - proxy to search service
+		internalSearch := v1.Group("/internal/search")
+		{
+			internalSearch.Any("/*path", proxyRequest(proxyConfig.SearchService.URL, proxyConfig.SearchService.Name))
+		}
+
 		// WebSocket endpoint - proxy to chat service for real-time communication
 		v1.GET("/ws", proxyRequest(proxyConfig.ChatService.URL, proxyConfig.ChatService.Name))
 
