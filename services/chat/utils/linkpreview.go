@@ -76,23 +76,31 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 	return nil, err
 }
 
-// resolveRedirectURL follows HTTP redirects to find the final destination URL.
-// Uses browser UA with cookie jar to handle sites like Ozon that require cookies.
-// Returns the original URL if resolution fails.
+// resolveRedirectURL captures the destination from the FIRST redirect hop only.
+// This works for short URL services (ozon.ru/t/..., ali.click/...) because
+// the first 301/302 redirect always works, even from blocked IPs.
+// Anti-bot protection only kicks in on the destination page, not the redirect.
 func resolveRedirectURL(rawURL string) string {
-	jar, _ := cookiejar.New(nil)
+	// Collect all redirect URLs without following them fully
+	var redirectURLs []string
+
 	client := &http.Client{
 		Timeout: 10 * time.Second,
-		Jar:     jar,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 10 {
-				return fmt.Errorf("too many redirects")
+			redirectURLs = append(redirectURLs, req.URL.String())
+			// Stop after collecting first meaningful redirect
+			// (skip same-host redirects like http->https or www addition)
+			if len(via) >= 1 && req.URL.Host != via[0].URL.Host {
+				return http.ErrUseLastResponse
+			}
+			if len(via) >= 3 {
+				return http.ErrUseLastResponse
 			}
 			return nil
 		},
 	}
 
-	req, err := http.NewRequest("HEAD", rawURL, nil)
+	req, err := http.NewRequest("GET", rawURL, nil)
 	if err != nil {
 		return rawURL
 	}
@@ -101,28 +109,30 @@ func resolveRedirectURL(rawURL string) string {
 	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
 
 	resp, err := client.Do(req)
-	if err != nil {
-		// HEAD might not work, try GET
-		req2, err2 := http.NewRequest("GET", rawURL, nil)
-		if err2 != nil {
-			return rawURL
-		}
-		req2.Header.Set("User-Agent", browserUserAgent)
-		req2.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-		req2.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
-
-		resp, err = client.Do(req2)
-		if err != nil {
-			return rawURL
-		}
-		defer resp.Body.Close()
-	} else {
-		defer resp.Body.Close()
+	if resp != nil {
+		resp.Body.Close()
 	}
 
-	finalURL := resp.Request.URL.String()
-	// Strip tracking params like __rr for cleaner URLs
-	if parsed, err := url.Parse(finalURL); err == nil {
+	// Also check Location header from the final response (in case we stopped early)
+	if resp != nil {
+		if loc := resp.Header.Get("Location"); loc != "" {
+			resolved := resolveURL(rawURL, loc)
+			if resolved != "" {
+				redirectURLs = append(redirectURLs, resolved)
+			}
+		}
+	}
+
+	// If we hit an error but already captured redirect URLs, that's fine
+	if len(redirectURLs) == 0 {
+		return rawURL
+	}
+
+	// Use the last (deepest) captured redirect URL
+	finalURL := redirectURLs[len(redirectURLs)-1]
+
+	// Clean up tracking params
+	if parsed, parseErr := url.Parse(finalURL); parseErr == nil {
 		q := parsed.Query()
 		q.Del("__rr")
 		parsed.RawQuery = q.Encode()
