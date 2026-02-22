@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -23,12 +24,23 @@ func ExtractFirstURL(content string) string {
 	return match
 }
 
+const browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
 // FetchLinkPreview fetches Open Graph metadata from a URL.
 func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
+	return fetchLinkPreviewWithDepth(rawURL, 0)
+}
+
+// fetchLinkPreviewWithDepth fetches link preview, following meta refresh redirects up to 3 levels deep.
+func fetchLinkPreviewWithDepth(rawURL string, depth int) (*models.LinkPreview, error) {
+	if depth > 3 {
+		return nil, fmt.Errorf("too many meta refresh redirects")
+	}
+
 	client := &http.Client{
-		Timeout: 5 * time.Second,
+		Timeout: 10 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= 5 {
+			if len(via) >= 10 {
 				return fmt.Errorf("too many redirects")
 			}
 			return nil
@@ -39,9 +51,11 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; TaxionBot/1.0)")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml")
-	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+	req.Header.Set("User-Agent", browserUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
+	req.Header.Set("Accept-Encoding", "identity")
+	req.Header.Set("Connection", "keep-alive")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -58,6 +72,9 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 		return nil, fmt.Errorf("not an HTML page: %s", contentType)
 	}
 
+	// Use the final URL after HTTP redirects
+	finalURL := resp.Request.URL.String()
+
 	// Read at most 512KB to avoid downloading huge pages
 	limitedReader := io.LimitReader(resp.Body, 512*1024)
 	doc, err := html.Parse(limitedReader)
@@ -66,11 +83,12 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 	}
 
 	preview := &models.LinkPreview{
-		URL: rawURL,
+		URL: finalURL,
 	}
 
 	var titleFromTag string
 	var descFromMeta string
+	var metaRefreshURL string
 
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
@@ -78,12 +96,14 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 			switch n.Data {
 			case "meta":
 				parseMeta(n, preview, &descFromMeta)
+				if refresh := extractMetaRefresh(n); refresh != "" {
+					metaRefreshURL = refresh
+				}
 			case "title":
 				if n.FirstChild != nil {
 					titleFromTag = strings.TrimSpace(n.FirstChild.Data)
 				}
 			case "body":
-				// Stop parsing once we hit <body> - all meta should be in <head>
 				return
 			}
 		}
@@ -92,6 +112,14 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 		}
 	}
 	walk(doc)
+
+	// If we found a meta refresh redirect and no useful OG data, follow it
+	if metaRefreshURL != "" && preview.Title == "" && preview.Image == "" {
+		resolved := resolveURL(finalURL, metaRefreshURL)
+		if resolved != "" && resolved != finalURL && resolved != rawURL {
+			return fetchLinkPreviewWithDepth(resolved, depth+1)
+		}
+	}
 
 	// Fallback: use <title> tag if og:title is empty
 	if preview.Title == "" {
@@ -114,6 +142,47 @@ func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
 	}
 
 	return preview, nil
+}
+
+// extractMetaRefresh extracts the redirect URL from a <meta http-equiv="refresh"> tag.
+func extractMetaRefresh(n *html.Node) string {
+	var httpEquiv, content string
+	for _, attr := range n.Attr {
+		switch strings.ToLower(attr.Key) {
+		case "http-equiv":
+			httpEquiv = strings.ToLower(attr.Val)
+		case "content":
+			content = attr.Val
+		}
+	}
+	if httpEquiv != "refresh" || content == "" {
+		return ""
+	}
+	// Format: "0; url=https://example.com" or "0;url=https://example.com"
+	parts := strings.SplitN(content, "url=", 2)
+	if len(parts) != 2 {
+		parts = strings.SplitN(content, "URL=", 2)
+	}
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(strings.Trim(parts[1], "'\""))
+}
+
+// resolveURL resolves a potentially relative URL against a base URL.
+func resolveURL(base, ref string) string {
+	if strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "https://") {
+		return ref
+	}
+	baseURL, err := url.Parse(base)
+	if err != nil {
+		return ""
+	}
+	refURL, err := url.Parse(ref)
+	if err != nil {
+		return ""
+	}
+	return baseURL.ResolveReference(refURL).String()
 }
 
 // parseMeta extracts Open Graph and standard meta tags
