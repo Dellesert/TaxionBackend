@@ -578,6 +578,10 @@ func (h *ReindexHandler) reindexSchedules() (int, error) {
 		if schedule.DepartmentID != nil {
 			metadata["department_id"] = *schedule.DepartmentID
 		}
+		if creator, ok := scheduleAvatarCache[schedule.CreatedBy]; ok {
+			metadata["creator_name"] = creator.Name
+			metadata["creator_avatar"] = creator.Avatar
+		}
 
 		isPublic := schedule.Visibility == "all" || schedule.IsForAllUsers
 
