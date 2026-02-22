@@ -263,7 +263,7 @@ func (u *scheduleImportUsecase) createEntriesFromParsed(userID, scheduleID uint,
 		// Get matched user ID
 		importedUser, exists := parsed.Users[parsedEntry.UserName]
 		if !exists || importedUser.UserID == nil {
-			warnings = append(warnings, fmt.Sprintf("Skipping entry for unmatched user: %s", parsedEntry.UserName))
+			warnings = append(warnings, fmt.Sprintf("Пропущена запись для ненайденного сотрудника: %s", parsedEntry.UserName))
 			continue
 		}
 

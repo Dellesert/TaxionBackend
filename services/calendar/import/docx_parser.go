@@ -958,11 +958,11 @@ func (p *ScheduleParser) MatchUsers(parsed *ParsedSchedule, allUsers []*sharedmo
 			importedUser.UserID = nil
 			importedUser.MatchScore = bestMatch.Score
 			importedUser.IsUnmatched = true
-			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("Low confidence match for user: %s (score: %.2f)", name, bestMatch.Score))
+			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("Низкая уверенность совпадения для сотрудника: %s (совпадение: %.0f%%)", name, bestMatch.Score*100))
 		} else {
 			// No match at all
 			importedUser.IsUnmatched = true
-			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("No match found for user: %s", name))
+			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("Сотрудник не найден: %s", name))
 		}
 	}
 }
