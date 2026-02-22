@@ -13,8 +13,10 @@ import (
 )
 
 const (
-	// MinMatchScore minimum fuzzy match score to consider a match
+	// MinMatchScore minimum fuzzy match score to consider a match candidate
 	MinMatchScore = 0.6
+	// ConfirmedMatchScore minimum score to consider a user as confirmed match
+	ConfirmedMatchScore = 0.9
 )
 
 // ScheduleParser parses Word documents into schedule entries
@@ -946,11 +948,20 @@ func (p *ScheduleParser) determineShiftType(startTime, endTime string) models.Sh
 func (p *ScheduleParser) MatchUsers(parsed *ParsedSchedule, allUsers []*sharedmodels.User) {
 	for name, importedUser := range parsed.Users {
 		bestMatch := p.findBestMatch(name, allUsers)
-		if bestMatch != nil {
+		if bestMatch != nil && bestMatch.Score >= ConfirmedMatchScore {
+			// High-confidence match — mark as matched
 			importedUser.UserID = &bestMatch.ID
 			importedUser.MatchScore = bestMatch.Score
 			importedUser.IsUnmatched = false
+		} else if bestMatch != nil {
+			// Low-confidence match — keep as unmatched with warning
+			importedUser.UserID = nil
+			importedUser.MatchScore = bestMatch.Score
+			importedUser.IsUnmatched = true
+			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("Low confidence match for user: %s (score: %.2f)", name, bestMatch.Score))
 		} else {
+			// No match at all
+			importedUser.IsUnmatched = true
 			parsed.Warnings = append(parsed.Warnings, fmt.Sprintf("No match found for user: %s", name))
 		}
 	}
