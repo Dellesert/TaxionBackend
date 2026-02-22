@@ -2556,6 +2556,10 @@ func (u *taskUsecase) indexTaskInSearch(task *models.Task, assigneeIDs []uint) {
 	if task.AssignedToDepartment != nil {
 		metadata["department_id"] = *task.AssignedToDepartment
 	}
+	if creatorInfo, err := u.userClient.GetUserByID(task.CreatedByUserID); err == nil {
+		metadata["creator_name"] = creatorInfo.Name
+		metadata["creator_avatar"] = creatorInfo.Avatar
+	}
 
 	u.searchClient.IndexDocument(&searchclient.IndexRequest{
 		EntityType:   "task",

@@ -1019,6 +1019,10 @@ func (u *calendarUsecase) indexEventInSearch(event *models.Event) {
 	if event.AllDay {
 		metadata["all_day"] = true
 	}
+	if creatorInfo, err := u.userClient.GetUserByID(event.CreatedBy); err == nil {
+		metadata["creator_name"] = creatorInfo.Name
+		metadata["creator_avatar"] = creatorInfo.Avatar
+	}
 
 	content := event.Description
 	if event.Location != "" {

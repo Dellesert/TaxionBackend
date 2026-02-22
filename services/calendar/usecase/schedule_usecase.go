@@ -1526,6 +1526,10 @@ func (u *scheduleUsecase) indexScheduleInSearch(schedule *models.Schedule) {
 	if schedule.DepartmentID != nil {
 		metadata["department_id"] = *schedule.DepartmentID
 	}
+	if creatorInfo, err := u.userClient.GetUserByID(schedule.CreatedBy); err == nil {
+		metadata["creator_name"] = creatorInfo.Name
+		metadata["creator_avatar"] = creatorInfo.Avatar
+	}
 
 	isPublic := schedule.Visibility == models.VisibilityAll || schedule.IsForAllUsers
 

@@ -371,8 +371,9 @@ func (uc *messageUsecase) SendMessage(userID uint, req *models.SendMessageReques
 	}()
 
 	// Index message in search service (only text messages)
+	// Use createdMessage which has Sender preloaded via GetWithReactions
 	if message.Type == models.MessageTypeText && strings.TrimSpace(message.Content) != "" {
-		uc.indexMessageInSearch(message, memberIDs)
+		uc.indexMessageInSearch(createdMessage, memberIDs)
 	}
 
 	// Async link preview fetch for text messages with URLs
@@ -583,10 +584,10 @@ func (uc *messageUsecase) UpdateMessage(userID, messageID uint, req *models.Upda
 
 	response := updatedMessage.ToResponseForUser(userID, uc.baseURL)
 
-	// Re-index message in search service
+	// Re-index message in search service (use updatedMessage which has Sender preloaded)
 	if message.Type == models.MessageTypeText {
 		chatMemberIDs, _ := uc.chatRepo.GetChatMemberIDs(message.ChatID)
-		uc.indexMessageInSearch(message, chatMemberIDs)
+		uc.indexMessageInSearch(updatedMessage, chatMemberIDs)
 	}
 
 	// Broadcast message edit to WebSocket clients
@@ -2056,6 +2057,11 @@ func (uc *messageUsecase) indexMessageInSearch(message *models.Message, chatMemb
 		"chat_id":   message.ChatID,
 		"sender_id": message.SenderID,
 		"type":      string(message.Type),
+	}
+	if message.Sender != nil {
+		metadata["sender_name"] = message.Sender.Name
+		metadata["sender_avatar"] = message.Sender.Avatar
+		metadata["sender_avatar_thumbnail"] = message.Sender.AvatarThumbnail
 	}
 
 	uc.searchClient.IndexDocument(&searchclient.IndexRequest{

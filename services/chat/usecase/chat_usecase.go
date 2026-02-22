@@ -1281,7 +1281,8 @@ func (uc *chatUsecase) indexChatInSearch(chat *models.Chat) {
 	}
 
 	metadata := map[string]interface{}{
-		"type": string(chat.Type),
+		"type":   string(chat.Type),
+		"avatar": chat.Avatar,
 	}
 
 	uc.searchClient.IndexDocument(&searchclient.IndexRequest{

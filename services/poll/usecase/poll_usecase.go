@@ -1474,6 +1474,10 @@ func (u *pollUsecase) indexPollInSearch(poll *models.Poll) {
 	if poll.Category != "" {
 		metadata["category"] = poll.Category
 	}
+	if creatorInfo, err := u.userClient.GetUserByID(poll.CreatedBy); err == nil {
+		metadata["creator_name"] = creatorInfo.Name
+		metadata["creator_avatar"] = creatorInfo.AvatarURL
+	}
 
 	u.searchClient.IndexDocument(&searchclient.IndexRequest{
 		EntityType:   "poll",
