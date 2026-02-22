@@ -125,6 +125,27 @@ func (h *ReindexHandler) ReindexAll(c *gin.Context) {
 	})
 }
 
+// fetchUserAvatars fetches avatar info for a list of user IDs from the users table
+func (h *ReindexHandler) fetchUserAvatars(userIDs []uint) map[uint]struct{ Name, Avatar string } {
+	result := make(map[uint]struct{ Name, Avatar string })
+	if len(userIDs) == 0 {
+		return result
+	}
+
+	type userRow struct {
+		ID     uint
+		Name   string
+		Avatar string
+	}
+	var users []userRow
+	h.db.Raw("SELECT id, COALESCE(name, '') as name, COALESCE(avatar, '') as avatar FROM users WHERE id IN ? AND deleted_at IS NULL", userIDs).Scan(&users)
+
+	for _, u := range users {
+		result[u.ID] = struct{ Name, Avatar string }{Name: u.Name, Avatar: u.Avatar}
+	}
+	return result
+}
+
 // reindexTasks reads all tasks and indexes them
 func (h *ReindexHandler) reindexTasks() (int, error) {
 	type taskRow struct {
@@ -146,6 +167,13 @@ func (h *ReindexHandler) reindexTasks() (int, error) {
 	`).Scan(&tasks).Error; err != nil {
 		return 0, fmt.Errorf("failed to query tasks: %w", err)
 	}
+
+	// Batch-fetch creator avatars
+	creatorIDs := make([]uint, 0, len(tasks))
+	for _, t := range tasks {
+		creatorIDs = append(creatorIDs, t.CreatedByUserID)
+	}
+	avatarCache := h.fetchUserAvatars(creatorIDs)
 
 	count := 0
 	for _, task := range tasks {
@@ -169,6 +197,10 @@ func (h *ReindexHandler) reindexTasks() (int, error) {
 		}
 		if task.AssignedToDepartment != nil {
 			metadata["department_id"] = *task.AssignedToDepartment
+		}
+		if creator, ok := avatarCache[task.CreatedByUserID]; ok {
+			metadata["creator_name"] = creator.Name
+			metadata["creator_avatar"] = creator.Avatar
 		}
 
 		if err := h.searchUsecase.IndexDocument(&models.IndexDocumentRequest{
