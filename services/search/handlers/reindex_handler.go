@@ -230,11 +230,12 @@ func (h *ReindexHandler) reindexChats() (int, error) {
 		Description string
 		Type        string
 		CreatorID   uint
+		Avatar      string
 	}
 
 	var chats []chatRow
 	if err := h.db.Raw(`
-		SELECT id, name, description, type, creator_id
+		SELECT id, name, description, type, creator_id, COALESCE(avatar, '') as avatar
 		FROM chats
 		WHERE deleted_at IS NULL AND is_active = true
 	`).Scan(&chats).Error; err != nil {
@@ -248,7 +249,8 @@ func (h *ReindexHandler) reindexChats() (int, error) {
 		h.db.Raw("SELECT user_id FROM chat_members WHERE chat_id = ? AND is_active = true AND deleted_at IS NULL", chat.ID).Scan(&memberIDs)
 
 		metadata := map[string]interface{}{
-			"type": chat.Type,
+			"type":   chat.Type,
+			"avatar": chat.Avatar,
 		}
 
 		if err := h.searchUsecase.IndexDocument(&models.IndexDocumentRequest{
@@ -290,6 +292,13 @@ func (h *ReindexHandler) reindexMessages() (int, error) {
 		return 0, fmt.Errorf("failed to query messages: %w", err)
 	}
 
+	// Batch-fetch sender avatars
+	senderIDs := make([]uint, 0, len(messages))
+	for _, m := range messages {
+		senderIDs = append(senderIDs, m.SenderID)
+	}
+	avatarCache := h.fetchUserAvatars(senderIDs)
+
 	// Pre-fetch chat member IDs for all relevant chats
 	chatMembersCache := map[uint][]uint{}
 
@@ -310,6 +319,10 @@ func (h *ReindexHandler) reindexMessages() (int, error) {
 			"chat_id":   msg.ChatID,
 			"sender_id": msg.SenderID,
 			"type":      msg.Type,
+		}
+		if sender, ok := avatarCache[msg.SenderID]; ok {
+			metadata["sender_name"] = sender.Name
+			metadata["sender_avatar"] = sender.Avatar
 		}
 
 		if err := h.searchUsecase.IndexDocument(&models.IndexDocumentRequest{
