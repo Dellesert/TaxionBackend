@@ -94,6 +94,64 @@ func (uc *messageUsecase) SetWebSocketHub(hub WebSocketHub) {
 	fmt.Println("✅ WebSocket hub set in MessageUsecase")
 }
 
+// getUserNameFromChat returns the display name for a user in a chat.
+func (uc *messageUsecase) getUserNameFromChat(chatID, userID uint) string {
+	members, err := uc.chatRepo.GetChatMembers(chatID)
+	if err != nil {
+		return fmt.Sprintf("User %d", userID)
+	}
+	for _, m := range members {
+		if m.UserID == userID && m.User != nil {
+			if m.User.Name != "" {
+				return m.User.Name
+			}
+			if m.User.Email != "" {
+				return m.User.Email
+			}
+		}
+	}
+	return fmt.Sprintf("User %d", userID)
+}
+
+// createSystemMessage creates a persisted system message and broadcasts it via WebSocket.
+func (uc *messageUsecase) createSystemMessage(chatID uint, actorID uint, data *models.SystemMessageData) {
+	systemDataJSON, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("❌ Failed to marshal system message data: %v\n", err)
+		return
+	}
+
+	message := &models.Message{
+		ChatID:     chatID,
+		SenderID:   actorID,
+		Content:    "",
+		Type:       models.MessageTypeSystem,
+		Status:     models.MessageStatusSent,
+		SystemData: string(systemDataJSON),
+	}
+
+	if err := uc.messageRepo.Create(message); err != nil {
+		fmt.Printf("❌ Failed to create system message: %v\n", err)
+		return
+	}
+
+	// Reload with associations for broadcast
+	createdMessage, err := uc.messageRepo.GetWithReactions(message.ID)
+	if err != nil {
+		fmt.Printf("❌ Failed to reload system message: %v\n", err)
+		return
+	}
+
+	if uc.wsHub != nil {
+		broadcastResponse := createdMessage.ToResponse(uc.baseURL)
+		wsData := models.WSNewMessageData{
+			Message:  *broadcastResponse,
+			IsLatest: true,
+		}
+		uc.wsHub.BroadcastToChat(chatID, wsData, models.WSMessageTypeNewMessage, 0)
+	}
+}
+
 // Message Usecase Methods
 
 // SendMessage sends a new message
@@ -1130,6 +1188,22 @@ func (uc *messageUsecase) PinMessage(userID, messageID uint) (*models.MessageRes
 		uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageEdit, userID)
 	}
 
+	// Create system message about pinning
+	actorName := uc.getUserNameFromChat(message.ChatID, userID)
+	preview := message.Content
+	if len(preview) > 50 {
+		preview = preview[:50] + "..."
+	}
+	go uc.createSystemMessage(message.ChatID, userID, &models.SystemMessageData{
+		Action:    "message_pinned",
+		ActorID:   userID,
+		ActorName: actorName,
+		Extra: map[string]interface{}{
+			"pinned_message_id":      messageID,
+			"pinned_message_preview": preview,
+		},
+	})
+
 	return response, nil
 }
 
@@ -1194,6 +1268,17 @@ func (uc *messageUsecase) UnpinMessage(userID, messageID uint) (*models.MessageR
 		broadcastResponse := unpinnedMessage.ToResponse(uc.baseURL)
 		uc.wsHub.BroadcastToChat(message.ChatID, broadcastResponse, models.WSMessageTypeMessageEdit, userID)
 	}
+
+	// Create system message about unpinning
+	actorName := uc.getUserNameFromChat(message.ChatID, userID)
+	go uc.createSystemMessage(message.ChatID, userID, &models.SystemMessageData{
+		Action:    "message_unpinned",
+		ActorID:   userID,
+		ActorName: actorName,
+		Extra: map[string]interface{}{
+			"pinned_message_id": messageID,
+		},
+	})
 
 	return response, nil
 }

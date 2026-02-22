@@ -180,6 +180,14 @@ func (uc *chatUsecase) CreateGroupChat(userID uint, req *models.CreateGroupChatR
 		return chat.ToResponse(uc.baseURL, userID), nil // Return what we have
 	}
 
+	// Create system message about group creation
+	actorName := uc.getUserName(chat.ID, userID)
+	go uc.createSystemMessage(chat.ID, userID, &models.SystemMessageData{
+		Action:    "chat_created",
+		ActorID:   userID,
+		ActorName: actorName,
+	})
+
 	return chatWithMembers.ToResponse(uc.baseURL, userID), nil
 }
 
@@ -242,6 +250,14 @@ func (uc *chatUsecase) JoinChat(userID, chatID uint) error {
 		return fmt.Errorf("failed to join chat: %w", err)
 	}
 
+	// Create system message about user joining
+	actorName := uc.getUserName(chatID, userID)
+	go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+		Action:    "member_joined",
+		ActorID:   userID,
+		ActorName: actorName,
+	})
+
 	return nil
 }
 
@@ -281,6 +297,9 @@ func (uc *chatUsecase) LeaveChat(userID, chatID uint) error {
 			return fmt.Errorf("failed to deactivate private chat: %w", err)
 		}
 	}
+
+	// Capture user name BEFORE removal (for system message)
+	actorName := uc.getUserName(chatID, userID)
 
 	// Owner cannot leave without transferring ownership (for group chats)
 	if role == models.ChatMemberRoleOwner && chat.Type == models.ChatTypeGroup {
@@ -326,6 +345,15 @@ func (uc *chatUsecase) LeaveChat(userID, chatID uint) error {
 	// Remove user from chat
 	if err := uc.chatRepo.RemoveMember(chatID, userID); err != nil {
 		return fmt.Errorf("failed to leave chat: %w", err)
+	}
+
+	// Create system message about user leaving (only for group/channel chats)
+	if chat.Type == models.ChatTypeGroup || chat.Type == models.ChatTypeChannel {
+		go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+			Action:    "member_left",
+			ActorID:   userID,
+			ActorName: actorName,
+		})
 	}
 
 	return nil
@@ -381,6 +409,64 @@ func NewChatUsecase(chatRepo repository.ChatRepository, messageRepo repository.M
 func (uc *chatUsecase) SetWebSocketHub(hub ChatWebSocketHub) {
 	uc.wsHub = hub
 	fmt.Println("✅ WebSocket hub set in ChatUsecase")
+}
+
+// getUserName returns the display name for a user in a chat by looking up chat members.
+func (uc *chatUsecase) getUserName(chatID, userID uint) string {
+	members, err := uc.chatRepo.GetChatMembers(chatID)
+	if err != nil {
+		return fmt.Sprintf("User %d", userID)
+	}
+	for _, m := range members {
+		if m.UserID == userID && m.User != nil {
+			if m.User.Name != "" {
+				return m.User.Name
+			}
+			if m.User.Email != "" {
+				return m.User.Email
+			}
+		}
+	}
+	return fmt.Sprintf("User %d", userID)
+}
+
+// createSystemMessage creates a persisted system message and broadcasts it via WebSocket.
+func (uc *chatUsecase) createSystemMessage(chatID uint, actorID uint, data *models.SystemMessageData) {
+	systemDataJSON, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("❌ Failed to marshal system message data: %v\n", err)
+		return
+	}
+
+	message := &models.Message{
+		ChatID:     chatID,
+		SenderID:   actorID,
+		Content:    "",
+		Type:       models.MessageTypeSystem,
+		Status:     models.MessageStatusSent,
+		SystemData: string(systemDataJSON),
+	}
+
+	if err := uc.messageRepo.Create(message); err != nil {
+		fmt.Printf("❌ Failed to create system message: %v\n", err)
+		return
+	}
+
+	// Reload with associations for broadcast
+	createdMessage, err := uc.messageRepo.GetWithReactions(message.ID)
+	if err != nil {
+		fmt.Printf("❌ Failed to reload system message: %v\n", err)
+		return
+	}
+
+	if uc.wsHub != nil {
+		broadcastResponse := createdMessage.ToResponse(uc.baseURL)
+		wsData := models.WSNewMessageData{
+			Message:  *broadcastResponse,
+			IsLatest: true,
+		}
+		uc.wsHub.BroadcastToChat(chatID, wsData, models.WSMessageTypeNewMessage, 0)
+	}
 }
 
 // Chat Usecase Methods
@@ -695,6 +781,11 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 		return nil, fmt.Errorf("failed to get chat: %w", err)
 	}
 
+	// Capture old values for system messages
+	oldName := chat.Name
+	oldDescription := chat.Description
+	oldAvatar := chat.Avatar
+
 	// Update fields
 	if req.Name != nil {
 		chat.Name = strings.TrimSpace(*req.Name)
@@ -725,6 +816,38 @@ func (uc *chatUsecase) UpdateChat(userID, chatID uint, req *models.UpdateChatReq
 	if uc.wsHub != nil {
 		fmt.Printf("📢 Broadcasting chat_update for chat %d to all members\n", chatID)
 		uc.wsHub.BroadcastToChat(chatID, response, models.WSMessageTypeChatUpdate, userID)
+	}
+
+	// Create system messages for changed fields
+	actorName := uc.getUserName(chatID, userID)
+	if req.Name != nil && chat.Name != oldName {
+		go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+			Action:    "chat_name_changed",
+			ActorID:   userID,
+			ActorName: actorName,
+			Extra: map[string]interface{}{
+				"old_name": oldName,
+				"new_name": chat.Name,
+			},
+		})
+	}
+	if req.Description != nil && chat.Description != oldDescription {
+		go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+			Action:    "chat_description_changed",
+			ActorID:   userID,
+			ActorName: actorName,
+			Extra: map[string]interface{}{
+				"old_description": oldDescription,
+				"new_description": chat.Description,
+			},
+		})
+	}
+	if req.Avatar != nil && chat.Avatar != oldAvatar {
+		go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+			Action:    "chat_avatar_changed",
+			ActorID:   userID,
+			ActorName: actorName,
+		})
 	}
 
 	return response, nil
@@ -840,6 +963,17 @@ func (uc *chatUsecase) AddMember(userID, chatID uint, req *models.AddChatMemberR
 		uc.wsHub.BroadcastToChat(chatID, memberData, models.WSMessageTypeMemberAdd, userID)
 	}
 
+	// Create system message about member being added
+	actorName := uc.getUserName(chatID, userID)
+	targetName := uc.getUserName(chatID, req.UserID)
+	go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+		Action:     "member_added",
+		ActorID:    userID,
+		ActorName:  actorName,
+		TargetID:   req.UserID,
+		TargetName: targetName,
+	})
+
 	return nil
 }
 
@@ -873,6 +1007,10 @@ func (uc *chatUsecase) RemoveMember(userID, chatID, targetUserID uint) error {
 		return fmt.Errorf("cannot remove chat owner, transfer ownership first")
 	}
 
+	// Capture names BEFORE removal
+	actorName := uc.getUserName(chatID, userID)
+	targetName := uc.getUserName(chatID, targetUserID)
+
 	if err := uc.chatRepo.RemoveMember(chatID, targetUserID); err != nil {
 		return fmt.Errorf("failed to remove member: %w", err)
 	}
@@ -886,6 +1024,15 @@ func (uc *chatUsecase) RemoveMember(userID, chatID, targetUserID uint) error {
 		fmt.Printf("📢 Broadcasting member_remove for user %d from chat %d\n", targetUserID, chatID)
 		uc.wsHub.BroadcastToChat(chatID, memberData, models.WSMessageTypeMemberRemove, userID)
 	}
+
+	// Create system message about member being removed
+	go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+		Action:     "member_removed",
+		ActorID:    userID,
+		ActorName:  actorName,
+		TargetID:   targetUserID,
+		TargetName: targetName,
+	})
 
 	return nil
 }
@@ -927,6 +1074,21 @@ func (uc *chatUsecase) UpdateMemberRole(userID, chatID, targetUserID uint, req *
 	if err := uc.chatRepo.UpdateMemberRole(chatID, targetUserID, req.Role); err != nil {
 		return fmt.Errorf("failed to update member role: %w", err)
 	}
+
+	// Create system message about role change
+	actorName := uc.getUserName(chatID, userID)
+	targetName := uc.getUserName(chatID, targetUserID)
+	go uc.createSystemMessage(chatID, userID, &models.SystemMessageData{
+		Action:     "member_role_changed",
+		ActorID:    userID,
+		ActorName:  actorName,
+		TargetID:   targetUserID,
+		TargetName: targetName,
+		Extra: map[string]interface{}{
+			"old_role": string(targetRole),
+			"new_role": string(req.Role),
+		},
+	})
 
 	return nil
 }

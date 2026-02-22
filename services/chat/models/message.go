@@ -18,6 +18,16 @@ type LinkPreview struct {
 	SiteName    string `json:"site_name,omitempty"`
 }
 
+// SystemMessageData represents the JSON payload for system messages
+type SystemMessageData struct {
+	Action     string                 `json:"action"`
+	ActorID    uint                   `json:"actor_id"`
+	ActorName  string                 `json:"actor_name"`
+	TargetID   uint                   `json:"target_id,omitempty"`
+	TargetName string                 `json:"target_name,omitempty"`
+	Extra      map[string]interface{} `json:"extra,omitempty"`
+}
+
 // MessageType represents the type of message
 type MessageType string
 
