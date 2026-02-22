@@ -399,6 +399,10 @@ func (h *ReindexHandler) reindexPolls() (int, error) {
 		if poll.Category != "" {
 			metadata["category"] = poll.Category
 		}
+		if creator, ok := pollAvatarCache[poll.CreatedBy]; ok {
+			metadata["creator_name"] = creator.Name
+			metadata["creator_avatar"] = creator.Avatar
+		}
 
 		isPublic := poll.Visibility == "public" || poll.Visibility == "department"
 
