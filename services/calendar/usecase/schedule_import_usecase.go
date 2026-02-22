@@ -50,6 +50,9 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		return nil, err
 	}
 
+	// Apply user mapping overrides from frontend
+	u.applyUserMappingOverrides(parsed, req.UserMappingOverrides)
+
 	// Extract shift times from parsed entries
 	morningStart, morningEnd, eveningStart, eveningEnd := u.extractShiftTimes(parsed)
 
@@ -196,6 +199,27 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		Users:        users,
 		Warnings:     allWarnings,
 	}, nil
+}
+
+// applyUserMappingOverrides applies manual user mapping overrides from frontend
+// This allows unmatched or low-confidence users to be assigned correct user IDs
+func (u *scheduleImportUsecase) applyUserMappingOverrides(parsed *importschedule.ParsedSchedule, overrides []models.UserMappingOverride) {
+	if len(overrides) == 0 {
+		return
+	}
+
+	for _, override := range overrides {
+		if importedUser, exists := parsed.Users[override.OriginalName]; exists {
+			importedUser.UserID = &override.UserID
+			importedUser.MatchScore = 1.0
+			importedUser.IsUnmatched = false
+
+			logger.WithFields(map[string]interface{}{
+				"original_name": override.OriginalName,
+				"user_id":       override.UserID,
+			}).Info("Applied user mapping override")
+		}
+	}
 }
 
 // parseScheduleFile downloads and parses schedule file

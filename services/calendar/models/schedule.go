@@ -768,16 +768,23 @@ type DailySummaryAbsence struct {
 
 // Import Models
 
+// UserMappingOverride represents a manual user mapping override from frontend
+type UserMappingOverride struct {
+	OriginalName string `json:"original_name" binding:"required"`
+	UserID       uint   `json:"user_id" binding:"required"`
+}
+
 // ImportScheduleRequest represents request for importing schedule from file
 type ImportScheduleRequest struct {
-	FileID      string       `json:"file_id" binding:"required" validate:"required"`
-	Title       string       `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
-	Description string       `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
-	Type        ScheduleType `json:"type" binding:"required" validate:"required"`
-	StartDate   time.Time    `json:"start_date" binding:"required" validate:"required"`
-	EndDate     time.Time    `json:"end_date" binding:"required" validate:"required"`
-	Color       string       `json:"color,omitempty"` // Schedule color (hex format)
-	Preview     bool         `json:"preview"`         // If true, returns preview without creating
+	FileID              string                `json:"file_id" binding:"required" validate:"required"`
+	Title               string                `json:"title" binding:"required,min=1,max=255" validate:"required,min=1,max=255"`
+	Description         string                `json:"description,omitempty" binding:"omitempty,max=2000" validate:"omitempty,max=2000"`
+	Type                ScheduleType          `json:"type" binding:"required" validate:"required"`
+	StartDate           time.Time             `json:"start_date" binding:"required" validate:"required"`
+	EndDate             time.Time             `json:"end_date" binding:"required" validate:"required"`
+	Color               string                `json:"color,omitempty"`                // Schedule color (hex format)
+	Preview             bool                  `json:"preview"`                        // If true, returns preview without creating
+	UserMappingOverrides []UserMappingOverride `json:"user_mapping_overrides,omitempty"` // Manual user mapping overrides
 }
 
 // ImportPreviewResponse represents preview of imported schedule
