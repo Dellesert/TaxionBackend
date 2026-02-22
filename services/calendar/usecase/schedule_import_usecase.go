@@ -183,9 +183,16 @@ func (u *scheduleImportUsecase) PreviewImport(userID uint, req *models.ImportSch
 		entryResponses[i] = entry.ToResponse()
 	}
 
-	// Convert users to response format
+	// Count entries per user from parsed data
+	userEntryCounts := make(map[string]int)
+	for _, parsedEntry := range parsed.Entries {
+		userEntryCounts[parsedEntry.UserName]++
+	}
+
+	// Convert users to response format with entries count
 	users := make([]*models.ImportedUser, 0, len(parsed.Users))
-	for _, user := range parsed.Users {
+	for name, user := range parsed.Users {
+		user.EntriesCount = userEntryCounts[name]
 		users = append(users, user)
 	}
 
