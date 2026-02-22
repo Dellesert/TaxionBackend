@@ -231,14 +231,27 @@ func (u *scheduleUsecase) PublishSchedule(userID, scheduleID uint) (*models.Sche
 		return nil, fmt.Errorf("failed to get published schedule: %w", err)
 	}
 
-	// Send schedule-level notifications
-	go u.sendScheduleCreatedNotification(publishedSchedule, userID)
-
-	// Send entry-level notifications to participants if entries exist
+	// Create calendar events for all entries that don't have one yet (skip for recurring schedules)
 	entries, _, err := u.scheduleRepo.GetScheduleEntries(scheduleID, repository.EntryFilter{})
 	if err == nil && len(entries) > 0 {
+		if schedule.Mode != models.ScheduleModeRecurring {
+			for _, entry := range entries {
+				if entry.EventID == nil {
+					event, err := u.createEventForScheduleEntry(publishedSchedule, entry)
+					if err == nil {
+						entry.EventID = &event.ID
+						u.scheduleRepo.UpdateScheduleEntry(entry)
+					}
+				}
+			}
+		}
+
+		// Send entry-level notifications to participants
 		go u.sendBatchScheduleEntryNotifications(publishedSchedule, entries, userID)
 	}
+
+	// Send schedule-level notifications
+	go u.sendScheduleCreatedNotification(publishedSchedule, userID)
 
 	// Index in search
 	u.indexScheduleInSearch(publishedSchedule)
@@ -498,8 +511,8 @@ func (u *scheduleUsecase) CreateScheduleEntry(userID, scheduleID uint, req *mode
 		return nil, fmt.Errorf("failed to create schedule entry: %w", err)
 	}
 
-	// Create associated calendar event (skip for recurring schedules)
-	if schedule.Mode != models.ScheduleModeRecurring {
+	// Create associated calendar event only for published, non-recurring schedules
+	if schedule.Mode != models.ScheduleModeRecurring && schedule.Status == models.ScheduleStatusPublished {
 		event, err := u.createEventForScheduleEntry(schedule, entry)
 		if err != nil {
 			// Log error but don't fail the entry creation
@@ -645,9 +658,9 @@ func (u *scheduleUsecase) CreateScheduleEntries(userID, scheduleID uint, req *mo
 		return nil, fmt.Errorf("failed to create schedule entries: %w", err)
 	}
 
-	// Create calendar events for each entry (skip for recurring schedules)
+	// Create calendar events for each entry only for published, non-recurring schedules
 	for _, entry := range entries {
-		if schedule.Mode != models.ScheduleModeRecurring {
+		if schedule.Mode != models.ScheduleModeRecurring && schedule.Status == models.ScheduleStatusPublished {
 			event, err := u.createEventForScheduleEntry(schedule, entry)
 			if err == nil {
 				entry.EventID = &event.ID
@@ -790,42 +803,45 @@ func (u *scheduleUsecase) UpdateScheduleEntry(userID, scheduleID, entryID uint, 
 		return nil, fmt.Errorf("failed to update schedule entry: %w", err)
 	}
 
-	// If user changed, recreate the event for the new user
-	if userChanged && entry.EventID != nil {
-		// Delete old event (it belonged to the old user)
-		if err := u.eventRepo.DeleteEvent(*entry.EventID); err != nil {
-			// Log error but continue
-		}
-		entry.EventID = nil
-
-		// Create new event for the new user
-		newEvent, err := u.createEventForScheduleEntry(schedule, entry)
-		if err == nil && newEvent != nil {
-			entry.EventID = &newEvent.ID
-			// Update entry with new event ID
-			if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, false); err != nil {
+	// Only manage calendar events for published schedules
+	if schedule.Status == models.ScheduleStatusPublished {
+		// If user changed, recreate the event for the new user
+		if userChanged && entry.EventID != nil {
+			// Delete old event (it belonged to the old user)
+			if err := u.eventRepo.DeleteEvent(*entry.EventID); err != nil {
 				// Log error but continue
 			}
-		}
-	} else if entry.EventID != nil {
-		// Regular update - just update existing event
-		event, err := u.eventRepo.GetEventByID(*entry.EventID)
-		if err == nil {
-			event.StartTime = entry.StartTime
-			event.EndTime = entry.EndTime
-			event.Title = u.generateEventTitle(schedule, entry)
-			event.Description = entry.Description
-			event.Location = entry.Location
-			u.eventRepo.UpdateEvent(event)
-		}
-	} else if userChanged {
-		// User changed but there was no event - create one for the new user
-		newEvent, err := u.createEventForScheduleEntry(schedule, entry)
-		if err == nil && newEvent != nil {
-			entry.EventID = &newEvent.ID
-			// Update entry with new event ID
-			if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, false); err != nil {
-				// Log error but continue
+			entry.EventID = nil
+
+			// Create new event for the new user
+			newEvent, err := u.createEventForScheduleEntry(schedule, entry)
+			if err == nil && newEvent != nil {
+				entry.EventID = &newEvent.ID
+				// Update entry with new event ID
+				if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, false); err != nil {
+					// Log error but continue
+				}
+			}
+		} else if entry.EventID != nil {
+			// Regular update - just update existing event
+			event, err := u.eventRepo.GetEventByID(*entry.EventID)
+			if err == nil {
+				event.StartTime = entry.StartTime
+				event.EndTime = entry.EndTime
+				event.Title = u.generateEventTitle(schedule, entry)
+				event.Description = entry.Description
+				event.Location = entry.Location
+				u.eventRepo.UpdateEvent(event)
+			}
+		} else if userChanged {
+			// User changed but there was no event - create one for the new user
+			newEvent, err := u.createEventForScheduleEntry(schedule, entry)
+			if err == nil && newEvent != nil {
+				entry.EventID = &newEvent.ID
+				// Update entry with new event ID
+				if err := u.scheduleRepo.UpdateScheduleEntryFields(entry, false); err != nil {
+					// Log error but continue
+				}
 			}
 		}
 	}
