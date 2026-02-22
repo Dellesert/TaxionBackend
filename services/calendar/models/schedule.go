@@ -798,10 +798,11 @@ type ImportPreviewResponse struct {
 
 // ImportedUser represents a user detected during import
 type ImportedUser struct {
-	Name        string  `json:"name"`         // Name from document
-	UserID      *uint   `json:"user_id"`      // Matched user ID, null if not found
-	MatchScore  float64 `json:"match_score"`  // Fuzzy match score (0-1)
-	IsUnmatched bool    `json:"is_unmatched"` // No match found
+	Name         string  `json:"name"`          // Name from document
+	UserID       *uint   `json:"user_id"`       // Matched user ID, null if not found
+	MatchScore   float64 `json:"match_score"`   // Fuzzy match score (0-1)
+	IsUnmatched  bool    `json:"is_unmatched"`  // No match found
+	EntriesCount int     `json:"entries_count"` // Number of shifts for this user
 }
 
 // ImportScheduleResponse represents successful import result
