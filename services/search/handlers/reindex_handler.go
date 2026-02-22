@@ -475,6 +475,10 @@ func (h *ReindexHandler) reindexEvents() (int, error) {
 		if event.AllDay {
 			metadata["all_day"] = true
 		}
+		if creator, ok := eventAvatarCache[event.CreatedBy]; ok {
+			metadata["creator_name"] = creator.Name
+			metadata["creator_avatar"] = creator.Avatar
+		}
 
 		content := event.Description
 		if event.Location != "" {
@@ -523,6 +527,13 @@ func (h *ReindexHandler) reindexSchedules() (int, error) {
 	`).Scan(&schedules).Error; err != nil {
 		return 0, fmt.Errorf("failed to query schedules: %w", err)
 	}
+
+	// Batch-fetch creator avatars
+	scheduleCreatorIDs := make([]uint, 0, len(schedules))
+	for _, s := range schedules {
+		scheduleCreatorIDs = append(scheduleCreatorIDs, s.CreatedBy)
+	}
+	scheduleAvatarCache := h.fetchUserAvatars(scheduleCreatorIDs)
 
 	count := 0
 	for _, schedule := range schedules {
