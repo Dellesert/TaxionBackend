@@ -448,6 +448,13 @@ func (h *ReindexHandler) reindexEvents() (int, error) {
 		return 0, fmt.Errorf("failed to query events: %w", err)
 	}
 
+	// Batch-fetch creator avatars
+	eventCreatorIDs := make([]uint, 0, len(events))
+	for _, e := range events {
+		eventCreatorIDs = append(eventCreatorIDs, e.CreatedBy)
+	}
+	eventAvatarCache := h.fetchUserAvatars(eventCreatorIDs)
+
 	count := 0
 	for _, event := range events {
 		// Get participant IDs
