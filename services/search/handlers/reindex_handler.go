@@ -368,6 +368,13 @@ func (h *ReindexHandler) reindexPolls() (int, error) {
 		return 0, fmt.Errorf("failed to query polls: %w", err)
 	}
 
+	// Batch-fetch creator avatars
+	pollCreatorIDs := make([]uint, 0, len(polls))
+	for _, p := range polls {
+		pollCreatorIDs = append(pollCreatorIDs, p.CreatedBy)
+	}
+	pollAvatarCache := h.fetchUserAvatars(pollCreatorIDs)
+
 	count := 0
 	for _, poll := range polls {
 		// Get participant IDs
