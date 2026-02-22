@@ -103,6 +103,9 @@ func (u *scheduleImportUsecase) ImportSchedule(userID uint, req *models.ImportSc
 		}
 	}
 
+	// Create assignments for all matched users (including those without shifts)
+	u.createAssignmentsFromParsed(userID, schedule.ID, parsed)
+
 	// Add parsing warnings
 	allWarnings := append(parsed.Warnings, warnings...)
 
@@ -227,6 +230,41 @@ func (u *scheduleImportUsecase) applyUserMappingOverrides(parsed *importschedule
 			}).Info("Applied user mapping override")
 		}
 	}
+}
+
+// createAssignmentsFromParsed creates schedule assignments for all matched users from the document
+// This ensures users without shifts still appear as schedule participants
+func (u *scheduleImportUsecase) createAssignmentsFromParsed(creatorID, scheduleID uint, parsed *importschedule.ParsedSchedule) {
+	assignedUsers := make(map[uint]bool)
+
+	for _, importedUser := range parsed.Users {
+		if importedUser.UserID == nil || assignedUsers[*importedUser.UserID] {
+			continue
+		}
+
+		assignment := &models.ScheduleAssignment{
+			ScheduleID: scheduleID,
+			UserID:     *importedUser.UserID,
+			AssignedBy: creatorID,
+		}
+
+		if err := u.scheduleRepo.AssignUserToSchedule(assignment); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"schedule_id": scheduleID,
+				"user_id":     *importedUser.UserID,
+				"user_name":   importedUser.Name,
+				"error":       err.Error(),
+			}).Warn("Failed to create assignment for imported user")
+			continue
+		}
+
+		assignedUsers[*importedUser.UserID] = true
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"schedule_id":      scheduleID,
+		"assignments_count": len(assignedUsers),
+	}).Info("Created assignments for imported schedule")
 }
 
 // parseScheduleFile downloads and parses schedule file
