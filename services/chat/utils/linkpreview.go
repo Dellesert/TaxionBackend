@@ -3,12 +3,14 @@ package utils
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 
 	"tachyon-messenger/services/chat/models"
 
@@ -33,30 +35,107 @@ const (
 )
 
 // FetchLinkPreview fetches Open Graph metadata from a URL.
-// It tries social bot UA first (whitelisted by most sites), then falls back to browser UA.
+// Strategy: resolve short URLs first, then try social bot UA, then browser UA, then URL slug fallback.
 func FetchLinkPreview(rawURL string) (*models.LinkPreview, error) {
-	// First attempt: social bot UA (works for Ozon, most e-commerce, social media, etc.)
-	preview, err := fetchWithUA(rawURL, socialBotUserAgent)
+	// Step 1: resolve short/redirect URLs to get the real destination
+	resolvedURL := resolveRedirectURL(rawURL)
+	log.Printf("[LinkPreview] URL: %s -> resolved: %s", rawURL, resolvedURL)
+
+	// Step 2: try social bot UA on the resolved URL (works for Ozon, most sites)
+	preview, err := fetchWithUA(resolvedURL, socialBotUserAgent)
 	if err == nil {
+		log.Printf("[LinkPreview] Success with social bot UA for %s", resolvedURL)
 		return preview, nil
 	}
+	log.Printf("[LinkPreview] Social bot UA failed for %s: %v", resolvedURL, err)
 
-	// Second attempt: browser UA with cookie jar (works for sites that block social bots)
-	preview, err = fetchWithUA(rawURL, browserUserAgent)
-	if err == nil {
-		return preview, nil
+	// Step 3: if resolved URL differs, also try social bot on the original
+	if resolvedURL != rawURL {
+		preview, err = fetchWithUA(rawURL, socialBotUserAgent)
+		if err == nil {
+			log.Printf("[LinkPreview] Success with social bot UA for original %s", rawURL)
+			return preview, nil
+		}
+		log.Printf("[LinkPreview] Social bot UA failed for original %s: %v", rawURL, err)
 	}
 
-	// Last resort: try to generate preview from URL slug
-	if preview := previewFromURLSlug(rawURL); preview != nil {
+	// Step 4: browser UA with cookie jar
+	preview, err = fetchWithUA(resolvedURL, browserUserAgent)
+	if err == nil {
+		log.Printf("[LinkPreview] Success with browser UA for %s", resolvedURL)
+		return preview, nil
+	}
+	log.Printf("[LinkPreview] Browser UA failed for %s: %v", resolvedURL, err)
+
+	// Step 5: generate preview from URL slug as last resort
+	if preview := previewFromURLSlug(resolvedURL); preview != nil {
+		log.Printf("[LinkPreview] Using URL slug fallback for %s: title=%q", resolvedURL, preview.Title)
 		return preview, nil
 	}
 
 	return nil, err
 }
 
+// resolveRedirectURL follows HTTP redirects to find the final destination URL.
+// Uses browser UA with cookie jar to handle sites like Ozon that require cookies.
+// Returns the original URL if resolution fails.
+func resolveRedirectURL(rawURL string) string {
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		Jar:     jar,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			return nil
+		},
+	}
+
+	req, err := http.NewRequest("HEAD", rawURL, nil)
+	if err != nil {
+		return rawURL
+	}
+	req.Header.Set("User-Agent", browserUserAgent)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		// HEAD might not work, try GET
+		req2, err2 := http.NewRequest("GET", rawURL, nil)
+		if err2 != nil {
+			return rawURL
+		}
+		req2.Header.Set("User-Agent", browserUserAgent)
+		req2.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req2.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
+
+		resp, err = client.Do(req2)
+		if err != nil {
+			return rawURL
+		}
+		defer resp.Body.Close()
+	} else {
+		defer resp.Body.Close()
+	}
+
+	finalURL := resp.Request.URL.String()
+	// Strip tracking params like __rr for cleaner URLs
+	if parsed, err := url.Parse(finalURL); err == nil {
+		q := parsed.Query()
+		q.Del("__rr")
+		parsed.RawQuery = q.Encode()
+		finalURL = parsed.String()
+	}
+
+	if finalURL != "" && finalURL != rawURL {
+		return finalURL
+	}
+	return rawURL
+}
+
 // fetchWithUA attempts to fetch link preview with a specific User-Agent.
-// Follows HTTP redirects and meta refresh redirects.
 func fetchWithUA(rawURL, userAgent string) (*models.LinkPreview, error) {
 	return fetchWithDepth(rawURL, userAgent, 0)
 }
@@ -175,8 +254,8 @@ func fetchWithDepth(rawURL, userAgent string, depth int) (*models.LinkPreview, e
 	return preview, nil
 }
 
-// previewFromURLSlug generates a basic preview from URL path when fetching fails.
-// Extracts readable product/page names from URL slugs (e.g. "product/super-cool-item-123").
+// previewFromURLSlug generates a basic preview from URL path when all fetching fails.
+// Only produces a preview if the slug looks like a human-readable product/page name.
 func previewFromURLSlug(rawURL string) *models.LinkPreview {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
@@ -189,19 +268,47 @@ func previewFromURLSlug(rawURL string) *models.LinkPreview {
 		return nil
 	}
 
-	// Find the longest meaningful path segment (likely the product/page name)
+	// Find the best readable slug from path segments
 	segments := strings.Split(path, "/")
 	var bestSlug string
 	for _, seg := range segments {
-		// Skip short segments, numeric IDs, and common path segments
-		if len(seg) < 5 {
+		// Skip common non-descriptive segments
+		if seg == "item" || seg == "product" || seg == "catalog" || seg == "category" || seg == "t" || seg == "dp" {
 			continue
 		}
-		if seg == "item" || seg == "product" || seg == "catalog" || seg == "category" {
+
+		cleaned := seg
+		cleaned = strings.TrimSuffix(cleaned, ".html")
+		cleaned = strings.TrimSuffix(cleaned, ".htm")
+
+		// A readable slug must contain hyphens or underscores (word separators)
+		// This filters out random codes like "vsFvzhB", "xd7c018", "1005008603585460"
+		if !strings.Contains(cleaned, "-") && !strings.Contains(cleaned, "_") {
 			continue
 		}
-		if len(seg) > len(bestSlug) {
-			bestSlug = seg
+
+		cleaned = strings.ReplaceAll(cleaned, "-", " ")
+		cleaned = strings.ReplaceAll(cleaned, "_", " ")
+
+		// Must have at least 2 words and be reasonably long
+		words := strings.Fields(cleaned)
+		if len(words) < 2 || len(cleaned) < 10 {
+			continue
+		}
+
+		// Check that it's not mostly numbers
+		letterCount := 0
+		for _, r := range cleaned {
+			if unicode.IsLetter(r) {
+				letterCount++
+			}
+		}
+		if letterCount < len(cleaned)/3 {
+			continue
+		}
+
+		if len(cleaned) > len(bestSlug) {
+			bestSlug = cleaned
 		}
 	}
 
@@ -209,24 +316,20 @@ func previewFromURLSlug(rawURL string) *models.LinkPreview {
 		return nil
 	}
 
-	// Clean up slug: remove file extensions, trailing IDs, and convert to readable text
-	bestSlug = strings.TrimSuffix(bestSlug, ".html")
-	bestSlug = strings.TrimSuffix(bestSlug, ".htm")
-	bestSlug = strings.ReplaceAll(bestSlug, "-", " ")
-	bestSlug = strings.ReplaceAll(bestSlug, "_", " ")
-
 	// Remove trailing numeric ID (common in e-commerce URLs)
-	if idx := strings.LastIndex(bestSlug, " "); idx > 0 {
-		tail := bestSlug[idx+1:]
+	words := strings.Fields(bestSlug)
+	if len(words) > 1 {
+		lastWord := words[len(words)-1]
 		allDigits := true
-		for _, c := range tail {
-			if c < '0' || c > '9' {
+		for _, c := range lastWord {
+			if !unicode.IsDigit(c) {
 				allDigits = false
 				break
 			}
 		}
-		if allDigits && len(tail) > 4 {
-			bestSlug = bestSlug[:idx]
+		if allDigits && len(lastWord) > 4 {
+			words = words[:len(words)-1]
+			bestSlug = strings.Join(words, " ")
 		}
 	}
 
