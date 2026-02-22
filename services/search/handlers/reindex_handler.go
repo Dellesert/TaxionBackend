@@ -394,9 +394,6 @@ func (h *ReindexHandler) reindexPolls() (int, error) {
 		}
 
 		isPublic := poll.Visibility == "public" || poll.Visibility == "department"
-
-		if err := h.searchUsecase.IndexDocument(&models.IndexDocumentRequest{
-			EntityType:   models.EntityTypePoll,
 			EntityID:     poll.ID,
 			Title:        poll.Title,
 			Content:      poll.Description,
