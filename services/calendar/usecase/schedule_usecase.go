@@ -1451,19 +1451,39 @@ func (u *scheduleUsecase) CanEditSchedule(userID, scheduleID uint, userRole shar
 }
 
 // GetScheduleGroupMembers returns the user group members for a schedule's linked group
+// Falls back to schedule assignments if no user group is linked (e.g. imported schedules)
 func (u *scheduleUsecase) GetScheduleGroupMembers(scheduleID uint) ([]*clients.UserGroupMember, error) {
 	schedule, err := u.scheduleRepo.GetScheduleByID(scheduleID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get schedule: %w", err)
 	}
 
-	if schedule.UserGroupID == nil {
-		return []*clients.UserGroupMember{}, nil
+	// If schedule has a linked user group, use that
+	if schedule.UserGroupID != nil {
+		members, err := u.userClient.GetUserGroupMembers(*schedule.UserGroupID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get user group members: %w", err)
+		}
+		return members, nil
 	}
 
-	members, err := u.userClient.GetUserGroupMembers(*schedule.UserGroupID)
+	// Fallback: return members from schedule assignments (used for imported schedules)
+	assignments, err := u.scheduleRepo.GetScheduleAssignments(scheduleID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user group members: %w", err)
+		return nil, fmt.Errorf("failed to get schedule assignments: %w", err)
+	}
+
+	members := make([]*clients.UserGroupMember, 0, len(assignments))
+	for _, assignment := range assignments {
+		if assignment.User != nil {
+			members = append(members, &clients.UserGroupMember{
+				ID:       assignment.User.ID,
+				Name:     assignment.User.Name,
+				Email:    assignment.User.Email,
+				Avatar:   assignment.User.Avatar,
+				Position: assignment.User.Position,
+			})
+		}
 	}
 
 	return members, nil
