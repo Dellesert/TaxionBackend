@@ -970,6 +970,11 @@ func (u *scheduleUsecase) GetDailySummary(date time.Time) (*models.DailySummaryR
 	scheduleOrder := make([]uint, 0)
 
 	for _, entry := range entries {
+		// Skip recurring work schedules — they shouldn't appear in the daily summary
+		if entry.Schedule != nil && entry.Schedule.Mode == models.ScheduleModeRecurring {
+			continue
+		}
+
 		if absentUserIDs[entry.UserID] {
 			continue
 		}
