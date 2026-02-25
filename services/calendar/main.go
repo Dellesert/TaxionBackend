@@ -309,20 +309,24 @@ func setupRoutes(
 		// Apply template
 		protected.POST("/schedule-templates/:id/apply", templateHandler.ApplyTemplate)
 
-		// Absence endpoints
+		// Absence endpoints (read - all authenticated users)
 		protected.GET("/absences", absenceHandler.GetAbsences)
 		protected.GET("/absences/:id", absenceHandler.GetAbsence)
-		protected.POST("/absences", absenceHandler.CreateAbsence)
-		protected.PUT("/absences/:id", absenceHandler.UpdateAbsence)
-		protected.DELETE("/absences/:id", absenceHandler.DeleteAbsence)
 		protected.GET("/users/:id/absences", absenceHandler.GetUserAbsences)
 
-		// Absence substitution endpoints
+		// Absence endpoints (write - admin, super_admin, department_head only)
+		protected.POST("/absences", middleware.RequireDepartmentHeadOrAbove(), absenceHandler.CreateAbsence)
+		protected.PUT("/absences/:id", middleware.RequireDepartmentHeadOrAbove(), absenceHandler.UpdateAbsence)
+		protected.DELETE("/absences/:id", middleware.RequireDepartmentHeadOrAbove(), absenceHandler.DeleteAbsence)
+
+		// Absence substitution endpoints (read - all authenticated users)
 		protected.GET("/absences/:id/substitutions", substitutionHandler.GetSubstitutions)
-		protected.POST("/absences/:id/substitutions", substitutionHandler.CreateSubstitution)
-		protected.PUT("/absences/:id/substitutions/:sub_id", substitutionHandler.UpdateSubstitution)
-		protected.DELETE("/absences/:id/substitutions/:sub_id", substitutionHandler.DeleteSubstitution)
 		protected.GET("/users/:id/substitutions", substitutionHandler.GetUserSubstitutions)
+
+		// Absence substitution endpoints (write - admin, super_admin, department_head only)
+		protected.POST("/absences/:id/substitutions", middleware.RequireDepartmentHeadOrAbove(), substitutionHandler.CreateSubstitution)
+		protected.PUT("/absences/:id/substitutions/:sub_id", middleware.RequireDepartmentHeadOrAbove(), substitutionHandler.UpdateSubstitution)
+		protected.DELETE("/absences/:id/substitutions/:sub_id", middleware.RequireDepartmentHeadOrAbove(), substitutionHandler.DeleteSubstitution)
 
 		// Holiday endpoints (production calendar)
 		protected.GET("/calendar/holidays", holidayHandler.GetHolidays)
