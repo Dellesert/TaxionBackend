@@ -1314,6 +1314,82 @@ func (h *MessageHandler) RestoreMessage(c *gin.Context) {
 	})
 }
 
+// DeletePermanentMessage handles permanently deleting a message (admin/owner only)
+func (h *MessageHandler) DeletePermanentMessage(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get user ID from JWT token
+	userID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get user ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "User not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get message ID from URL parameter
+	idStr := c.Param("id")
+	messageID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid message ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid message ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	err = h.messageUsecase.DeleteMessagePermanent(userID, uint(messageID))
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"user_id":    userID,
+			"message_id": messageID,
+			"error":      err.Error(),
+		}).Error("Failed to permanently delete message")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to permanently delete message"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "Message not found"
+		} else if strings.Contains(err.Error(), "insufficient permissions") {
+			statusCode = http.StatusForbidden
+			errorMessage = "Only administrators can permanently delete messages"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"user_id":    userID,
+		"message_id": messageID,
+	}).Info("Message permanently deleted")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "Message permanently deleted",
+		"request_id": requestID,
+	})
+}
+
 // PinMessage handles pinning a message in chat
 func (h *MessageHandler) PinMessage(c *gin.Context) {
 	requestID := requestid.Get(c)

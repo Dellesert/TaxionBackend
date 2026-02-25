@@ -555,7 +555,8 @@ const (
 	// Message events
 	WSMessageTypeNewMessage    WSMessageType = "new_message"
 	WSMessageTypeMessageEdit   WSMessageType = "message_edit"
-	WSMessageTypeMessageDelete WSMessageType = "message_delete"
+	WSMessageTypeMessageDelete          WSMessageType = "message_delete"
+	WSMessageTypeMessageDeletePermanent WSMessageType = "message_delete_permanent"
 	WSMessageTypeTyping        WSMessageType = "typing"
 	WSMessageTypeRead          WSMessageType = "message_read"
 	WSMessageTypeReaction      WSMessageType = "reaction"

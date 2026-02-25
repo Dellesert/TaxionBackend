@@ -22,6 +22,7 @@ type MessageRepository interface {
 	GetByChatIDWithPaginationForUser(chatID, userID uint, limit, offset int) ([]*models.Message, int64, error)
 	Update(message *models.Message) error
 	Delete(id uint) error
+	HardDelete(id uint) error
 	Count() (int64, error)
 	CountByChatID(chatID uint) (int64, error)
 	GetWithReactions(id uint) (*models.Message, error)
@@ -273,6 +274,38 @@ func (r *messageRepository) Delete(id uint) error {
 		return fmt.Errorf("message not found")
 	}
 	return nil
+}
+
+// HardDelete permanently removes a message and its related data from the database
+func (r *messageRepository) HardDelete(id uint) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete related records first
+		if err := tx.Where("message_id = ?", id).Delete(&models.MessageReaction{}).Error; err != nil {
+			return fmt.Errorf("failed to delete reactions: %w", err)
+		}
+		if err := tx.Where("message_id = ?", id).Delete(&models.MessageReadReceipt{}).Error; err != nil {
+			return fmt.Errorf("failed to delete read receipts: %w", err)
+		}
+		if err := tx.Where("message_id = ?", id).Delete(&models.MessageAttachment{}).Error; err != nil {
+			return fmt.Errorf("failed to delete attachments: %w", err)
+		}
+		if err := tx.Where("message_id = ?", id).Delete(&models.MessageDeletion{}).Error; err != nil {
+			return fmt.Errorf("failed to delete personal deletions: %w", err)
+		}
+		// Clear reply_to references pointing to this message
+		if err := tx.Model(&models.Message{}).Where("reply_to_id = ?", id).Update("reply_to_id", nil).Error; err != nil {
+			return fmt.Errorf("failed to clear reply references: %w", err)
+		}
+		// Delete the message itself
+		result := tx.Unscoped().Where("id = ?", id).Delete(&models.Message{})
+		if result.Error != nil {
+			return fmt.Errorf("failed to hard delete message: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return fmt.Errorf("message not found")
+		}
+		return nil
+	})
 }
 
 // Count returns the total number of non-deleted messages

@@ -31,6 +31,7 @@ type MessageUsecase interface {
 	UpdateMessage(userID, messageID uint, req *models.UpdateMessageRequest) (*models.MessageResponse, error)
 	DeleteMessage(userID, messageID uint) error
 	DeleteMessageForUser(userID, messageID uint, deleteFor string) error
+	DeleteMessagePermanent(userID, messageID uint) error
 	DeleteAttachment(userID, messageID, attachmentID uint) error
 	BulkDeleteMessages(userID uint, req *models.BulkDeleteMessagesRequest) error
 	BulkForwardMessages(userID uint, req *models.BulkForwardMessagesRequest) (*models.BulkForwardMessagesResponse, error)
@@ -1116,6 +1117,44 @@ func (uc *messageUsecase) RestoreMessage(userID, messageID uint) error {
 		}
 		response := fullMessage.ToResponse(uc.baseURL)
 		uc.wsHub.BroadcastToChat(message.ChatID, response, models.WSMessageTypeMessageEdit, userID)
+	}
+
+	return nil
+}
+
+// DeleteMessagePermanent permanently removes a message from the database (admin/owner only)
+func (uc *messageUsecase) DeleteMessagePermanent(userID, messageID uint) error {
+	// Get message
+	message, err := uc.messageRepo.GetByID(messageID)
+	if err != nil {
+		return fmt.Errorf("failed to get message: %w", err)
+	}
+
+	// Check if user is admin or owner of the chat
+	role, err := uc.chatRepo.GetMemberRole(message.ChatID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to get user role: %w", err)
+	}
+	if role != models.ChatMemberRoleOwner && role != models.ChatMemberRoleAdmin {
+		return fmt.Errorf("insufficient permissions: only administrators can permanently delete messages")
+	}
+
+	chatID := message.ChatID
+
+	// Hard delete the message from the database
+	if err := uc.messageRepo.HardDelete(messageID); err != nil {
+		return fmt.Errorf("failed to permanently delete message: %w", err)
+	}
+
+	// Remove message from search index
+	uc.searchClient.DeleteDocument("message", messageID)
+
+	// Broadcast permanent deletion to WebSocket clients
+	if uc.wsHub != nil {
+		uc.wsHub.BroadcastToChat(chatID, map[string]interface{}{
+			"message_id": messageID,
+			"chat_id":    chatID,
+		}, models.WSMessageTypeMessageDeletePermanent, userID)
 	}
 
 	return nil
