@@ -10,6 +10,7 @@ import (
 	"tachyon-messenger/services/calendar/models"
 	"tachyon-messenger/services/calendar/repository"
 	searchclient "tachyon-messenger/services/search/client"
+	"tachyon-messenger/shared/logger"
 	sharedmodels "tachyon-messenger/shared/models"
 )
 
@@ -69,6 +70,7 @@ type scheduleUsecase struct {
 	scheduleRepo       repository.ScheduleRepository
 	eventRepo          repository.EventRepository
 	absenceRepo        repository.AbsenceRepository
+	reminderRepo       repository.ReminderRepository
 	notificationClient *clients.NotificationClient
 	userClient         *clients.UserClient
 	searchClient       *searchclient.SearchClient
@@ -79,11 +81,13 @@ func NewScheduleUsecase(
 	scheduleRepo repository.ScheduleRepository,
 	eventRepo repository.EventRepository,
 	absenceRepo repository.AbsenceRepository,
+	reminderRepo repository.ReminderRepository,
 ) ScheduleUsecase {
 	return &scheduleUsecase{
 		scheduleRepo:       scheduleRepo,
 		eventRepo:          eventRepo,
 		absenceRepo:        absenceRepo,
+		reminderRepo:       reminderRepo,
 		notificationClient: clients.NewNotificationClient(),
 		userClient:         clients.NewUserClient(),
 		searchClient:       searchclient.NewSearchClient(),
@@ -1312,6 +1316,25 @@ func (u *scheduleUsecase) createEventForScheduleEntry(schedule *models.Schedule,
 
 	if err := u.eventRepo.CreateEvent(event); err != nil {
 		return nil, err
+	}
+
+	// Create default reminder (15 minutes before) for the assigned user
+	if u.reminderRepo != nil {
+		minutesBefore := 15
+		reminder := &models.EventReminder{
+			EventID:       event.ID,
+			UserID:        entry.UserID,
+			Type:          models.ReminderTypeNotification,
+			MinutesBefore: &minutesBefore,
+			TriggerTime:   event.StartTime.Add(-time.Duration(minutesBefore) * time.Minute),
+		}
+		if err := u.reminderRepo.CreateReminder(reminder); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"event_id": event.ID,
+				"user_id":  entry.UserID,
+				"error":    err.Error(),
+			}).Error("Failed to create default reminder for schedule event")
+		}
 	}
 
 	return event, nil

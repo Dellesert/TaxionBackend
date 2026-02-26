@@ -23,6 +23,7 @@ type scheduleImportUsecase struct {
 	scheduleRepo       repository.ScheduleRepository
 	eventRepo          repository.EventRepository
 	absenceRepo        repository.AbsenceRepository
+	reminderRepo       repository.ReminderRepository
 	fileClient         *clients.FileClient
 	parser             *importschedule.ScheduleParser
 	notificationClient *clients.NotificationClient
@@ -30,11 +31,12 @@ type scheduleImportUsecase struct {
 }
 
 // NewScheduleImportUsecase creates a new schedule import usecase
-func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, eventRepo repository.EventRepository, absenceRepo repository.AbsenceRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
+func NewScheduleImportUsecase(scheduleRepo repository.ScheduleRepository, eventRepo repository.EventRepository, absenceRepo repository.AbsenceRepository, reminderRepo repository.ReminderRepository, fileClient *clients.FileClient) ScheduleImportUsecase {
 	return &scheduleImportUsecase{
 		scheduleRepo:       scheduleRepo,
 		eventRepo:          eventRepo,
 		absenceRepo:        absenceRepo,
+		reminderRepo:       reminderRepo,
 		fileClient:         fileClient,
 		parser:             importschedule.NewScheduleParser(),
 		notificationClient: clients.NewNotificationClient(),
@@ -442,6 +444,25 @@ func (u *scheduleImportUsecase) createEventForScheduleEntry(schedule *models.Sch
 
 	if err := u.eventRepo.CreateEvent(event); err != nil {
 		return nil, err
+	}
+
+	// Create default reminder (15 minutes before) for the assigned user
+	if u.reminderRepo != nil {
+		minutesBefore := 15
+		reminder := &models.EventReminder{
+			EventID:       event.ID,
+			UserID:        entry.UserID,
+			Type:          models.ReminderTypeNotification,
+			MinutesBefore: &minutesBefore,
+			TriggerTime:   event.StartTime.Add(-time.Duration(minutesBefore) * time.Minute),
+		}
+		if err := u.reminderRepo.CreateReminder(reminder); err != nil {
+			logger.WithFields(map[string]interface{}{
+				"event_id": event.ID,
+				"user_id":  entry.UserID,
+				"error":    err.Error(),
+			}).Error("Failed to create default reminder for imported schedule event")
+		}
 	}
 
 	return event, nil
