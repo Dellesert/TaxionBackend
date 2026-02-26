@@ -1316,22 +1316,25 @@ func (u *scheduleUsecase) createEventForScheduleEntry(schedule *models.Schedule,
 		return nil, err
 	}
 
-	// Create default reminder (15 minutes before) for the assigned user
+	// Create default reminders (1 hour and 24 hours before) for the assigned user
 	if u.reminderRepo != nil {
-		minutesBefore := 15
-		reminder := &models.EventReminder{
-			EventID:       event.ID,
-			UserID:        entry.UserID,
-			Type:          models.ReminderTypeNotification,
-			MinutesBefore: &minutesBefore,
-			TriggerTime:   event.StartTime.Add(-time.Duration(minutesBefore) * time.Minute),
-		}
-		if err := u.reminderRepo.CreateReminder(reminder); err != nil {
-			logger.WithFields(map[string]interface{}{
-				"event_id": event.ID,
-				"user_id":  entry.UserID,
-				"error":    err.Error(),
-			}).Error("Failed to create default reminder for schedule event")
+		for _, mb := range []int{60, 1440} {
+			minutesBefore := mb
+			reminder := &models.EventReminder{
+				EventID:       event.ID,
+				UserID:        entry.UserID,
+				Type:          models.ReminderTypeNotification,
+				MinutesBefore: &minutesBefore,
+				TriggerTime:   event.StartTime.Add(-time.Duration(minutesBefore) * time.Minute),
+			}
+			if err := u.reminderRepo.CreateReminder(reminder); err != nil {
+				logger.WithFields(map[string]interface{}{
+					"event_id":       event.ID,
+					"user_id":        entry.UserID,
+					"minutes_before": minutesBefore,
+					"error":          err.Error(),
+				}).Error("Failed to create default reminder for schedule event")
+			}
 		}
 	}
 
