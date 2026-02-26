@@ -250,12 +250,10 @@ func (u *scheduleUsecase) PublishSchedule(userID, scheduleID uint) (*models.Sche
 			}
 		}
 
-		// Send entry-level notifications to participants
-		go u.sendBatchScheduleEntryNotifications(publishedSchedule, entries, userID)
 	}
 
-	// Send schedule-level notifications
-	go u.sendScheduleCreatedNotification(publishedSchedule, userID)
+	// Send single notification about new schedule (includes entry participants)
+	go u.sendScheduleCreatedNotification(publishedSchedule, entries, userID)
 
 	// Index in search
 	u.indexScheduleInSearch(publishedSchedule)

@@ -8,8 +8,9 @@ import (
 	"tachyon-messenger/shared/logger"
 )
 
-// sendScheduleCreatedNotification sends notification when a new schedule is created
-func (u *scheduleUsecase) sendScheduleCreatedNotification(schedule *models.Schedule, creatorID uint) {
+// sendScheduleCreatedNotification sends a single notification when a schedule is published.
+// Recipients include both scope-based users (all users / department) and entry participants.
+func (u *scheduleUsecase) sendScheduleCreatedNotification(schedule *models.Schedule, entries []*models.ScheduleEntry, creatorID uint) {
 	// Get creator info
 	creatorInfo, err := u.userClient.GetUserByID(creatorID)
 	creatorName := "Кто-то"
@@ -17,36 +18,42 @@ func (u *scheduleUsecase) sendScheduleCreatedNotification(schedule *models.Sched
 		creatorName = creatorInfo.Name
 	}
 
-	// Determine recipients based on schedule settings
-	var recipientIDs []uint
+	// Collect unique recipient IDs
+	recipientSet := make(map[uint]bool)
 
+	// Add scope-based recipients
 	if schedule.IsForAllUsers {
-		// Get all users
 		allUsers, err := u.userClient.GetAllUsers()
 		if err != nil {
 			fmt.Printf("Failed to get all users for schedule notification: %v\n", err)
-			return
-		}
-		for _, user := range allUsers {
-			if user.ID != creatorID {
-				recipientIDs = append(recipientIDs, user.ID)
+		} else {
+			for _, user := range allUsers {
+				if user.ID != creatorID {
+					recipientSet[user.ID] = true
+				}
 			}
 		}
 	} else if schedule.DepartmentID != nil {
-		// Get users from the department
 		deptUsers, err := u.userClient.GetUsersByDepartment(*schedule.DepartmentID)
 		if err != nil {
 			fmt.Printf("Failed to get department users for schedule notification: %v\n", err)
-			return
-		}
-		for _, user := range deptUsers {
-			if user.ID != creatorID {
-				recipientIDs = append(recipientIDs, user.ID)
+		} else {
+			for _, user := range deptUsers {
+				if user.ID != creatorID {
+					recipientSet[user.ID] = true
+				}
 			}
 		}
 	}
 
-	if len(recipientIDs) == 0 {
+	// Add entry participants
+	for _, entry := range entries {
+		if entry.UserID != creatorID {
+			recipientSet[entry.UserID] = true
+		}
+	}
+
+	if len(recipientSet) == 0 {
 		return
 	}
 
@@ -58,14 +65,13 @@ func (u *scheduleUsecase) sendScheduleCreatedNotification(schedule *models.Sched
 		schedule.EndDate.Format("02.01.2006"),
 	)
 
-	// Get schedule type name in Russian
 	typeName := getScheduleTypeName(schedule.Type)
 
-	// Send to each recipient
-	for _, recipientID := range recipientIDs {
-		message := fmt.Sprintf("%s создал(а) новый график \"%s\" (%s) на период %s",
-			creatorName, schedule.Title, typeName, dateRange)
+	message := fmt.Sprintf("%s опубликовал(а) график %s \"%s\" на период %s",
+		creatorName, typeName, schedule.Title, dateRange)
 
+	// Send one notification per recipient
+	for recipientID := range recipientSet {
 		notificationReq := &clients.NotificationRequest{
 			UserID:      recipientID,
 			Type:        "calendar",
@@ -80,12 +86,17 @@ func (u *scheduleUsecase) sendScheduleCreatedNotification(schedule *models.Sched
 				"start_date":    schedule.StartDate,
 				"end_date":      schedule.EndDate,
 				"creator_id":    creatorID,
+				"action":        "open_schedule",
 			},
 			Channels: []string{"in_app", "push"},
 		}
 
 		if err := u.notificationClient.SendNotification(notificationReq); err != nil {
-			fmt.Printf("Failed to send schedule created notification to user %d: %v\n", recipientID, err)
+			logger.WithFields(map[string]interface{}{
+				"user_id":     recipientID,
+				"schedule_id": schedule.ID,
+				"error":       err.Error(),
+			}).Error("Failed to send schedule published notification")
 		}
 	}
 }
