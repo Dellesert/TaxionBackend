@@ -155,9 +155,11 @@ func (u *calendarUsecase) CreateEvent(userID uint, req *models.CreateEventReques
 		}
 	}
 
-	// Create reminders if provided
+	// Create custom reminders if provided
+	customMinutes := make(map[int]bool)
 	if len(req.Reminders) > 0 {
 		for _, reminderReq := range req.Reminders {
+			customMinutes[reminderReq.MinutesBefore] = true
 			reminder := &models.EventReminder{
 				EventID:       event.ID,
 				UserID:        userID,
@@ -173,6 +175,24 @@ func (u *calendarUsecase) CreateEvent(userID uint, req *models.CreateEventReques
 				// Log error but don't fail the entire operation
 				continue
 			}
+		}
+	}
+
+	// Create default reminders (1 hour and 24 hours before) if not already set
+	for _, mb := range []int{60, 1440} {
+		if customMinutes[mb] {
+			continue
+		}
+		minutesBefore := mb
+		reminder := &models.EventReminder{
+			EventID:       event.ID,
+			UserID:        userID,
+			Type:          models.ReminderTypeNotification,
+			MinutesBefore: &minutesBefore,
+			TriggerTime:   event.StartTime.Add(-time.Duration(minutesBefore) * time.Minute),
+		}
+		if err := u.reminderRepo.CreateReminder(reminder); err != nil {
+			continue
 		}
 	}
 
