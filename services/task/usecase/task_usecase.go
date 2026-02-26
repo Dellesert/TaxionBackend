@@ -872,12 +872,13 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 		return fmt.Errorf("failed to get task: %w", err)
 	}
 
-	// Check permissions: only creator or super_admin can delete
+	// Check permissions: creator, parent task creator, or super_admin can delete
 	isCreator := task.CreatedBy == userID
 	isSuperAdmin := userRole == sharedmodels.RoleSuperAdmin
+	isParentTaskCreator := task.ParentTaskID != nil && task.ParentTask != nil && task.ParentTask.CreatedByUserID == userID
 
-	if !isCreator && !isSuperAdmin {
-		return fmt.Errorf("access denied: only task creator or super administrator can delete the task")
+	if !isCreator && !isSuperAdmin && !isParentTaskCreator {
+		return fmt.Errorf("access denied: only task creator, parent task creator, or super administrator can delete the task")
 	}
 
 	// Save ParentTaskID before deleting (for progress recalculation)
