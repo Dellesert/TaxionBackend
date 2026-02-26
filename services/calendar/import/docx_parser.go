@@ -123,6 +123,19 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *DocxDocument, result *ParsedS
 		return fmt.Errorf("failed to parse time slots: %w", err)
 	}
 
+	// Find which column contains dates (may not be column 0 if there's a day-of-week column)
+	dateColIdx := p.findDateColumnIndex(rows, result.Month, result.Year)
+
+	// Find which header columns contain time slot patterns
+	timeSlotColIndices := p.findTimeSlotColumns(headerRow)
+
+	// Fallback: if findTimeSlotColumns didn't find columns, use legacy behavior
+	if len(timeSlotColIndices) == 0 {
+		for i := dateColIdx + 1; i < dateColIdx+1+len(timeSlots); i++ {
+			timeSlotColIndices = append(timeSlotColIndices, i)
+		}
+	}
+
 	// Parse data rows
 	for rowIdx := 1; rowIdx < len(rows); rowIdx++ {
 		row := rows[rowIdx]
@@ -132,8 +145,11 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *DocxDocument, result *ParsedS
 			continue
 		}
 
-		// First column: date
-		dateText := strings.TrimSpace(cells[0].GetText())
+		// Get date from the detected date column
+		if dateColIdx >= len(cells) {
+			continue
+		}
+		dateText := strings.TrimSpace(cells[dateColIdx].GetText())
 		if dateText == "" {
 			continue
 		}
@@ -144,8 +160,13 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *DocxDocument, result *ParsedS
 			continue
 		}
 
-		// Process each time slot
-		for colIdx := 1; colIdx < len(cells) && colIdx <= len(timeSlots); colIdx++ {
+		// Process each time slot using detected column indices
+		for slotIdx := 0; slotIdx < len(timeSlots) && slotIdx < len(timeSlotColIndices); slotIdx++ {
+			colIdx := timeSlotColIndices[slotIdx]
+			if colIdx >= len(cells) {
+				continue
+			}
+
 			cellText := strings.TrimSpace(cells[colIdx].GetText())
 			if cellText == "" {
 				continue
@@ -153,7 +174,7 @@ func (p *ScheduleParser) parseTimeSlotsFormat(doc *DocxDocument, result *ParsedS
 
 			// Extract names from cell (can be multiple names separated by comma)
 			names := p.extractNames(cellText)
-			timeSlot := timeSlots[colIdx-1]
+			timeSlot := timeSlots[slotIdx]
 
 			for _, name := range names {
 				entry := &ParsedEntry{
@@ -488,6 +509,11 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 		return fmt.Errorf("failed to parse time slots header: %w", err)
 	}
 
+	// Find which column contains dates (may not be column 0 if there's an extra column)
+	dateColIdx := p.findDateColumnIndex(rows, result.Month, result.Year)
+	// Name column is typically right after the date column
+	nameColIdx := dateColIdx + 1
+
 	// Parse data rows
 	for rowIdx := 1; rowIdx < len(rows); rowIdx++ {
 		row := rows[rowIdx]
@@ -497,8 +523,11 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 			continue
 		}
 
-		// First column: date (12.01., 13.01., etc.)
-		dateText := strings.TrimSpace(cells[0].GetText())
+		// Get date from the detected date column
+		if dateColIdx >= len(cells) {
+			continue
+		}
+		dateText := strings.TrimSpace(cells[dateColIdx].GetText())
 		if dateText == "" {
 			continue
 		}
@@ -514,8 +543,11 @@ func (p *ScheduleParser) parseTimeSlotsVerticalFormat(doc *DocxDocument, result 
 			}
 		}
 
-		// Second column: names (can be multiple separated by newline)
-		namesText := strings.TrimSpace(cells[1].GetText())
+		// Name column (after date column): names (can be multiple separated by newline)
+		if nameColIdx >= len(cells) {
+			continue
+		}
+		namesText := strings.TrimSpace(cells[nameColIdx].GetText())
 		if namesText == "" {
 			continue
 		}
@@ -827,6 +859,19 @@ func (p *ScheduleParser) parseDate(text string, month time.Month, year int) (tim
 		}
 	}
 
+	// Try to parse short year format "DD.MM.YY" (2-digit year)
+	shortYearPattern := regexp.MustCompile(`^(\d{1,2})\.(\d{1,2})\.(\d{2})$`)
+	if matches := shortYearPattern.FindStringSubmatch(text); len(matches) >= 4 {
+		var day, mon, yr int
+		fmt.Sscanf(matches[1], "%d", &day)
+		fmt.Sscanf(matches[2], "%d", &mon)
+		fmt.Sscanf(matches[3], "%d", &yr)
+		yr += 2000 // Convert 2-digit year: 26 -> 2026
+		if day >= 1 && day <= 31 && mon >= 1 && mon <= 12 {
+			return time.Date(yr, time.Month(mon), day, 0, 0, 0, 0, time.Local), true
+		}
+	}
+
 	// Try to parse "DD.MM" format
 	shortDatePattern := regexp.MustCompile(`^(\d{1,2})\.(\d{1,2})$`)
 	if matches := shortDatePattern.FindStringSubmatch(text); len(matches) >= 3 {
@@ -1102,6 +1147,61 @@ func (p *ScheduleParser) normalizeName(name string) string {
 	name = strings.TrimSpace(name)
 
 	return name
+}
+
+// findDateColumnIndex scans data rows to determine which column contains dates.
+// Some tables have an extra column (e.g. day of week) before the date column.
+// Returns the 0-based column index where dates are found.
+func (p *ScheduleParser) findDateColumnIndex(rows []DocxRow, month time.Month, year int) int {
+	maxCheck := min(6, len(rows))
+	maxCol := 3 // dates are typically in first few columns
+
+	colScores := make([]int, maxCol)
+
+	for rowIdx := 1; rowIdx < maxCheck; rowIdx++ {
+		cells := rows[rowIdx].Cells
+		for colIdx := 0; colIdx < min(maxCol, len(cells)); colIdx++ {
+			text := strings.TrimSpace(cells[colIdx].GetText())
+			if text == "" {
+				continue
+			}
+			if _, ok := p.parseDate(text, month, year); ok {
+				colScores[colIdx]++
+			}
+		}
+	}
+
+	// Find column with most successful date parses
+	bestCol := 0
+	bestScore := 0
+	for i, score := range colScores {
+		if score > bestScore {
+			bestScore = score
+			bestCol = i
+		}
+	}
+
+	return bestCol
+}
+
+// findTimeSlotColumns finds column indices in the header row that contain time slot patterns.
+// This allows correct mapping regardless of extra leading columns.
+func (p *ScheduleParser) findTimeSlotColumns(headerRow DocxRow) []int {
+	cells := headerRow.Cells
+	indices := make([]int, 0)
+
+	timePattern1 := regexp.MustCompile(`(\d{1,2})[:.](\d{2})\s*[-–—]\s*(\d{1,2})[:.](\d{2})`)
+	timePattern2 := regexp.MustCompile(`(?i)[сcСC]\s*(\d{1,2})\s*(?:[:.](\d{2}))?\s*до\s*(\d{1,2})`)
+	timePattern3 := regexp.MustCompile(`(\d{1,2})\s*[-–—]\s*(\d{1,2})`)
+
+	for i := 0; i < len(cells); i++ {
+		cellText := cells[i].GetText()
+		if timePattern1.MatchString(cellText) || timePattern2.MatchString(cellText) || timePattern3.MatchString(cellText) {
+			indices = append(indices, i)
+		}
+	}
+
+	return indices
 }
 
 // max returns the maximum of two integers
