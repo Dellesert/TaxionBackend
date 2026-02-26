@@ -70,6 +70,7 @@ type scheduleUsecase struct {
 	scheduleRepo       repository.ScheduleRepository
 	eventRepo          repository.EventRepository
 	absenceRepo        repository.AbsenceRepository
+	substitutionRepo   repository.SubstitutionRepository
 	reminderRepo       repository.ReminderRepository
 	notificationClient *clients.NotificationClient
 	userClient         *clients.UserClient
@@ -81,12 +82,14 @@ func NewScheduleUsecase(
 	scheduleRepo repository.ScheduleRepository,
 	eventRepo repository.EventRepository,
 	absenceRepo repository.AbsenceRepository,
+	substitutionRepo repository.SubstitutionRepository,
 	reminderRepo repository.ReminderRepository,
 ) ScheduleUsecase {
 	return &scheduleUsecase{
 		scheduleRepo:       scheduleRepo,
 		eventRepo:          eventRepo,
 		absenceRepo:        absenceRepo,
+		substitutionRepo:   substitutionRepo,
 		reminderRepo:       reminderRepo,
 		notificationClient: clients.NewNotificationClient(),
 		userClient:         clients.NewUserClient(),
@@ -1017,15 +1020,36 @@ func (u *scheduleUsecase) GetDailySummary(date time.Time) (*models.DailySummaryR
 		scheduleGroupsList = append(scheduleGroupsList, scheduleGroups[scheduleID])
 	}
 
+	// Fetch substitutions for all absences
+	absenceIDs := make([]uint, 0, len(absences))
+	for _, absence := range absences {
+		absenceIDs = append(absenceIDs, absence.ID)
+	}
+	substitutionsByAbsence, err := u.substitutionRepo.GetSubstitutionsByAbsenceIDs(absenceIDs, date)
+	if err != nil {
+		logger.Warn("Failed to get substitutions for daily summary: %v", err)
+		substitutionsByAbsence = make(map[uint][]*models.AbsenceSubstitution)
+	}
+
 	// Build absences list
 	absencesList := make([]*models.DailySummaryAbsence, 0, len(absences))
 	for _, absence := range absences {
-		absencesList = append(absencesList, &models.DailySummaryAbsence{
+		dailyAbsence := &models.DailySummaryAbsence{
 			UserID: absence.UserID,
 			User:   absence.User,
 			Type:   absence.Type,
 			Reason: absence.Reason,
-		})
+		}
+
+		if subs, ok := substitutionsByAbsence[absence.ID]; ok {
+			for _, sub := range subs {
+				if sub.Substitute != nil {
+					dailyAbsence.Substitutes = append(dailyAbsence.Substitutes, sub.Substitute)
+				}
+			}
+		}
+
+		absencesList = append(absencesList, dailyAbsence)
 	}
 
 	return &models.DailySummaryResponse{

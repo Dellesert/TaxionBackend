@@ -760,10 +760,11 @@ type DailySummaryUserEntry struct {
 
 // DailySummaryAbsence represents an absent user in the daily summary
 type DailySummaryAbsence struct {
-	UserID  uint               `json:"user_id"`
-	User    *sharedmodels.User `json:"user,omitempty"`
-	Type    AbsenceType        `json:"type"`
-	Reason  string             `json:"reason,omitempty"`
+	UserID      uint               `json:"user_id"`
+	User        *sharedmodels.User `json:"user,omitempty"`
+	Type        AbsenceType        `json:"type"`
+	Reason      string             `json:"reason,omitempty"`
+	Substitutes []*sharedmodels.User `json:"substitutes,omitempty"`
 }
 
 // Import Models

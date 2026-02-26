@@ -125,7 +125,7 @@ func main() {
 
 	// Initialize usecases
 	calendarUsecase := usecase.NewCalendarUsecase(eventRepo, participantRepo, reminderRepo)
-	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo, absenceRepo, reminderRepo)
+	scheduleUsecase := usecase.NewScheduleUsecase(scheduleRepo, eventRepo, absenceRepo, substitutionRepo, reminderRepo)
 	templateUsecase := usecase.NewScheduleTemplateUsecase(scheduleRepo)
 	importUsecase := usecase.NewScheduleImportUsecase(scheduleRepo, eventRepo, absenceRepo, reminderRepo, fileClient)
 	absenceUsecase := usecase.NewAbsenceUsecase(absenceRepo, eventRepo, participantRepo, substitutionRepo, notificationClient, userClient)

@@ -16,6 +16,7 @@ type SubstitutionRepository interface {
 	CreateSubstitution(sub *models.AbsenceSubstitution) error
 	GetSubstitutionByID(id uint) (*models.AbsenceSubstitution, error)
 	GetSubstitutionsByAbsenceID(absenceID uint) ([]*models.AbsenceSubstitution, error)
+	GetSubstitutionsByAbsenceIDs(absenceIDs []uint, date time.Time) (map[uint][]*models.AbsenceSubstitution, error)
 	GetSubstitutionsBySubstituteID(userID uint, startDate, endDate time.Time) ([]*models.AbsenceSubstitution, error)
 	UpdateSubstitution(sub *models.AbsenceSubstitution) error
 	DeleteSubstitution(id uint) error
@@ -79,6 +80,32 @@ func (r *substitutionRepository) GetSubstitutionsByAbsenceID(absenceID uint) ([]
 	}
 
 	return subs, nil
+}
+
+// GetSubstitutionsByAbsenceIDs retrieves substitutions for multiple absences that cover a specific date, grouped by absence ID
+func (r *substitutionRepository) GetSubstitutionsByAbsenceIDs(absenceIDs []uint, date time.Time) (map[uint][]*models.AbsenceSubstitution, error) {
+	if len(absenceIDs) == 0 {
+		return make(map[uint][]*models.AbsenceSubstitution), nil
+	}
+
+	var subs []*models.AbsenceSubstitution
+
+	err := r.db.
+		Preload("Substitute").
+		Where("absence_id IN ? AND start_date <= ? AND end_date >= ?", absenceIDs, date, date).
+		Order("absence_id ASC, id ASC").
+		Find(&subs).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[uint][]*models.AbsenceSubstitution)
+	for _, sub := range subs {
+		result[sub.AbsenceID] = append(result[sub.AbsenceID], sub)
+	}
+
+	return result, nil
 }
 
 // GetSubstitutionsBySubstituteID retrieves all substitutions where user is a substitute
