@@ -147,8 +147,12 @@ func (u *calendarUsecase) sendEventCancelledNotification(event *models.Event, ca
 		startTimeStr = event.StartTime.Format("02.01.2006")
 	}
 
-	// Notify all participants
+	// Notify all participants (except canceller)
 	for _, participant := range participants {
+		if participant.UserID == cancellerID {
+			continue
+		}
+
 		notificationReq := &clients.NotificationRequest{
 			UserID:      participant.UserID,
 			Type:        "calendar",
