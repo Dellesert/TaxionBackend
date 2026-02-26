@@ -891,6 +891,11 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 		"deleted_by": userID,
 	})
 
+	// Recursively delete all subtasks before deleting the parent task
+	// GORM soft delete (setting deleted_at) does not trigger SQL ON DELETE CASCADE,
+	// so we must explicitly soft-delete subtasks
+	u.deleteSubtasksRecursively(taskID, userID)
+
 	// Delete task
 	if err := u.taskRepo.Delete(taskID); err != nil {
 		return fmt.Errorf("failed to delete task: %w", err)
@@ -922,6 +927,37 @@ func (u *taskUsecase) DeleteTask(userID uint, userRole sharedmodels.Role, taskID
 	u.searchClient.DeleteDocument("task", taskID)
 
 	return nil
+}
+
+// deleteSubtasksRecursively soft-deletes all subtasks of a task, including nested subtasks.
+// This is necessary because GORM soft delete does not trigger SQL ON DELETE CASCADE.
+func (u *taskUsecase) deleteSubtasksRecursively(parentTaskID uint, deletedByUserID uint) {
+	subtasks, err := u.taskRepo.GetSubtasks(parentTaskID)
+	if err != nil {
+		fmt.Printf("[DeleteTask] Warning: failed to get subtasks for task %d: %v\n", parentTaskID, err)
+		return
+	}
+
+	for _, subtask := range subtasks {
+		// Recursively delete subtasks of this subtask
+		u.deleteSubtasksRecursively(subtask.ID, deletedByUserID)
+
+		// Soft-delete the subtask
+		if err := u.taskRepo.Delete(subtask.ID); err != nil {
+			fmt.Printf("[DeleteTask] Warning: failed to delete subtask %d: %v\n", subtask.ID, err)
+			continue
+		}
+
+		// Record deletion for sync tracking
+		if u.syncRepo != nil {
+			if err := u.syncRepo.RecordDeletion(subtask.ID, &deletedByUserID); err != nil {
+				fmt.Printf("[DeleteTask] Warning: failed to record subtask %d deletion for sync: %v\n", subtask.ID, err)
+			}
+		}
+
+		// Remove subtask from search index
+		u.searchClient.DeleteDocument("task", subtask.ID)
+	}
 }
 
 // AssignTask assigns a task to a user
