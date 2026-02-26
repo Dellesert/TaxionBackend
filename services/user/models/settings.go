@@ -265,7 +265,7 @@ type UpdateCustomSettingsRequest struct {
 	PasskeyAsSecondFactor     *bool             `json:"passkey_as_second_factor,omitempty"`
 	AllowMultiplePasskeys     *bool             `json:"allow_multiple_passkeys,omitempty"`
 	MaxPasskeysPerUser        *int              `json:"max_passkeys_per_user,omitempty" binding:"omitempty,min=0,max=20"`
-	SessionDurationHours      *int              `json:"session_duration_hours,omitempty" binding:"omitempty,min=1,max=720"`
+	SessionDurationHours      *int              `json:"session_duration_hours,omitempty" binding:"omitempty,min=1,max=8760"`
 	MaxSessionsPerUser        *int              `json:"max_sessions_per_user,omitempty" binding:"omitempty,min=1,max=20"`
 	MinPasswordLength         *int              `json:"min_password_length,omitempty" binding:"omitempty,min=6,max=128"`
 	RequirePasswordComplexity *bool             `json:"require_password_complexity,omitempty"`
