@@ -171,6 +171,17 @@ func (u *userUsecase) GetUsersWithFilters(limit, offset int, departmentID *uint,
 		users = filteredUsers
 	}
 
+	// Filter hidden users - only admins can see hidden users
+	if !isAdminRole(currentUserRole) {
+		filteredUsers := make([]*models.User, 0)
+		for _, user := range users {
+			if !user.IsHidden {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		users = filteredUsers
+	}
+
 	// Filter by role if specified (done in-memory for now)
 	if role != nil && *role != "" {
 		filteredUsers := make([]*models.User, 0)
@@ -226,6 +237,18 @@ func (u *userUsecase) GetUsersWithFiltersAdvanced(limit, offset int, departmentI
 	total, err := u.userRepo.CountWithFiltersAdvanced(departmentID, isActive, roles, excludeRoles, searchQuery)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	// Filter hidden users - only admins can see hidden users
+	if !isAdminRole(currentUserRole) {
+		filteredUsers := make([]*models.User, 0)
+		for _, user := range users {
+			if !user.IsHidden {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		users = filteredUsers
+		total = int64(len(users))
 	}
 
 	// Convert to response format
@@ -368,6 +391,17 @@ func (u *userUsecase) GetUsersByIDs(ids []uint, currentUserRole string) ([]*mode
 		users = filteredUsers
 	}
 
+	// Filter hidden users - only admins can see hidden users
+	if !isAdminRole(currentUserRole) {
+		filteredUsers := make([]*models.User, 0)
+		for _, user := range users {
+			if !user.IsHidden {
+				filteredUsers = append(filteredUsers, user)
+			}
+		}
+		users = filteredUsers
+	}
+
 	// Convert to response format
 	responses := make([]*models.UserResponse, len(users))
 	for i, user := range users {
@@ -475,7 +509,7 @@ func (u *userUsecase) GetUsersWithBirthdays() ([]*models.BirthdayUserInfo, error
 
 	result := make([]*models.BirthdayUserInfo, 0, len(users))
 	for _, user := range users {
-		if user.BirthDate == nil {
+		if user.BirthDate == nil || user.IsHidden {
 			continue
 		}
 		info := &models.BirthdayUserInfo{
@@ -491,4 +525,9 @@ func (u *userUsecase) GetUsersWithBirthdays() ([]*models.BirthdayUserInfo, error
 	}
 
 	return result, nil
+}
+
+// isAdminRole checks if a role string is an admin or super_admin role
+func isAdminRole(role string) bool {
+	return role == string(sharedmodels.RoleAdmin) || role == string(sharedmodels.RoleSuperAdmin)
 }

@@ -21,6 +21,8 @@ type AdminUsecase interface {
 	UpdateUserStatus(id uint, req *models.AdminUpdateUserStatusRequest, adminID uint) (*models.UserResponse, error)
 	ActivateUser(id uint, adminID uint) (*models.UserResponse, error)
 	DeactivateUser(id uint, adminID uint, adminRole sharedmodels.Role) (*models.UserResponse, error)
+	HideUser(id uint, adminID uint) (*models.UserResponse, error)
+	UnhideUser(id uint, adminID uint) (*models.UserResponse, error)
 	AssignDepartmentToUser(id uint, departmentID *uint) (*models.UserResponse, error)
 	ResetUserPassword(id uint, newPassword string) error
 	UpdateUser2FAStatus(id uint, req *models.AdminUpdate2FARequest) (*models.UserResponse, error)
@@ -246,6 +248,67 @@ func (a *adminUsecase) DeactivateUser(id uint, adminID uint, adminRole sharedmod
 	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
 	if err != nil {
 		// Fallback to user without department
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
+}
+
+// HideUser hides a user from non-admin user lists and pickers
+func (a *adminUsecase) HideUser(id uint, adminID uint) (*models.UserResponse, error) {
+	// Get user
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Prevent hiding admins/super_admins
+	if user.Role == sharedmodels.RoleAdmin || user.Role == sharedmodels.RoleSuperAdmin {
+		return nil, fmt.Errorf("cannot hide admin users")
+	}
+
+	// Hide user
+	user.IsHidden = true
+
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to hide user: %w", err)
+	}
+
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
+		return user.ToResponse(), nil
+	}
+
+	return userWithDept.ToResponse(), nil
+}
+
+// UnhideUser makes a hidden user visible again in user lists and pickers
+func (a *adminUsecase) UnhideUser(id uint, adminID uint) (*models.UserResponse, error) {
+	// Get user
+	user, err := a.userRepo.GetByID(id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) || strings.Contains(err.Error(), "not found") {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Unhide user
+	user.IsHidden = false
+
+	// Save updated user
+	if err := a.userRepo.Update(user); err != nil {
+		return nil, fmt.Errorf("failed to unhide user: %w", err)
+	}
+
+	// Get user with department for response
+	userWithDept, err := a.userRepo.GetWithDepartment(user.ID)
+	if err != nil {
 		return user.ToResponse(), nil
 	}
 

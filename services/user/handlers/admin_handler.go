@@ -867,6 +867,157 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 	})
 }
 
+// HideUser handles hiding a user from non-admin user lists (admin only)
+func (h *AdminHandler) HideUser(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin user info from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user ID from URL parameter
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid user ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	user, err := h.adminUsecase.HideUser(uint(id), adminID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    id,
+			"error":      err.Error(),
+		}).Error("Failed to hide user")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to hide user"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "User not found"
+		} else if strings.Contains(err.Error(), "cannot hide admin") {
+			statusCode = http.StatusForbidden
+			errorMessage = err.Error()
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"admin_id":   adminID,
+		"user_id":    id,
+	}).Info("User hidden successfully by admin")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "User hidden successfully",
+		"user":       user,
+		"request_id": requestID,
+	})
+}
+
+// UnhideUser handles making a hidden user visible again (admin only)
+func (h *AdminHandler) UnhideUser(c *gin.Context) {
+	requestID := requestid.Get(c)
+
+	// Get admin user info from context
+	adminID, err := middleware.GetUserIDFromContext(c)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"error":      err.Error(),
+		}).Error("Failed to get admin ID from context")
+
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":      "Admin not authenticated",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	// Get user ID from URL parameter
+	idStr := c.Param("id")
+	id, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    idStr,
+			"error":      err.Error(),
+		}).Warn("Invalid user ID")
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":      "Invalid user ID",
+			"request_id": requestID,
+		})
+		return
+	}
+
+	user, err := h.adminUsecase.UnhideUser(uint(id), adminID)
+	if err != nil {
+		logger.WithFields(map[string]interface{}{
+			"request_id": requestID,
+			"admin_id":   adminID,
+			"user_id":    id,
+			"error":      err.Error(),
+		}).Error("Failed to unhide user")
+
+		statusCode := http.StatusInternalServerError
+		errorMessage := "Failed to unhide user"
+
+		if strings.Contains(err.Error(), "not found") {
+			statusCode = http.StatusNotFound
+			errorMessage = "User not found"
+		}
+
+		c.JSON(statusCode, gin.H{
+			"error":      errorMessage,
+			"request_id": requestID,
+		})
+		return
+	}
+
+	logger.WithFields(map[string]interface{}{
+		"request_id": requestID,
+		"admin_id":   adminID,
+		"user_id":    id,
+	}).Info("User unhidden successfully by admin")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":    "User unhidden successfully",
+		"user":       user,
+		"request_id": requestID,
+	})
+}
+
 // DeleteUser handles user deletion (admin only)
 func (h *AdminHandler) DeleteUser(c *gin.Context) {
 	requestID := requestid.Get(c)

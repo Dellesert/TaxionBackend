@@ -60,6 +60,7 @@ type User struct {
 	Color              string            `gorm:"size:7" json:"color,omitempty" validate:"omitempty,max=7"`
 	LastActiveAt       *time.Time        `json:"last_active_at,omitempty"`
 	IsActive           bool              `gorm:"not null" json:"is_active"`
+	IsHidden           bool              `gorm:"not null;default:false" json:"is_hidden"`
 	MustChangePassword bool              `gorm:"not null;default:false" json:"must_change_password"`
 
 	// Authentication settings
@@ -238,6 +239,7 @@ type UserResponse struct {
 	Color                 string                 `json:"color,omitempty"`
 	LastActiveAt          *time.Time             `json:"last_active_at,omitempty"`
 	IsActive              bool                   `json:"is_active"`
+	IsHidden              bool                   `json:"is_hidden"`
 	MustChangePassword    bool                   `json:"must_change_password"`
 	TwoFactorEnabled      bool                   `json:"two_factor_enabled"`
 	PasskeyEnabled        bool                   `json:"passkey_enabled"`
@@ -275,6 +277,7 @@ func (u *User) ToResponse() *UserResponse {
 		Color:                 u.Color,
 		LastActiveAt:          u.LastActiveAt,
 		IsActive:              u.IsActive,
+		IsHidden:              u.IsHidden,
 		MustChangePassword:    u.MustChangePassword,
 		TwoFactorEnabled:      u.TwoFactorEnabled,
 		PasskeyEnabled:        u.PasskeyEnabled,
