@@ -331,6 +331,15 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 		userIDs = append(userIDs, *response.LastStatusChangedBy)
 	}
 
+	// Add user IDs from subtasks
+	for _, subtask := range response.Subtasks {
+		userIDs = append(userIDs, subtask.CreatedBy)
+		userIDs = append(userIDs, subtask.AssigneeIDs...)
+		if subtask.AssignedToUserID != nil {
+			userIDs = append(userIDs, *subtask.AssignedToUserID)
+		}
+	}
+
 	// Remove duplicates
 	uniqueIDs := make(map[uint]bool)
 	for _, id := range userIDs {
@@ -400,6 +409,42 @@ func (u *taskUsecase) enrichTaskWithUserInfo(response *models.TaskResponse) erro
 					Email:    user.Email,
 					Avatar:   user.Avatar,
 					Position: user.Position,
+				}
+			}
+		}
+	}
+
+	// Enrich nested subtasks with user info
+	for _, subtask := range response.Subtasks {
+		if creator, exists := users[subtask.CreatedBy]; exists {
+			subtask.Creator = &models.UserInfo{
+				ID:       creator.ID,
+				Name:     creator.Name,
+				Email:    creator.Email,
+				Avatar:   creator.Avatar,
+				Position: creator.Position,
+			}
+		}
+		subtask.Assignees = make([]models.UserInfo, 0, len(subtask.AssigneeIDs))
+		for _, assigneeID := range subtask.AssigneeIDs {
+			if assignee, exists := users[assigneeID]; exists {
+				subtask.Assignees = append(subtask.Assignees, models.UserInfo{
+					ID:       assignee.ID,
+					Name:     assignee.Name,
+					Email:    assignee.Email,
+					Avatar:   assignee.Avatar,
+					Position: assignee.Position,
+				})
+			}
+		}
+		if subtask.AssignedToUserID != nil {
+			if assignedTo, exists := users[*subtask.AssignedToUserID]; exists {
+				subtask.AssignedToUser = &models.UserInfo{
+					ID:       assignedTo.ID,
+					Name:     assignedTo.Name,
+					Email:    assignedTo.Email,
+					Avatar:   assignedTo.Avatar,
+					Position: assignedTo.Position,
 				}
 			}
 		}
@@ -1320,25 +1365,33 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 		return nil
 	}
 
-	// Collect all unique user IDs from all tasks (including delegation chain IDs)
+	// collectUserIDs gathers all user IDs from a task response
+	collectUserIDs := func(r *models.TaskResponse, ids map[uint]bool) {
+		ids[r.CreatedBy] = true
+		for _, assigneeID := range r.AssigneeIDs {
+			ids[assigneeID] = true
+		}
+		if r.LastStatusChangedBy != nil {
+			ids[*r.LastStatusChangedBy] = true
+		}
+		if r.DelegatedFromUserID != nil {
+			ids[*r.DelegatedFromUserID] = true
+		}
+		if r.OriginalAssigneeID != nil {
+			ids[*r.OriginalAssigneeID] = true
+		}
+		if r.AssignedToUserID != nil {
+			ids[*r.AssignedToUserID] = true
+		}
+	}
+
+	// Collect all unique user IDs from all tasks and their subtasks
 	uniqueIDs := make(map[uint]bool)
 	for _, response := range responses {
-		uniqueIDs[response.CreatedBy] = true
-		for _, assigneeID := range response.AssigneeIDs {
-			uniqueIDs[assigneeID] = true
-		}
-		if response.LastStatusChangedBy != nil {
-			uniqueIDs[*response.LastStatusChangedBy] = true
-		}
-		// Collect delegation chain IDs
-		if response.DelegatedFromUserID != nil {
-			uniqueIDs[*response.DelegatedFromUserID] = true
-		}
-		if response.OriginalAssigneeID != nil {
-			uniqueIDs[*response.OriginalAssigneeID] = true
-		}
-		if response.AssignedToUserID != nil {
-			uniqueIDs[*response.AssignedToUserID] = true
+		collectUserIDs(response, uniqueIDs)
+		// Also collect from nested subtasks
+		for _, subtask := range response.Subtasks {
+			collectUserIDs(subtask, uniqueIDs)
 		}
 	}
 
@@ -1440,6 +1493,42 @@ func (u *taskUsecase) enrichTasksWithUserInfo(responses []*models.TaskResponse) 
 		// Build delegation chain for delegated tasks
 		if response.DelegatedFromUserID != nil || response.OriginalAssigneeID != nil {
 			response.DelegationChain = u.buildDelegationChain(response, users)
+		}
+
+		// Enrich nested subtasks with user info
+		for _, subtask := range response.Subtasks {
+			if creator, exists := users[subtask.CreatedBy]; exists {
+				subtask.Creator = &models.UserInfo{
+					ID:       creator.ID,
+					Name:     creator.Name,
+					Email:    creator.Email,
+					Avatar:   creator.Avatar,
+					Position: creator.Position,
+				}
+			}
+			subtask.Assignees = make([]models.UserInfo, 0, len(subtask.AssigneeIDs))
+			for _, assigneeID := range subtask.AssigneeIDs {
+				if assignee, exists := users[assigneeID]; exists {
+					subtask.Assignees = append(subtask.Assignees, models.UserInfo{
+						ID:       assignee.ID,
+						Name:     assignee.Name,
+						Email:    assignee.Email,
+						Avatar:   assignee.Avatar,
+						Position: assignee.Position,
+					})
+				}
+			}
+			if subtask.AssignedToUserID != nil {
+				if assignedTo, exists := users[*subtask.AssignedToUserID]; exists {
+					subtask.AssignedToUser = &models.UserInfo{
+						ID:       assignedTo.ID,
+						Name:     assignedTo.Name,
+						Email:    assignedTo.Email,
+						Avatar:   assignedTo.Avatar,
+						Position: assignedTo.Position,
+					}
+				}
+			}
 		}
 	}
 
