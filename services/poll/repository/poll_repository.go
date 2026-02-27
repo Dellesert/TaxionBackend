@@ -913,18 +913,18 @@ func (r *pollRepository) RecordDeletion(pollID uint, deletedBy *uint) error {
 	return r.db.Create(&record).Error
 }
 
-// GetPendingPollsForUser retrieves active polls where user hasn't voted yet
-// Query: WHERE status = 'active' AND NOT EXISTS (vote where user_id = current_user) ORDER BY created_at DESC LIMIT n
+// GetPendingPollsForUser retrieves active polls where user hasn't voted yet (excluding polls created by the user)
+// Query: WHERE status = 'active' AND created_by != current_user AND NOT EXISTS (vote where user_id = current_user) ORDER BY created_at DESC LIMIT n
 func (r *pollRepository) GetPendingPollsForUser(userID uint, limit int) ([]*models.Poll, int64, error) {
 	var polls []*models.Poll
 	var total int64
 
-	// Base query: active polls where user hasn't voted
-	baseCondition := "status = ? AND NOT EXISTS (SELECT 1 FROM poll_votes WHERE poll_votes.poll_id = polls.id AND poll_votes.user_id = ?)"
+	// Base query: active polls where user hasn't voted and user is not the creator
+	baseCondition := "status = ? AND created_by != ? AND NOT EXISTS (SELECT 1 FROM poll_votes WHERE poll_votes.poll_id = polls.id AND poll_votes.user_id = ?)"
 
 	// Count total
 	countQuery := r.db.Model(&models.Poll{}).
-		Where(baseCondition, models.PollStatusActive, userID)
+		Where(baseCondition, models.PollStatusActive, userID, userID)
 	countQuery = r.applyVisibilityFilter(countQuery, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
@@ -937,7 +937,7 @@ func (r *pollRepository) GetPendingPollsForUser(userID uint, limit int) ([]*mode
 			return db.Order("position ASC")
 		}).
 		Preload("Creator").
-		Where(baseCondition, models.PollStatusActive, userID)
+		Where(baseCondition, models.PollStatusActive, userID, userID)
 	query = r.applyVisibilityFilter(query, userID)
 
 	if err := query.Order("created_at DESC").Limit(limit).Find(&polls).Error; err != nil {
