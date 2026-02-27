@@ -1608,12 +1608,24 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 	// If notification has a sender, use their avatar as the image
 	// Otherwise, fall back to notification.ImageURL
 	imageURL := notification.ImageURL
+	var senderName string
 	if notification.SenderID != nil {
 		// Get sender info to use avatar in push notification
 		userInfo, err := u.userClient.GetUserInfo(*notification.SenderID)
-		if err == nil && userInfo.AvatarURL != "" {
-			imageURL = userInfo.AvatarURL
+		if err == nil {
+			if userInfo.AvatarURL != "" {
+				imageURL = userInfo.AvatarURL
+			}
+			senderName = userInfo.Name
 		}
+	}
+
+	// Add sender avatar and name to data payload for client-side rendering
+	if imageURL != "" {
+		dataBuilder.SetCustomField("sender_avatar", imageURL)
+	}
+	if senderName != "" {
+		dataBuilder.SetCustomField("sender_name", senderName)
 	}
 
 	// Create push notifications for each device
@@ -1633,6 +1645,10 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 			RelatedID:      notification.RelatedID,
 			RelatedType:    notification.RelatedType,
 			ActionURL:      notification.ActionURL,
+
+			// Platform info for platform-specific payload building
+			Platform:   string(device.Platform),
+			SenderName: senderName,
 
 			// Platform-specific settings
 			Badge:           nil, // TODO: Calculate unread count

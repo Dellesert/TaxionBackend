@@ -262,15 +262,6 @@ func (f *FCMProvider) buildMessage(notification *PushNotification) *messaging.Me
 		Token: notification.Token,
 	}
 
-	// Build notification payload
-	if notification.Title != "" {
-		message.Notification = &messaging.Notification{
-			Title:    notification.Title,
-			Body:     notification.Body,
-			ImageURL: notification.ImageURL,
-		}
-	}
-
 	// Build data payload
 	data := make(map[string]string)
 	for key, value := range notification.Data {
@@ -292,6 +283,30 @@ func (f *FCMProvider) buildMessage(notification *PushNotification) *messaging.Me
 	}
 	if notification.ActionURL != "" {
 		data["action_url"] = notification.ActionURL
+	}
+
+	// For Android: data-only message (no notification payload) so the client
+	// can build a custom notification with avatar as large icon.
+	// Title and body are passed in the data payload instead.
+	if notification.Platform == "android" {
+		data["title"] = notification.Title
+		data["body"] = notification.Body
+		if notification.ChannelID != "" {
+			data["channel_id"] = notification.ChannelID
+		}
+		if notification.Sound != "" {
+			data["sound"] = notification.Sound
+		}
+		// No message.Notification for Android — fully data-driven
+	} else {
+		// For iOS, Web, Electron: use standard notification payload
+		if notification.Title != "" {
+			message.Notification = &messaging.Notification{
+				Title:    notification.Title,
+				Body:     notification.Body,
+				ImageURL: notification.ImageURL,
+			}
+		}
 	}
 
 	message.Data = data
@@ -329,23 +344,8 @@ func (f *FCMProvider) buildAndroidConfig(notification *PushNotification) *messag
 		config.CollapseKey = notification.CollapseKey
 	}
 
-	// Android notification configuration
-	androidNotification := &messaging.AndroidNotification{
-		ChannelID:   notification.ChannelID,
-		Color:       notification.Color,
-		ClickAction: notification.ClickAction,
-		Sound:       notification.Sound,
-		ImageURL:    notification.ImageURL, // Large image (sender avatar or notification image)
-	}
-
-	// Set priority for notification
-	if notification.Priority == models.NotificationPriorityCritical {
-		androidNotification.Priority = messaging.PriorityMax
-	} else if notification.Priority == models.NotificationPriorityHigh {
-		androidNotification.Priority = messaging.PriorityHigh
-	}
-
-	config.Notification = androidNotification
+	// Android uses data-only messages for custom notification display (avatar as large icon).
+	// No AndroidNotification block — the client's FirebaseMessagingService handles display.
 
 	return config
 }
@@ -383,6 +383,12 @@ func (f *FCMProvider) buildAPNSConfig(notification *PushNotification) *messaging
 		aps.ContentAvailable = true
 	}
 
+	// Enable mutable-content so the Notification Service Extension can
+	// download the sender avatar and attach it to the notification
+	if notification.ImageURL != "" {
+		aps.MutableContent = true
+	}
+
 	// Set category
 	if notification.Category != "" {
 		aps.Category = notification.Category
@@ -395,6 +401,18 @@ func (f *FCMProvider) buildAPNSConfig(notification *PushNotification) *messaging
 
 	config.Payload.Aps = aps
 
+	// Pass sender avatar and name in custom APNS payload for Notification Service Extension
+	if notification.ImageURL != "" || notification.SenderName != "" {
+		customData := make(map[string]interface{})
+		if notification.ImageURL != "" {
+			customData["sender_avatar"] = notification.ImageURL
+		}
+		if notification.SenderName != "" {
+			customData["sender_name"] = notification.SenderName
+		}
+		config.Payload.CustomData = customData
+	}
+
 	return config
 }
 
@@ -404,12 +422,17 @@ func (f *FCMProvider) buildWebpushConfig(notification *PushNotification) *messag
 
 	// Set notification options
 	if notification.Title != "" || notification.Body != "" {
-		config.Notification = &messaging.WebpushNotification{
+		webNotif := &messaging.WebpushNotification{
 			Title: notification.Title,
 			Body:  notification.Body,
-			Icon:  notification.ImageURL,  // Sender avatar or notification image
-			Image: notification.ImageURL,  // Large image for web push
 		}
+
+		// Use sender avatar as notification icon, with app icon as badge
+		if notification.ImageURL != "" {
+			webNotif.Icon = notification.ImageURL // Sender avatar as main icon
+		}
+
+		config.Notification = webNotif
 	}
 
 	return config

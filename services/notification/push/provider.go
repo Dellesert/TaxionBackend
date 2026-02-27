@@ -69,6 +69,12 @@ type PushNotification struct {
 	RelatedID      *uint                    `json:"related_id,omitempty"`      // Related object ID
 	RelatedType    string                   `json:"related_type,omitempty"`    // Related object type
 	ActionURL      string                   `json:"action_url,omitempty"`      // Deep link URL
+
+	// Platform info (for platform-specific payload building)
+	Platform string `json:"platform,omitempty"` // "android", "ios", "web", "electron"
+
+	// Sender info (for avatar in push notifications)
+	SenderName string `json:"sender_name,omitempty"` // Sender display name
 }
 
 // PushResponse represents the response from sending a push notification
