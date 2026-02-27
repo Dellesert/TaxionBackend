@@ -379,23 +379,25 @@ func (u *pollUsecase) DeletePoll(userID, pollID uint, userRole sharedModels.Role
 		return fmt.Errorf("failed to get poll: %w", err)
 	}
 
-	// Check permissions: creator, department_head, or super_admin can delete
+	// Check permissions: creator, admin, department_head, or super_admin can delete
 	isCreator := poll.CreatedBy == userID
+	isAdmin := userRole == sharedModels.RoleAdmin
 	isDepartmentHead := userRole == sharedModels.RoleDepartmentHead
 	isSuperAdmin := userRole == sharedModels.RoleSuperAdmin
+	isPrivileged := isAdmin || isDepartmentHead || isSuperAdmin
 
-	if !isCreator && !isDepartmentHead && !isSuperAdmin {
-		return fmt.Errorf("access denied: only poll creator, department heads, or super administrator can delete the poll")
+	if !isCreator && !isPrivileged {
+		return fmt.Errorf("access denied: only poll creator, administrators, department heads, or super administrator can delete the poll")
 	}
 
-	// Check if poll has votes - only prevent deletion for non-super-admin users
+	// Check if poll has votes - only prevent deletion for non-privileged users
 	voteCount, err := u.voteRepo.GetVoteCount(pollID)
 	if err != nil {
 		return fmt.Errorf("failed to check vote count: %w", err)
 	}
 
-	// Only creators cannot delete polls with votes, super admins/department heads can delete regardless
-	if voteCount > 0 && isCreator && !isDepartmentHead && !isSuperAdmin {
+	// Only creators cannot delete polls with votes, admins/department heads/super admins can delete regardless
+	if voteCount > 0 && isCreator && !isPrivileged {
 		return fmt.Errorf("cannot delete poll with existing votes")
 	}
 
