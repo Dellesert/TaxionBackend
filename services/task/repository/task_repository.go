@@ -1372,16 +1372,24 @@ func (r *taskRepository) userTaskCondition() string {
 		")"
 }
 
+// dashboardTaskCondition returns the condition for filtering tasks on the dashboard
+// Only shows tasks where user is an assignee (not just creator)
+// If user created a task and assigned to themselves - shows
+// If user created a task and assigned to someone else - doesn't show
+func (r *taskRepository) dashboardTaskCondition() string {
+	return "(assigned_to = ? OR id IN (SELECT task_id FROM task_assignees WHERE user_id = ? AND deleted_at IS NULL))"
+}
+
 // GetNewTasksForUser retrieves tasks with status 'new' assigned to user
-// Query: WHERE status = 'new' AND (user visible condition) ORDER BY created_at DESC LIMIT n
+// Query: WHERE status = 'new' AND (user is assignee) ORDER BY created_at DESC LIMIT n
 func (r *taskRepository) GetNewTasksForUser(userID uint, limit int) ([]*models.Task, int64, error) {
 	var tasks []*models.Task
 	var total int64
 
-	// Count total - 8 userID params to match userTaskCondition
+	// Count total - 2 userID params to match dashboardTaskCondition
 	countQuery := r.db.Model(&models.Task{}).
 		Where("status = ?", models.TaskStatusNew).
-		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID)
+		Where(r.dashboardTaskCondition(), userID, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count new tasks: %w", err)
@@ -1391,7 +1399,7 @@ func (r *taskRepository) GetNewTasksForUser(userID uint, limit int) ([]*models.T
 	err := r.db.
 		Preload("Assignees").
 		Where("status = ?", models.TaskStatusNew).
-		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID).
+		Where(r.dashboardTaskCondition(), userID, userID).
 		Order("created_at DESC").
 		Limit(limit).
 		Find(&tasks).Error
@@ -1415,10 +1423,10 @@ func (r *taskRepository) GetActiveTasksForUser(userID uint, limit int) ([]*model
 
 	activeStatuses := []models.TaskStatus{models.TaskStatusInProgress, models.TaskStatusReview}
 
-	// Count total - 8 userID params to match userTaskCondition
+	// Count total - 2 userID params to match dashboardTaskCondition
 	countQuery := r.db.Model(&models.Task{}).
 		Where("status IN ?", activeStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID)
+		Where(r.dashboardTaskCondition(), userID, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count active tasks: %w", err)
@@ -1428,7 +1436,7 @@ func (r *taskRepository) GetActiveTasksForUser(userID uint, limit int) ([]*model
 	err := r.db.
 		Preload("Assignees").
 		Where("status IN ?", activeStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID).
+		Where(r.dashboardTaskCondition(), userID, userID).
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&tasks).Error
@@ -1452,12 +1460,12 @@ func (r *taskRepository) GetOverdueTasksForUser(userID uint, limit int) ([]*mode
 
 	excludedStatuses := []models.TaskStatus{models.TaskStatusDone, models.TaskStatusCancelled}
 
-	// Count total - 8 userID params to match userTaskCondition
+	// Count total - 2 userID params to match dashboardTaskCondition
 	countQuery := r.db.Model(&models.Task{}).
 		Where("due_date < ?", time.Now()).
 		Where("due_date IS NOT NULL").
 		Where("status NOT IN ?", excludedStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID)
+		Where(r.dashboardTaskCondition(), userID, userID)
 
 	if err := countQuery.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("failed to count overdue tasks: %w", err)
@@ -1469,7 +1477,7 @@ func (r *taskRepository) GetOverdueTasksForUser(userID uint, limit int) ([]*mode
 		Where("due_date < ?", time.Now()).
 		Where("due_date IS NOT NULL").
 		Where("status NOT IN ?", excludedStatuses).
-		Where(r.userTaskCondition(), userID, userID, userID, userID, userID, userID, userID, userID).
+		Where(r.dashboardTaskCondition(), userID, userID).
 		Order("due_date ASC").
 		Limit(limit).
 		Find(&tasks).Error
