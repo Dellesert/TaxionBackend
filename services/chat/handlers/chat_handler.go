@@ -44,7 +44,7 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -101,7 +101,7 @@ func (h *ChatHandler) GetChats(c *gin.Context) {
 		}).Error("Failed to get user chats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get chats",
+			"error":      "Не удалось получить чаты",
 			"request_id": requestID,
 		})
 		return
@@ -162,7 +162,7 @@ func (h *ChatHandler) GetSavedChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -177,7 +177,7 @@ func (h *ChatHandler) GetSavedChat(c *gin.Context) {
 		}).Error("Failed to get or create saved chat")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get saved chat",
+			"error":      "Не удалось получить сохранённый чат",
 			"request_id": requestID,
 		})
 		return
@@ -208,7 +208,7 @@ func (h *ChatHandler) GetPinnedChats(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -226,7 +226,7 @@ func (h *ChatHandler) GetPinnedChats(c *gin.Context) {
 		}).Error("Failed to get pinned chats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get pinned chats",
+			"error":      "Не удалось получить закреплённые чаты",
 			"request_id": requestID,
 		})
 		return
@@ -258,7 +258,7 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -273,7 +273,7 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 		}).Warn("Invalid request body for create chat")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -290,7 +290,7 @@ func (h *ChatHandler) CreateChat(c *gin.Context) {
 		}).Error("Failed to create chat")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create chat"
+		errorMessage := "Не удалось создать чат"
 
 		if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
@@ -334,7 +334,7 @@ func (h *ChatHandler) GetChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -352,7 +352,7 @@ func (h *ChatHandler) GetChat(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -368,14 +368,14 @@ func (h *ChatHandler) GetChat(c *gin.Context) {
 		}).Error("Failed to get chat")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get chat"
+		errorMessage := "Не удалось получить чат"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		} else if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -410,7 +410,7 @@ func (h *ChatHandler) UpdateChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -428,7 +428,7 @@ func (h *ChatHandler) UpdateChat(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -444,7 +444,7 @@ func (h *ChatHandler) UpdateChat(c *gin.Context) {
 		}).Warn("Invalid request body for update chat")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -461,14 +461,14 @@ func (h *ChatHandler) UpdateChat(c *gin.Context) {
 		}).Error("Failed to update chat")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update chat"
+		errorMessage := "Не удалось обновить чат"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Insufficient permissions"
+			errorMessage = "Недостаточно прав"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -504,7 +504,7 @@ func (h *ChatHandler) DeleteChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -522,7 +522,7 @@ func (h *ChatHandler) DeleteChat(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -542,14 +542,14 @@ func (h *ChatHandler) DeleteChat(c *gin.Context) {
 		}).Error("Failed to delete chat")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete chat"
+		errorMessage := "Не удалось удалить чат"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		} else if strings.Contains(err.Error(), "only chat owner") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only chat owner can delete the chat"
+			errorMessage = "Только владелец чата может удалить чат"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -584,7 +584,7 @@ func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -602,7 +602,7 @@ func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -618,11 +618,11 @@ func (h *ChatHandler) GetChatMembers(c *gin.Context) {
 		}).Error("Failed to get chat members")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get chat members"
+		errorMessage := "Не удалось получить участников чата"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -659,7 +659,7 @@ func (h *ChatHandler) AddChatMember(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -677,7 +677,7 @@ func (h *ChatHandler) AddChatMember(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -693,7 +693,7 @@ func (h *ChatHandler) AddChatMember(c *gin.Context) {
 		}).Warn("Invalid request body for add chat member")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -711,14 +711,14 @@ func (h *ChatHandler) AddChatMember(c *gin.Context) {
 		}).Error("Failed to add chat member")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to add member"
+		errorMessage := "Не удалось добавить участника"
 
 		if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Insufficient permissions"
+			errorMessage = "Недостаточно прав"
 		} else if strings.Contains(err.Error(), "already a member") {
 			statusCode = http.StatusConflict
-			errorMessage = "User is already a member"
+			errorMessage = "Пользователь уже является участником"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -754,7 +754,7 @@ func (h *ChatHandler) UpdateChatMemberRole(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -772,7 +772,7 @@ func (h *ChatHandler) UpdateChatMemberRole(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -791,7 +791,7 @@ func (h *ChatHandler) UpdateChatMemberRole(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -808,7 +808,7 @@ func (h *ChatHandler) UpdateChatMemberRole(c *gin.Context) {
 		}).Warn("Invalid request body for update chat member role")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -827,20 +827,20 @@ func (h *ChatHandler) UpdateChatMemberRole(c *gin.Context) {
 		}).Error("Failed to update chat member role")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update member role"
+		errorMessage := "Не удалось обновить роль участника"
 
 		if strings.Contains(err.Error(), "only chat owner or admin") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only chat owner or admin can change member roles"
+			errorMessage = "Только владелец или администратор чата может менять роли участников"
 		} else if strings.Contains(err.Error(), "only chat owner can change admin") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only chat owner can change admin roles"
+			errorMessage = "Только владелец чата может менять роли администраторов"
 		} else if strings.Contains(err.Error(), "cannot change owner role") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Cannot change owner role"
+			errorMessage = "Нельзя изменить роль владельца"
 		} else if strings.Contains(err.Error(), "cannot promote to owner") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Cannot promote to owner"
+			errorMessage = "Нельзя повысить до владельца"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -877,7 +877,7 @@ func (h *ChatHandler) RemoveChatMember(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -895,7 +895,7 @@ func (h *ChatHandler) RemoveChatMember(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -914,7 +914,7 @@ func (h *ChatHandler) RemoveChatMember(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -931,11 +931,11 @@ func (h *ChatHandler) RemoveChatMember(c *gin.Context) {
 		}).Error("Failed to remove chat member")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to remove member"
+		errorMessage := "Не удалось удалить участника"
 
 		if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Insufficient permissions"
+			errorMessage = "Недостаточно прав"
 		} else if strings.Contains(err.Error(), "cannot remove") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -974,7 +974,7 @@ func (h *ChatHandler) JoinChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -992,7 +992,7 @@ func (h *ChatHandler) JoinChat(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1008,23 +1008,23 @@ func (h *ChatHandler) JoinChat(c *gin.Context) {
 		}).Error("Failed to join chat")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to join chat"
+		errorMessage := "Не удалось присоединиться к чату"
 
 		if strings.Contains(err.Error(), "not active") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Chat is not active"
+			errorMessage = "Чат неактивен"
 		} else if strings.Contains(err.Error(), "already a member") {
 			statusCode = http.StatusConflict
-			errorMessage = "User is already a member of this chat"
+			errorMessage = "Пользователь уже является участником этого чата"
 		} else if strings.Contains(err.Error(), "private chat") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot join private chat"
+			errorMessage = "Нельзя присоединиться к приватному чату"
 		} else if strings.Contains(err.Error(), "maximum member limit") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Chat has reached maximum member limit"
+			errorMessage = "Чат достиг максимального количества участников"
 		} else if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1059,7 +1059,7 @@ func (h *ChatHandler) ToggleFavorite(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1077,7 +1077,7 @@ func (h *ChatHandler) ToggleFavorite(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1096,7 +1096,7 @@ func (h *ChatHandler) ToggleFavorite(c *gin.Context) {
 		}).Warn("Invalid request body for toggle favorite")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1114,14 +1114,14 @@ func (h *ChatHandler) ToggleFavorite(c *gin.Context) {
 		}).Error("Failed to toggle favorite status")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update favorite status"
+		errorMessage := "Не удалось обновить статус избранного"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "User is not a member of this chat"
+			errorMessage = "Пользователь не является участником этого чата"
 		} else if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1158,7 +1158,7 @@ func (h *ChatHandler) TogglePinned(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1176,7 +1176,7 @@ func (h *ChatHandler) TogglePinned(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1195,7 +1195,7 @@ func (h *ChatHandler) TogglePinned(c *gin.Context) {
 		}).Warn("Invalid request body for toggle pinned")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1213,14 +1213,14 @@ func (h *ChatHandler) TogglePinned(c *gin.Context) {
 		}).Error("Failed to toggle pinned status")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update pinned status"
+		errorMessage := "Не удалось обновить статус закрепления"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "User is not a member of this chat"
+			errorMessage = "Пользователь не является участником этого чата"
 		} else if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1251,7 +1251,7 @@ func (h *ChatHandler) MuteChat(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1261,7 +1261,7 @@ func (h *ChatHandler) MuteChat(c *gin.Context) {
 	chatID, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1270,7 +1270,7 @@ func (h *ChatHandler) MuteChat(c *gin.Context) {
 	var req models.MuteChatRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body. Duration must be one of: 1h, 12h, forever",
+			"error":      "Неверное тело запроса. Длительность должна быть одной из: 1h, 12h, forever",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1280,11 +1280,11 @@ func (h *ChatHandler) MuteChat(c *gin.Context) {
 	mutedUntil, err := h.chatUsecase.MuteChat(userID, uint(chatID), req.Duration)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to mute chat"
+		errorMessage := "Не удалось отключить уведомления чата"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "User is not a member of this chat"
+			errorMessage = "Пользователь не является участником этого чата"
 		} else if strings.Contains(err.Error(), "invalid") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -1318,7 +1318,7 @@ func (h *ChatHandler) UnmuteChat(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1328,7 +1328,7 @@ func (h *ChatHandler) UnmuteChat(c *gin.Context) {
 	chatID, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1337,11 +1337,11 @@ func (h *ChatHandler) UnmuteChat(c *gin.Context) {
 	err = h.chatUsecase.UnmuteChat(userID, uint(chatID))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to unmute chat"
+		errorMessage := "Не удалось включить уведомления чата"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "User is not a member of this chat"
+			errorMessage = "Пользователь не является участником этого чата"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1370,7 +1370,7 @@ func (h *ChatHandler) GetGlobalMutePreferences(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1379,7 +1379,7 @@ func (h *ChatHandler) GetGlobalMutePreferences(c *gin.Context) {
 	prefs, err := h.chatUsecase.GetGlobalMutePreferences(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get mute preferences",
+			"error":      "Не удалось получить настройки уведомлений",
 			"request_id": requestID,
 		})
 		return
@@ -1398,7 +1398,7 @@ func (h *ChatHandler) UpdateGlobalMutePreferences(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1407,7 +1407,7 @@ func (h *ChatHandler) UpdateGlobalMutePreferences(c *gin.Context) {
 	var req models.UpdateGlobalMuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body. Values must be one of: 1h, 12h, forever, off",
+			"error":      "Неверное тело запроса. Значения должны быть одними из: 1h, 12h, forever, off",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1448,7 +1448,7 @@ func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1465,7 +1465,7 @@ func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
 		}).Warn("Invalid chat ID format")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1499,14 +1499,14 @@ func (h *ChatHandler) GetChatAttachments(c *gin.Context) {
 		}).Error("Failed to get chat attachments")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get attachments"
+		errorMessage := "Не удалось получить вложения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "You are not a member of this chat"
+			errorMessage = "Вы не являетесь участником этого чата"
 		} else if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1540,7 +1540,7 @@ func (h *ChatHandler) GetChatLinks(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1550,7 +1550,7 @@ func (h *ChatHandler) GetChatLinks(c *gin.Context) {
 	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1575,14 +1575,14 @@ func (h *ChatHandler) GetChatLinks(c *gin.Context) {
 	links, total, err := h.chatUsecase.GetChatLinks(userID, uint(chatID), limit, offset)
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get links"
+		errorMessage := "Не удалось получить ссылки"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "You are not a member of this chat"
+			errorMessage = "Вы не являетесь участником этого чата"
 		} else if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Chat not found"
+			errorMessage = "Чат не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1614,7 +1614,7 @@ func (h *ChatHandler) GetTotalUnreadCount(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1630,7 +1630,7 @@ func (h *ChatHandler) GetTotalUnreadCount(c *gin.Context) {
 		}).Error("Failed to get total unread count")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get unread count",
+			"error":      "Не удалось получить количество непрочитанных",
 			"request_id": requestID,
 		})
 		return

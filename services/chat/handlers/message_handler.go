@@ -44,7 +44,7 @@ func (h *MessageHandler) GetMessages(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -60,7 +60,7 @@ func (h *MessageHandler) GetMessages(c *gin.Context) {
 		}).Warn("Invalid query parameters for get messages")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid query parameters",
+			"error":      "Неверные параметры запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -77,14 +77,14 @@ func (h *MessageHandler) GetMessages(c *gin.Context) {
 		}).Error("Failed to get messages")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get messages"
+		errorMessage := "Не удалось получить сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		} else if strings.Contains(err.Error(), "chat_id is required") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "chat_id is required"
+			errorMessage = "chat_id обязателен"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -124,7 +124,7 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -139,7 +139,7 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		}).Warn("Invalid request body for send message")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -156,11 +156,11 @@ func (h *MessageHandler) SendMessage(c *gin.Context) {
 		}).Error("Failed to send message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to send message"
+		errorMessage := "Не удалось отправить сообщение"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		} else if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -210,7 +210,7 @@ func (h *MessageHandler) GetMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -228,7 +228,7 @@ func (h *MessageHandler) GetMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -244,14 +244,14 @@ func (h *MessageHandler) GetMessage(c *gin.Context) {
 		}).Error("Failed to get message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get message"
+		errorMessage := "Не удалось получить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -286,7 +286,7 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -304,7 +304,7 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -320,7 +320,7 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 		}).Warn("Invalid request body for update message")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -337,17 +337,17 @@ func (h *MessageHandler) UpdateMessage(c *gin.Context) {
 		}).Error("Failed to update message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update message"
+		errorMessage := "Не удалось обновить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "only message sender") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only message sender can edit the message"
+			errorMessage = "Только отправитель может редактировать сообщение"
 		} else if strings.Contains(err.Error(), "deleted message") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Cannot edit deleted message"
+			errorMessage = "Нельзя редактировать удалённое сообщение"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -382,7 +382,7 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -400,7 +400,7 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -432,14 +432,14 @@ func (h *MessageHandler) DeleteMessage(c *gin.Context) {
 		}).Error("Failed to delete message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete message"
+		errorMessage := "Не удалось удалить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Insufficient permissions"
+			errorMessage = "Недостаточно прав"
 		} else if strings.Contains(err.Error(), "invalid delete_for") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -474,7 +474,7 @@ func (h *MessageHandler) DeleteAttachment(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -483,7 +483,7 @@ func (h *MessageHandler) DeleteAttachment(c *gin.Context) {
 	messageID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -492,7 +492,7 @@ func (h *MessageHandler) DeleteAttachment(c *gin.Context) {
 	attachmentID, err := strconv.ParseUint(c.Param("attachmentId"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid attachment ID",
+			"error":      "Неверный ID вложения",
 			"request_id": requestID,
 		})
 		return
@@ -509,11 +509,11 @@ func (h *MessageHandler) DeleteAttachment(c *gin.Context) {
 		}).Error("Failed to delete attachment")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete attachment"
+		errorMessage := "Не удалось удалить вложение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Attachment not found"
+			errorMessage = "Вложение не найдено"
 		} else if strings.Contains(err.Error(), "insufficient permissions") || strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -548,7 +548,7 @@ func (h *MessageHandler) BulkDeleteMessages(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -564,7 +564,7 @@ func (h *MessageHandler) BulkDeleteMessages(c *gin.Context) {
 		}).Warn("Invalid request body")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -587,17 +587,17 @@ func (h *MessageHandler) BulkDeleteMessages(c *gin.Context) {
 		}).Error("Failed to bulk delete messages")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete messages"
+		errorMessage := "Не удалось удалить сообщения"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "One or more messages not found"
+			errorMessage = "Одно или несколько сообщений не найдены"
 		} else if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Insufficient permissions"
+			errorMessage = "Недостаточно прав"
 		} else if strings.Contains(err.Error(), "invalid delete_for") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -638,7 +638,7 @@ func (h *MessageHandler) BulkForwardMessages(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -654,7 +654,7 @@ func (h *MessageHandler) BulkForwardMessages(c *gin.Context) {
 		}).Warn("Invalid request body")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -673,11 +673,11 @@ func (h *MessageHandler) BulkForwardMessages(c *gin.Context) {
 		}).Error("Failed to bulk forward messages")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to forward messages"
+		errorMessage := "Не удалось переслать сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		} else if strings.Contains(err.Error(), "cannot be empty") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -724,7 +724,7 @@ func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -742,7 +742,7 @@ func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -772,11 +772,11 @@ func (h *MessageHandler) GetMessagesByChat(c *gin.Context) {
 		}).Error("Failed to get messages by chat")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get messages"
+		errorMessage := "Не удалось получить сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -837,7 +837,7 @@ func (h *MessageHandler) AddReaction(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -855,7 +855,7 @@ func (h *MessageHandler) AddReaction(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -871,7 +871,7 @@ func (h *MessageHandler) AddReaction(c *gin.Context) {
 		}).Warn("Invalid request body for add reaction")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -889,14 +889,14 @@ func (h *MessageHandler) AddReaction(c *gin.Context) {
 		}).Error("Failed to add reaction")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to add reaction"
+		errorMessage := "Не удалось добавить реакцию"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -932,7 +932,7 @@ func (h *MessageHandler) RemoveReaction(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -950,7 +950,7 @@ func (h *MessageHandler) RemoveReaction(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -966,7 +966,7 @@ func (h *MessageHandler) RemoveReaction(c *gin.Context) {
 		}).Warn("Emoji is required for remove reaction")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Emoji is required",
+			"error":      "Эмодзи обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -983,14 +983,14 @@ func (h *MessageHandler) RemoveReaction(c *gin.Context) {
 		}).Error("Failed to remove reaction")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to remove reaction"
+		errorMessage := "Не удалось удалить реакцию"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1026,7 +1026,7 @@ func (h *MessageHandler) MarkAsRead(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1044,7 +1044,7 @@ func (h *MessageHandler) MarkAsRead(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1060,14 +1060,14 @@ func (h *MessageHandler) MarkAsRead(c *gin.Context) {
 		}).Error("Failed to mark message as read")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to mark message as read"
+		errorMessage := "Не удалось отметить сообщение как прочитанное"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1102,7 +1102,7 @@ func (h *MessageHandler) MarkChatAsRead(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1120,7 +1120,7 @@ func (h *MessageHandler) MarkChatAsRead(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1136,11 +1136,11 @@ func (h *MessageHandler) MarkChatAsRead(c *gin.Context) {
 		}).Error("Failed to mark chat messages as read")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to mark chat messages as read"
+		errorMessage := "Не удалось отметить сообщения чата как прочитанные"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1175,7 +1175,7 @@ func (h *MessageHandler) ClearChatHistory(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1193,7 +1193,7 @@ func (h *MessageHandler) ClearChatHistory(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1209,11 +1209,11 @@ func (h *MessageHandler) ClearChatHistory(c *gin.Context) {
 		}).Error("Failed to clear chat history")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to clear chat history"
+		errorMessage := "Не удалось очистить историю чата"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1248,7 +1248,7 @@ func (h *MessageHandler) RestoreMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1266,7 +1266,7 @@ func (h *MessageHandler) RestoreMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1282,17 +1282,17 @@ func (h *MessageHandler) RestoreMessage(c *gin.Context) {
 		}).Error("Failed to restore message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to restore message"
+		errorMessage := "Не удалось восстановить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "only administrators") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only administrators can restore messages"
+			errorMessage = "Только администраторы могут восстанавливать сообщения"
 		} else if strings.Contains(err.Error(), "not deleted") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Message is not deleted"
+			errorMessage = "Сообщение не удалено"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1327,7 +1327,7 @@ func (h *MessageHandler) DeletePermanentMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1345,7 +1345,7 @@ func (h *MessageHandler) DeletePermanentMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1361,14 +1361,14 @@ func (h *MessageHandler) DeletePermanentMessage(c *gin.Context) {
 		}).Error("Failed to permanently delete message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to permanently delete message"
+		errorMessage := "Не удалось окончательно удалить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only administrators can permanently delete messages"
+			errorMessage = "Только администраторы могут окончательно удалять сообщения"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1403,7 +1403,7 @@ func (h *MessageHandler) PinMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1421,7 +1421,7 @@ func (h *MessageHandler) PinMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1437,20 +1437,20 @@ func (h *MessageHandler) PinMessage(c *gin.Context) {
 		}).Error("Failed to pin message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to pin message"
+		errorMessage := "Не удалось закрепить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "only administrators") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only administrators can pin messages"
+			errorMessage = "Только администраторы могут закреплять сообщения"
 		} else if strings.Contains(err.Error(), "already pinned") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Message is already pinned"
+			errorMessage = "Сообщение уже закреплено"
 		} else if strings.Contains(err.Error(), "deleted message") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Cannot pin deleted message"
+			errorMessage = "Нельзя закрепить удалённое сообщение"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1485,7 +1485,7 @@ func (h *MessageHandler) GetLatestMessages(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1503,7 +1503,7 @@ func (h *MessageHandler) GetLatestMessages(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1531,11 +1531,11 @@ func (h *MessageHandler) GetLatestMessages(c *gin.Context) {
 		}).Error("Failed to get latest messages")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get messages"
+		errorMessage := "Не удалось получить сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1570,7 +1570,7 @@ func (h *MessageHandler) GetMessagesBeforeID(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1588,7 +1588,7 @@ func (h *MessageHandler) GetMessagesBeforeID(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1606,7 +1606,7 @@ func (h *MessageHandler) GetMessagesBeforeID(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1636,11 +1636,11 @@ func (h *MessageHandler) GetMessagesBeforeID(c *gin.Context) {
 		}).Error("Failed to get messages before ID")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get messages"
+		errorMessage := "Не удалось получить сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1675,7 +1675,7 @@ func (h *MessageHandler) GetMessagesAfterID(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1693,7 +1693,7 @@ func (h *MessageHandler) GetMessagesAfterID(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1711,7 +1711,7 @@ func (h *MessageHandler) GetMessagesAfterID(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1741,11 +1741,11 @@ func (h *MessageHandler) GetMessagesAfterID(c *gin.Context) {
 		}).Error("Failed to get messages after ID")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get messages"
+		errorMessage := "Не удалось получить сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1780,7 +1780,7 @@ func (h *MessageHandler) GetMessageContext(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1798,7 +1798,7 @@ func (h *MessageHandler) GetMessageContext(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -1816,7 +1816,7 @@ func (h *MessageHandler) GetMessageContext(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1846,14 +1846,14 @@ func (h *MessageHandler) GetMessageContext(c *gin.Context) {
 		}).Error("Failed to get message context")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get message context"
+		errorMessage := "Не удалось получить контекст сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		} else if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Target message not found"
+			errorMessage = "Целевое сообщение не найдено"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1889,7 +1889,7 @@ func (h *MessageHandler) UnpinMessage(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1907,7 +1907,7 @@ func (h *MessageHandler) UnpinMessage(c *gin.Context) {
 		}).Warn("Invalid message ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -1923,17 +1923,17 @@ func (h *MessageHandler) UnpinMessage(c *gin.Context) {
 		}).Error("Failed to unpin message")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to unpin message"
+		errorMessage := "Не удалось открепить сообщение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Message not found"
+			errorMessage = "Сообщение не найдено"
 		} else if strings.Contains(err.Error(), "only administrators") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Only administrators can unpin messages"
+			errorMessage = "Только администраторы могут откреплять сообщения"
 		} else if strings.Contains(err.Error(), "not pinned") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Message is not pinned"
+			errorMessage = "Сообщение не закреплено"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1968,7 +1968,7 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1986,7 +1986,7 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 		}).Warn("Invalid chat ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -2003,7 +2003,7 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 		}).Warn("Invalid query parameters for search")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid query parameters",
+			"error":      "Неверные параметры запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -2019,7 +2019,7 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 		}).Warn("Search query is empty")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Search query cannot be empty",
+			"error":      "Поисковый запрос не может быть пустым",
 			"request_id": requestID,
 		})
 		return
@@ -2037,11 +2037,11 @@ func (h *MessageHandler) SearchMessages(c *gin.Context) {
 		}).Error("Failed to search messages")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to search messages"
+		errorMessage := "Не удалось найти сообщения"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -2070,7 +2070,7 @@ func (h *MessageHandler) GetThreadMessages(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -2080,7 +2080,7 @@ func (h *MessageHandler) GetThreadMessages(c *gin.Context) {
 	chatID, err := strconv.ParseUint(chatIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid chat ID",
+			"error":      "Неверный ID чата",
 			"request_id": requestID,
 		})
 		return
@@ -2090,7 +2090,7 @@ func (h *MessageHandler) GetThreadMessages(c *gin.Context) {
 	messageID, err := strconv.ParseUint(messageIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid message ID",
+			"error":      "Неверный ID сообщения",
 			"request_id": requestID,
 		})
 		return
@@ -2118,15 +2118,15 @@ func (h *MessageHandler) GetThreadMessages(c *gin.Context) {
 		}).Error("Failed to get thread messages")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get thread messages"
+		errorMessage := "Не удалось получить сообщения ветки"
 
 		if strings.Contains(err.Error(), "not a member") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Thread not found"
+			errorMessage = "Ветка не найдена"
 		}
 
 		c.JSON(statusCode, gin.H{

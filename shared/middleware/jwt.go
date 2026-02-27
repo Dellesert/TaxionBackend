@@ -106,7 +106,7 @@ func JWTMiddleware(config *JWTConfig) gin.HandlerFunc {
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization header is required",
+				"error": "Требуется заголовок авторизации",
 			})
 			c.Abort()
 			return
@@ -116,7 +116,7 @@ func JWTMiddleware(config *JWTConfig) gin.HandlerFunc {
 		tokenParts := strings.Split(authHeader, " ")
 		if len(tokenParts) != 2 || tokenParts[0] != "Bearer" {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid authorization header format",
+				"error": "Неверный формат заголовка авторизации",
 			})
 			c.Abort()
 			return
@@ -128,7 +128,7 @@ func JWTMiddleware(config *JWTConfig) gin.HandlerFunc {
 		claims, err := ValidateToken(tokenString, config)
 		if err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid or expired token",
+				"error": "Недействительный или просроченный токен",
 			})
 			c.Abort()
 			return
@@ -150,7 +150,7 @@ func RequireRole(allowedRoles ...models.Role) gin.HandlerFunc {
 		userRole, exists := c.Get("user_role")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error": "User role not found in context",
+				"error": "Роль пользователя не найдена",
 			})
 			c.Abort()
 			return
@@ -159,7 +159,7 @@ func RequireRole(allowedRoles ...models.Role) gin.HandlerFunc {
 		role, ok := userRole.(models.Role)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Invalid role type in context",
+				"error": "Неверный тип роли",
 			})
 			c.Abort()
 			return
@@ -174,7 +174,7 @@ func RequireRole(allowedRoles ...models.Role) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error": "Insufficient permissions",
+			"error": "Недостаточно прав",
 		})
 		c.Abort()
 	}

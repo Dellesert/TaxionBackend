@@ -90,7 +90,7 @@ func (h *SessionHandler) GetActiveSessions(c *gin.Context) {
 		}).Error("Session store not configured")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Session management not available",
+			"error":      "Управление сессиями недоступно",
 			"request_id": requestID,
 		})
 		return
@@ -105,7 +105,7 @@ func (h *SessionHandler) GetActiveSessions(c *gin.Context) {
 		}).Error("Failed to get user sessions")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get active sessions",
+			"error":      "Не удалось получить активные сессии",
 			"request_id": requestID,
 		})
 		return
@@ -132,7 +132,7 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 
 	if sessionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Session ID is required",
+			"error":      "ID сессии обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -146,7 +146,7 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		}).Error("Session store not configured")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Session management not available",
+			"error":      "Управление сессиями недоступно",
 			"request_id": requestID,
 		})
 		return
@@ -163,7 +163,7 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		}).Warn("Session not found or already deleted")
 
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":      "Session not found",
+			"error":      "Сессия не найдена",
 			"request_id": requestID,
 		})
 		return
@@ -179,7 +179,7 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		}).Warn("User attempted to delete another user's session")
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "You can only delete your own sessions",
+			"error":      "Вы можете удалять только свои сессии",
 			"request_id": requestID,
 		})
 		return
@@ -195,7 +195,7 @@ func (h *SessionHandler) DeleteSession(c *gin.Context) {
 		}).Error("Failed to delete session")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to delete session",
+			"error":      "Не удалось удалить сессию",
 			"request_id": requestID,
 		})
 		return
@@ -242,7 +242,7 @@ func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
 		}).Error("Session store not configured")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Session management not available",
+			"error":      "Управление сессиями недоступно",
 			"request_id": requestID,
 		})
 		return
@@ -258,7 +258,7 @@ func (h *SessionHandler) DeleteAllSessions(c *gin.Context) {
 		}).Error("Failed to get user sessions")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to delete sessions",
+			"error":      "Не удалось удалить сессии",
 			"request_id": requestID,
 		})
 		return
@@ -312,7 +312,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 
 	if sessionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Session ID is required",
+			"error":      "ID сессии обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -323,7 +323,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -331,7 +331,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 
 	if len(req.CustomName) > 100 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Custom name must be 100 characters or less",
+			"error":      "Пользовательское имя должно быть не более 100 символов",
 			"request_id": requestID,
 		})
 		return
@@ -340,7 +340,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 	authConfig := middleware.GetAuthConfig()
 	if authConfig == nil || authConfig.SessionStore == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Session management not available",
+			"error":      "Управление сессиями недоступно",
 			"request_id": requestID,
 		})
 		return
@@ -350,7 +350,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 	session, err := authConfig.SessionStore.GetSession(c.Request.Context(), sessionID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":      "Session not found",
+			"error":      "Сессия не найдена",
 			"request_id": requestID,
 		})
 		return
@@ -358,7 +358,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 
 	if session.UserID != userID {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "You can only rename your own sessions",
+			"error":      "Вы можете переименовывать только свои сессии",
 			"request_id": requestID,
 		})
 		return
@@ -373,7 +373,7 @@ func (h *SessionHandler) RenameSession(c *gin.Context) {
 		}).Error("Failed to rename session")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to rename session",
+			"error":      "Не удалось переименовать сессию",
 			"request_id": requestID,
 		})
 		return
@@ -402,7 +402,7 @@ func (h *SessionHandler) TerminateSessionInternal(c *gin.Context) {
 	if sessionID == "" {
 		logger.WithField("request_id", requestID).Warn("Session ID is required")
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Session ID is required",
+			"error":      "ID сессии обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -416,7 +416,7 @@ func (h *SessionHandler) TerminateSessionInternal(c *gin.Context) {
 		}).Error("Session store not configured")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Session management not available",
+			"error":      "Управление сессиями недоступно",
 			"request_id": requestID,
 		})
 		return
@@ -435,7 +435,7 @@ func (h *SessionHandler) TerminateSessionInternal(c *gin.Context) {
 			"request_id": requestID,
 		}).Error("Failed to delete session from Redis")
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to terminate session",
+			"error":      "Не удалось завершить сессию",
 			"request_id": requestID,
 		})
 		return

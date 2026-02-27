@@ -26,7 +26,7 @@ func (h *ChatHandler) GetOrCreateDirectChat(c *gin.Context) {
 	// Get current user ID from JWT token
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
 		return
 	}
 
@@ -34,7 +34,7 @@ func (h *ChatHandler) GetOrCreateDirectChat(c *gin.Context) {
 	targetUserIDStr := c.Param("userId")
 	targetUserID, err := strconv.ParseUint(targetUserIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID пользователя"})
 		return
 	}
 
@@ -65,7 +65,7 @@ func (h *ChatHandler) GetOrCreateTaskChat(c *gin.Context) {
 	// Get current user ID from JWT token
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not authenticated"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не аутентифицирован"})
 		return
 	}
 
@@ -73,7 +73,7 @@ func (h *ChatHandler) GetOrCreateTaskChat(c *gin.Context) {
 	taskIDStr := c.Param("taskId")
 	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 

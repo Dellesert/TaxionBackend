@@ -38,7 +38,7 @@ func NewBackupHandler(backupUsecase *usecase.BackupUsecase) *BackupHandler {
 func (h *BackupHandler) CreateBackup(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
@@ -95,13 +95,13 @@ func (h *BackupHandler) ListBackups(c *gin.Context) {
 func (h *BackupHandler) GetBackup(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID резервной копии"})
 		return
 	}
 
 	backup, err := h.backupUsecase.GetBackup(uint(id))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Backup not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Резервная копия не найдена"})
 		return
 	}
 
@@ -123,7 +123,7 @@ func (h *BackupHandler) GetBackup(c *gin.Context) {
 func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID резервной копии"})
 		return
 	}
 
@@ -152,7 +152,7 @@ func (h *BackupHandler) RestoreBackup(c *gin.Context) {
 func (h *BackupHandler) DeleteBackup(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID резервной копии"})
 		return
 	}
 
@@ -180,7 +180,7 @@ func (h *BackupHandler) DeleteBackup(c *gin.Context) {
 func (h *BackupHandler) DownloadBackup(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid backup ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID резервной копии"})
 		return
 	}
 

@@ -28,7 +28,7 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -46,7 +46,7 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -62,7 +62,7 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 		}).Warn("Invalid request body for add comment")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -88,7 +88,7 @@ func (h *TaskHandler) AddComment(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to add comment",
+			"error":      "Не удалось добавить комментарий",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -123,7 +123,7 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -138,7 +138,7 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -156,7 +156,7 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -173,7 +173,7 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		}).Warn("Invalid filter parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid filter parameters",
+			"error":      "Неверные параметры фильтра",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -205,7 +205,7 @@ func (h *TaskHandler) GetTaskComments(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get task comments",
+			"error":      "Не удалось получить комментарии задачи",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -235,7 +235,7 @@ func (h *TaskHandler) UpdateComment(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -253,7 +253,7 @@ func (h *TaskHandler) UpdateComment(c *gin.Context) {
 		}).Warn("Invalid comment ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid comment ID",
+			"error":      "Неверный ID комментария",
 			"request_id": requestID,
 		})
 		return
@@ -269,7 +269,7 @@ func (h *TaskHandler) UpdateComment(c *gin.Context) {
 		}).Warn("Invalid request body for update comment")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -295,7 +295,7 @@ func (h *TaskHandler) UpdateComment(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update comment",
+			"error":      "Не удалось обновить комментарий",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -329,7 +329,7 @@ func (h *TaskHandler) DeleteComment(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -347,7 +347,7 @@ func (h *TaskHandler) DeleteComment(c *gin.Context) {
 		}).Warn("Invalid comment ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid comment ID",
+			"error":      "Неверный ID комментария",
 			"request_id": requestID,
 		})
 		return
@@ -370,7 +370,7 @@ func (h *TaskHandler) DeleteComment(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete comment",
+			"error":      "Не удалось удалить комментарий",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

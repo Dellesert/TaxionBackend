@@ -30,7 +30,7 @@ func (h *HolidayHandler) GetHolidays(c *gin.Context) {
 	yearStr := c.Query("year")
 	if yearStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "year query parameter is required",
+			"error":      "Параметр year обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -39,7 +39,7 @@ func (h *HolidayHandler) GetHolidays(c *gin.Context) {
 	year, err := strconv.Atoi(yearStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "invalid year parameter",
+			"error":      "Неверный параметр year",
 			"request_id": requestID,
 		})
 		return
@@ -59,7 +59,7 @@ func (h *HolidayHandler) GetHolidays(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get holidays",
+			"error":      "Не удалось получить праздники",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

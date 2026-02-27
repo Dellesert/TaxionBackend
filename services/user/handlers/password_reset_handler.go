@@ -37,7 +37,7 @@ func (h *PasswordResetHandler) InitiatePasswordReset(c *gin.Context) {
 	adminID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -47,7 +47,7 @@ func (h *PasswordResetHandler) InitiatePasswordReset(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleAdmin && userRole != sharedmodels.RoleSuperAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can initiate password reset",
+			"error":      "Только администраторы могут инициировать сброс пароля",
 			"request_id": requestID,
 		})
 		return
@@ -61,7 +61,7 @@ func (h *PasswordResetHandler) InitiatePasswordReset(c *gin.Context) {
 		}).Warn("Invalid request body for initiate password reset")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -79,7 +79,7 @@ func (h *PasswordResetHandler) InitiatePasswordReset(c *gin.Context) {
 		}).Error("Failed to initiate password reset")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to initiate password reset",
+			"error":      "Не удалось инициировать сброс пароля",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -111,7 +111,7 @@ func (h *PasswordResetHandler) ValidateResetToken(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Reset token is required",
+			"error":      "Токен сброса обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -150,7 +150,7 @@ func (h *PasswordResetHandler) ResetPassword(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Reset token is required",
+			"error":      "Токен сброса обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -164,7 +164,7 @@ func (h *PasswordResetHandler) ResetPassword(c *gin.Context) {
 		}).Warn("Invalid request body for reset password")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -213,7 +213,7 @@ func (h *PasswordResetHandler) RequestPasswordReset(c *gin.Context) {
 		}).Warn("Invalid request body for password reset request")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

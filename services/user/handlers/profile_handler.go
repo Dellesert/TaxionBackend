@@ -40,7 +40,7 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 		}).Warn("Invalid profile ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid profile ID",
+			"error":      "Неверный ID профиля",
 			"request_id": requestID,
 		})
 		return
@@ -55,14 +55,14 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 		}).Error("Failed to get profile")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get profile"
+		errorMessage := "Не удалось получить профиль"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Profile not found"
+			errorMessage = "Профиль не найден"
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Profile is deactivated"
+			errorMessage = "Профиль деактивирован"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -97,7 +97,7 @@ func (h *ProfileHandler) GetMyProfile(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -112,14 +112,14 @@ func (h *ProfileHandler) GetMyProfile(c *gin.Context) {
 		}).Error("Failed to get my profile")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get profile"
+		errorMessage := "Не удалось получить профиль"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Profile not found"
+			errorMessage = "Профиль не найден"
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Profile is deactivated"
+			errorMessage = "Профиль деактивирован"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -154,7 +154,7 @@ func (h *ProfileHandler) UpdateMyProfile(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -169,7 +169,7 @@ func (h *ProfileHandler) UpdateMyProfile(c *gin.Context) {
 		}).Warn("Invalid request body for update profile")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -185,20 +185,20 @@ func (h *ProfileHandler) UpdateMyProfile(c *gin.Context) {
 		}).Error("Failed to update profile")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update profile"
+		errorMessage := "Не удалось обновить профиль"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Profile not found"
+			errorMessage = "Профиль не найден"
 		} else if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Profile is deactivated"
+			errorMessage = "Профиль деактивирован"
 		} else if strings.Contains(err.Error(), "department not found") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Department not found"
+			errorMessage = "Отдел не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -235,7 +235,7 @@ func (h *ProfileHandler) ChangePassword(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -250,7 +250,7 @@ func (h *ProfileHandler) ChangePassword(c *gin.Context) {
 		}).Warn("Invalid request body for change password")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -266,20 +266,20 @@ func (h *ProfileHandler) ChangePassword(c *gin.Context) {
 		}).Error("Failed to change password")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to change password"
+		errorMessage := "Не удалось сменить пароль"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Profile not found"
+			errorMessage = "Профиль не найден"
 		} else if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "current password is incorrect") {
 			statusCode = http.StatusBadRequest
-			errorMessage = "Current password is incorrect"
+			errorMessage = "Текущий пароль неверен"
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Profile is deactivated"
+			errorMessage = "Профиль деактивирован"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -313,7 +313,7 @@ func (h *ProfileHandler) ChangeSuperAdminPassword(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -331,7 +331,7 @@ func (h *ProfileHandler) ChangeSuperAdminPassword(c *gin.Context) {
 		}).Warn("Invalid request body for change super admin password")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -347,20 +347,20 @@ func (h *ProfileHandler) ChangeSuperAdminPassword(c *gin.Context) {
 		}).Error("Failed to change super admin password")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to change password"
+		errorMessage := "Не удалось сменить пароль"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Profile not found"
+			errorMessage = "Профиль не найден"
 		} else if strings.Contains(err.Error(), "unauthorized") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Unauthorized: only super admin can use this endpoint"
+			errorMessage = "Только суперадмин может использовать этот эндпоинт"
 		} else if strings.Contains(err.Error(), "validation") || strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "must be") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Profile is deactivated"
+			errorMessage = "Профиль деактивирован"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -394,7 +394,7 @@ func (h *ProfileHandler) UpdateSuperAdmin2FAStatus(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -412,7 +412,7 @@ func (h *ProfileHandler) UpdateSuperAdmin2FAStatus(c *gin.Context) {
 		}).Warn("Invalid request body for update super admin 2FA status")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -429,14 +429,14 @@ func (h *ProfileHandler) UpdateSuperAdmin2FAStatus(c *gin.Context) {
 		}).Error("Failed to update super admin 2FA status")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update 2FA status"
+		errorMessage := "Не удалось обновить статус 2FA"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "unauthorized") || strings.Contains(err.Error(), "forbidden") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Unauthorized to change 2FA status"
+			errorMessage = "Нет прав для изменения статуса 2FA"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -472,7 +472,7 @@ func (h *ProfileHandler) UpdateStatus(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -487,7 +487,7 @@ func (h *ProfileHandler) UpdateStatus(c *gin.Context) {
 		}).Warn("Invalid request body for update status")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -504,17 +504,17 @@ func (h *ProfileHandler) UpdateStatus(c *gin.Context) {
 		}).Error("Failed to update status")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update status"
+		errorMessage := "Не удалось обновить статус"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Profile not found"
+			errorMessage = "Профиль не найден"
 		} else if strings.Contains(err.Error(), "invalid status") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "deactivated") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Profile is deactivated"
+			errorMessage = "Профиль деактивирован"
 		}
 
 		c.JSON(statusCode, gin.H{

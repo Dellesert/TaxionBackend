@@ -40,7 +40,7 @@ func (h *AbsenceHandler) CreateAbsence(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -55,7 +55,7 @@ func (h *AbsenceHandler) CreateAbsence(c *gin.Context) {
 		}).Warn("Invalid request body for create absence")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -77,7 +77,7 @@ func (h *AbsenceHandler) CreateAbsence(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create absence",
+			"error":      "Не удалось создать отсутствие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -107,7 +107,7 @@ func (h *AbsenceHandler) GetAbsence(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -127,7 +127,7 @@ func (h *AbsenceHandler) GetAbsence(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get absence",
+			"error":      "Не удалось получить отсутствие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -209,7 +209,7 @@ func (h *AbsenceHandler) GetAbsences(c *gin.Context) {
 		}).Error("Failed to get absences")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get absences",
+			"error":      "Не удалось получить отсутствия",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -233,7 +233,7 @@ func (h *AbsenceHandler) GetUserAbsences(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -267,7 +267,7 @@ func (h *AbsenceHandler) GetUserAbsences(c *gin.Context) {
 		}).Error("Failed to get user absences")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user absences",
+			"error":      "Не удалось получить отсутствия пользователя",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -292,7 +292,7 @@ func (h *AbsenceHandler) UpdateAbsence(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -301,7 +301,7 @@ func (h *AbsenceHandler) UpdateAbsence(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -310,7 +310,7 @@ func (h *AbsenceHandler) UpdateAbsence(c *gin.Context) {
 	var req models.UpdateAbsenceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -334,7 +334,7 @@ func (h *AbsenceHandler) UpdateAbsence(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update absence",
+			"error":      "Не удалось обновить отсутствие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -363,7 +363,7 @@ func (h *AbsenceHandler) DeleteAbsence(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -372,7 +372,7 @@ func (h *AbsenceHandler) DeleteAbsence(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -392,7 +392,7 @@ func (h *AbsenceHandler) DeleteAbsence(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete absence",
+			"error":      "Не удалось удалить отсутствие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

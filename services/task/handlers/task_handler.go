@@ -43,7 +43,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -57,7 +57,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 			"error":      err.Error(),
 		}).Error("Failed to get user role from context")
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -82,7 +82,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		}).Warn("Invalid request body for create task")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -106,7 +106,7 @@ func (h *TaskHandler) CreateTask(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create task",
+			"error":      "Не удалось создать задачу",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -154,7 +154,7 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -169,7 +169,7 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -187,7 +187,7 @@ func (h *TaskHandler) GetTask(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -236,7 +236,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -251,7 +251,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -269,7 +269,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -285,7 +285,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		}).Warn("Invalid request body for update task")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -311,7 +311,7 @@ func (h *TaskHandler) UpdateTask(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update task",
+			"error":      "Не удалось обновить задачу",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -356,7 +356,7 @@ func (h *TaskHandler) AssignTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -374,7 +374,7 @@ func (h *TaskHandler) AssignTask(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -390,7 +390,7 @@ func (h *TaskHandler) AssignTask(c *gin.Context) {
 		}).Warn("Invalid request body for assign task")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -417,7 +417,7 @@ func (h *TaskHandler) AssignTask(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to assign task",
+			"error":      "Не удалось назначить задачу",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -452,7 +452,7 @@ func (h *TaskHandler) UnassignTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -470,7 +470,7 @@ func (h *TaskHandler) UnassignTask(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -493,7 +493,7 @@ func (h *TaskHandler) UnassignTask(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to unassign task",
+			"error":      "Не удалось снять назначение задачи",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -529,7 +529,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -544,7 +544,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -560,7 +560,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		}).Warn("Invalid filter parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid filter parameters",
+			"error":      "Неверные параметры фильтра",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -584,7 +584,7 @@ func (h *TaskHandler) GetTasks(c *gin.Context) {
 		}).Error("Failed to get tasks")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get tasks",
+			"error":      "Не удалось получить задачи",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -641,7 +641,7 @@ func (h *TaskHandler) UpdateTaskStatus(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -659,7 +659,7 @@ func (h *TaskHandler) UpdateTaskStatus(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -675,7 +675,7 @@ func (h *TaskHandler) UpdateTaskStatus(c *gin.Context) {
 		}).Warn("Invalid request body for update task status")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -702,7 +702,7 @@ func (h *TaskHandler) UpdateTaskStatus(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update task status",
+			"error":      "Не удалось обновить статус задачи",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -752,7 +752,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -767,7 +767,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -785,7 +785,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -808,7 +808,7 @@ func (h *TaskHandler) DeleteTask(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete task",
+			"error":      "Не удалось удалить задачу",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -841,7 +841,7 @@ func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -856,7 +856,7 @@ func (h *TaskHandler) GetTaskStats(c *gin.Context) {
 		}).Error("Failed to get task stats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get task stats",
+			"error":      "Не удалось получить статистику задач",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -935,7 +935,7 @@ func (h *TaskHandler) UpdateAssigneeStatus(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -946,7 +946,7 @@ func (h *TaskHandler) UpdateAssigneeStatus(c *gin.Context) {
 	taskID, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -955,7 +955,7 @@ func (h *TaskHandler) UpdateAssigneeStatus(c *gin.Context) {
 	var req models.UpdateAssigneeStatusRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -982,7 +982,7 @@ func (h *TaskHandler) UpdateAssigneeStatus(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update assignee status",
+			"error":      "Не удалось обновить статус исполнителя",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1014,7 +1014,7 @@ func (h *TaskHandler) CreateSubtask(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1024,7 +1024,7 @@ func (h *TaskHandler) CreateSubtask(c *gin.Context) {
 	parentTaskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1034,7 +1034,7 @@ func (h *TaskHandler) CreateSubtask(c *gin.Context) {
 	var req models.CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1070,7 +1070,7 @@ func (h *TaskHandler) GetSubtasks(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1080,7 +1080,7 @@ func (h *TaskHandler) GetSubtasks(c *gin.Context) {
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1113,7 +1113,7 @@ func (h *TaskHandler) GetTaskHierarchy(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1123,7 +1123,7 @@ func (h *TaskHandler) GetTaskHierarchy(c *gin.Context) {
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1158,7 +1158,7 @@ func (h *TaskHandler) DelegateTask(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1168,7 +1168,7 @@ func (h *TaskHandler) DelegateTask(c *gin.Context) {
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1180,7 +1180,7 @@ func (h *TaskHandler) DelegateTask(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1216,7 +1216,7 @@ func (h *TaskHandler) GetDelegationChain(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1226,7 +1226,7 @@ func (h *TaskHandler) GetDelegationChain(c *gin.Context) {
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1261,7 +1261,7 @@ func (h *TaskHandler) MarkTaskAsViewed(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1271,7 +1271,7 @@ func (h *TaskHandler) MarkTaskAsViewed(c *gin.Context) {
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1306,7 +1306,7 @@ func (h *TaskHandler) UpdateTaskProgress(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1316,7 +1316,7 @@ func (h *TaskHandler) UpdateTaskProgress(c *gin.Context) {
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -1328,7 +1328,7 @@ func (h *TaskHandler) UpdateTaskProgress(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

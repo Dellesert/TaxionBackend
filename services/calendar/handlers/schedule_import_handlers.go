@@ -35,7 +35,7 @@ func (h *ScheduleImportHandler) ImportSchedule(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -44,7 +44,7 @@ func (h *ScheduleImportHandler) ImportSchedule(c *gin.Context) {
 	var req models.ImportScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -60,7 +60,7 @@ func (h *ScheduleImportHandler) ImportSchedule(c *gin.Context) {
 		}).Error("Failed to get users for matching")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get users for matching",
+			"error":      "Не удалось получить пользователей для сопоставления",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -79,7 +79,7 @@ func (h *ScheduleImportHandler) ImportSchedule(c *gin.Context) {
 			}).Error("Failed to preview import")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to preview import",
+				"error":      "Не удалось предварительно просмотреть импорт",
 				"details":    err.Error(),
 				"request_id": requestID,
 			})
@@ -104,7 +104,7 @@ func (h *ScheduleImportHandler) ImportSchedule(c *gin.Context) {
 		}).Error("Failed to import schedule")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to import schedule",
+			"error":      "Не удалось импортировать график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

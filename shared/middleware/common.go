@@ -105,7 +105,7 @@ func RecoveryMiddleware() gin.HandlerFunc {
 		}
 
 		c.JSON(500, gin.H{
-			"error":      "Internal server error",
+			"error":      "Внутренняя ошибка сервера",
 			"request_id": requestID,
 		})
 	})

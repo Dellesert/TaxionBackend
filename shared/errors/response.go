@@ -11,7 +11,7 @@ func RespondWithError(c *gin.Context, err *APIError) {
 
 // RespondWithFieldErrors sends validation errors as JSON response
 func RespondWithFieldErrors(c *gin.Context, requestID string, fields []FieldError) {
-	err := NewAPIError(400, ValidationFailed, "Validation failed").
+	err := NewAPIError(400, ValidationFailed, "Ошибка валидации").
 		WithRequestID(requestID)
 	err.Fields = fields
 	c.JSON(err.StatusCode, err)

@@ -43,7 +43,7 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -59,7 +59,7 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 		}).Warn("Invalid query parameters for get notifications")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid query parameters",
+			"error":      "Неверные параметры запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -93,7 +93,7 @@ func (h *NotificationHandler) GetNotifications(c *gin.Context) {
 		}).Error("Failed to get user notifications")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get notifications",
+			"error":      "Не удалось получить уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -130,7 +130,7 @@ func (h *NotificationHandler) GetNotificationByID(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -148,7 +148,7 @@ func (h *NotificationHandler) GetNotificationByID(c *gin.Context) {
 		}).Warn("Invalid notification ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid notification ID",
+			"error":      "Неверный ID уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -165,14 +165,14 @@ func (h *NotificationHandler) GetNotificationByID(c *gin.Context) {
 		}).Error("Failed to get notification")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get notification"
+		errorMessage := "Не удалось получить уведомление"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Notification not found"
+			errorMessage = "Уведомление не найдено"
 		} else if strings.Contains(err.Error(), "access denied") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -208,7 +208,7 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -226,7 +226,7 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 		}).Warn("Invalid notification ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid notification ID",
+			"error":      "Неверный ID уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -245,17 +245,17 @@ func (h *NotificationHandler) MarkAsRead(c *gin.Context) {
 		}).Error("Failed to mark notification as read")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to mark notification as read"
+		errorMessage := "Не удалось отметить уведомление как прочитанное"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Notification not found"
+			errorMessage = "Уведомление не найдено"
 		} else if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "already read") {
 			statusCode = http.StatusConflict
-			errorMessage = "Notification already read"
+			errorMessage = "Уведомление уже прочитано"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -291,7 +291,7 @@ func (h *NotificationHandler) MarkMultipleAsRead(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -307,7 +307,7 @@ func (h *NotificationHandler) MarkMultipleAsRead(c *gin.Context) {
 		}).Warn("Invalid request body for mark as read")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -325,7 +325,7 @@ func (h *NotificationHandler) MarkMultipleAsRead(c *gin.Context) {
 		}).Error("Failed to mark notifications as read")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to mark notifications as read"
+		errorMessage := "Не удалось отметить уведомления как прочитанные"
 
 		if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
@@ -366,7 +366,7 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -386,7 +386,7 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 			}).Error("Failed to mark all notifications as read by type")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to mark all notifications as read",
+				"error":      "Не удалось отметить все уведомления как прочитанные",
 				"request_id": requestID,
 			})
 			return
@@ -416,7 +416,7 @@ func (h *NotificationHandler) MarkAllAsRead(c *gin.Context) {
 		}).Error("Failed to mark all notifications as read")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to mark all notifications as read",
+			"error":      "Не удалось отметить все уведомления как прочитанные",
 			"request_id": requestID,
 		})
 		return
@@ -447,7 +447,7 @@ func (h *NotificationHandler) GetUnreadCount(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -463,7 +463,7 @@ func (h *NotificationHandler) GetUnreadCount(c *gin.Context) {
 		}).Error("Failed to get unread count")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get unread count",
+			"error":      "Не удалось получить количество непрочитанных",
 			"request_id": requestID,
 		})
 		return
@@ -495,7 +495,7 @@ func (h *NotificationHandler) GetNotificationStats(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -511,7 +511,7 @@ func (h *NotificationHandler) GetNotificationStats(c *gin.Context) {
 		}).Error("Failed to get notification stats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get notification statistics",
+			"error":      "Не удалось получить статистику уведомлений",
 			"request_id": requestID,
 		})
 		return
@@ -544,7 +544,7 @@ func (h *NotificationHandler) SearchNotifications(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -554,7 +554,7 @@ func (h *NotificationHandler) SearchNotifications(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
 	if query == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Search query is required",
+			"error":      "Поисковый запрос обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -570,7 +570,7 @@ func (h *NotificationHandler) SearchNotifications(c *gin.Context) {
 		}).Warn("Invalid query parameters for search")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid query parameters",
+			"error":      "Неверные параметры запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -599,7 +599,7 @@ func (h *NotificationHandler) SearchNotifications(c *gin.Context) {
 		}).Error("Failed to search notifications")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to search notifications",
+			"error":      "Не удалось найти уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -638,7 +638,7 @@ func (h *NotificationHandler) GetUserPreferences(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -654,7 +654,7 @@ func (h *NotificationHandler) GetUserPreferences(c *gin.Context) {
 		}).Error("Failed to get user preferences")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user preferences",
+			"error":      "Не удалось получить настройки пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -692,7 +692,7 @@ func (h *NotificationHandler) UpdateUserPreference(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -712,7 +712,7 @@ func (h *NotificationHandler) UpdateUserPreference(c *gin.Context) {
 		}).Warn("Invalid request body for update preference")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -771,7 +771,7 @@ func (h *NotificationHandler) UpdateUserPreference(c *gin.Context) {
 		}).Error("Failed to update user preference")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update user preference"
+		errorMessage := "Не удалось обновить настройку пользователя"
 
 		if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
@@ -812,7 +812,7 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -823,7 +823,7 @@ func (h *NotificationHandler) DeleteNotification(c *gin.Context) {
 	notificationID, err := strconv.ParseUint(notificationIDStr, 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid notification ID",
+			"error":      "Неверный ID уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -878,7 +878,7 @@ func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -894,7 +894,7 @@ func (h *NotificationHandler) DeleteAllNotifications(c *gin.Context) {
 		}).Error("Failed to delete all notifications")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to delete all notifications",
+			"error":      "Не удалось удалить все уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -927,7 +927,7 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -945,7 +945,7 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 		}).Warn("Invalid notification ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid notification ID",
+			"error":      "Неверный ID уведомления",
 			"request_id": requestID,
 		})
 		return
@@ -962,14 +962,14 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 		}).Error("Failed to get notification")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get notification"
+		errorMessage := "Не удалось получить уведомление"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Notification not found"
+			errorMessage = "Уведомление не найдено"
 		} else if strings.Contains(err.Error(), "access denied") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Access denied"
+			errorMessage = "Доступ запрещён"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -982,7 +982,7 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 	// Check if this is a grouped notification
 	if notification.Data == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "This notification does not contain grouped tasks",
+			"error":      "Это уведомление не содержит сгруппированных задач",
 			"request_id": requestID,
 		})
 		return
@@ -992,7 +992,7 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 	taskIDsInterface, ok := notification.Data["task_ids"]
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "This notification does not contain task information",
+			"error":      "Это уведомление не содержит информации о задачах",
 			"request_id": requestID,
 		})
 		return
@@ -1016,7 +1016,7 @@ func (h *NotificationHandler) GetGroupedNotificationTasks(c *gin.Context) {
 		taskIDs = v
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Invalid task_ids format in notification",
+			"error":      "Неверный формат task_ids в уведомлении",
 			"request_id": requestID,
 		})
 		return
@@ -1051,7 +1051,7 @@ func (h *NotificationHandler) SendTestPush(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1072,7 +1072,7 @@ func (h *NotificationHandler) SendTestPush(c *gin.Context) {
 		}).Warn("Invalid request body for test push")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1124,7 +1124,7 @@ func (h *NotificationHandler) SendTestPush(c *gin.Context) {
 		}).Error("Failed to send test push notification")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to send test push notification",
+			"error":      "Не удалось отправить тестовое push-уведомление",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

@@ -40,7 +40,7 @@ func (h *DepartmentHandler) GetDepartments(c *gin.Context) {
 		}).Error("Failed to get departments")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get departments",
+			"error":      "Не удалось получить отделы",
 			"request_id": requestID,
 		})
 		return
@@ -72,7 +72,7 @@ func (h *DepartmentHandler) GetDepartment(c *gin.Context) {
 		}).Warn("Invalid department ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid department ID",
+			"error":      "Неверный ID отдела",
 			"request_id": requestID,
 		})
 		return
@@ -87,11 +87,11 @@ func (h *DepartmentHandler) GetDepartment(c *gin.Context) {
 		}).Error("Failed to get department")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get department"
+		errorMessage := "Не удалось получить отдел"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Department not found"
+			errorMessage = "Отдел не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -125,7 +125,7 @@ func (h *DepartmentHandler) CreateDepartment(c *gin.Context) {
 		}).Warn("Invalid request body for create department")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -141,7 +141,7 @@ func (h *DepartmentHandler) CreateDepartment(c *gin.Context) {
 		}).Error("Failed to create department")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create department"
+		errorMessage := "Не удалось создать отдел"
 
 		if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
@@ -185,7 +185,7 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 		}).Warn("Invalid department ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid department ID",
+			"error":      "Неверный ID отдела",
 			"request_id": requestID,
 		})
 		return
@@ -199,7 +199,7 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 		dept, err := h.departmentUsecase.GetDepartment(uint(id))
 		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{
-				"error":      "Department not found",
+				"error":      "Отдел не найден",
 				"request_id": requestID,
 			})
 			return
@@ -215,7 +215,7 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 			}).Warn("User is not the head of this department")
 
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":      "Forbidden",
+				"error":      "Запрещено",
 				"message":    "You are not the head of this department",
 				"request_id": requestID,
 			})
@@ -232,7 +232,7 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 		}).Warn("Invalid request body for update department")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -248,11 +248,11 @@ func (h *DepartmentHandler) UpdateDepartment(c *gin.Context) {
 		}).Error("Failed to update department")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update department"
+		errorMessage := "Не удалось обновить отдел"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Department not found"
+			errorMessage = "Отдел не найден"
 		} else if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
 			errorMessage = err.Error()
@@ -295,7 +295,7 @@ func (h *DepartmentHandler) DeleteDepartment(c *gin.Context) {
 		}).Warn("Invalid department ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid department ID",
+			"error":      "Неверный ID отдела",
 			"request_id": requestID,
 		})
 		return
@@ -310,11 +310,11 @@ func (h *DepartmentHandler) DeleteDepartment(c *gin.Context) {
 		}).Error("Failed to delete department")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete department"
+		errorMessage := "Не удалось удалить отдел"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Department not found"
+			errorMessage = "Отдел не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -349,7 +349,7 @@ func (h *DepartmentHandler) GetDepartmentWithUsers(c *gin.Context) {
 		}).Warn("Invalid department ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid department ID",
+			"error":      "Неверный ID отдела",
 			"request_id": requestID,
 		})
 		return
@@ -364,11 +364,11 @@ func (h *DepartmentHandler) GetDepartmentWithUsers(c *gin.Context) {
 		}).Error("Failed to get department with users")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get department with users"
+		errorMessage := "Не удалось получить отдел с пользователями"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Department not found"
+			errorMessage = "Отдел не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -404,7 +404,7 @@ func (h *DepartmentHandler) ImportDepartments(c *gin.Context) {
 		}).Warn("No file provided for department import")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "CSV file is required",
+			"error":      "Требуется CSV-файл",
 			"request_id": requestID,
 		})
 		return
@@ -419,7 +419,7 @@ func (h *DepartmentHandler) ImportDepartments(c *gin.Context) {
 		}).Error("Failed to open uploaded file")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to read CSV file",
+			"error":      "Не удалось прочитать CSV-файл",
 			"request_id": requestID,
 		})
 		return
@@ -438,7 +438,7 @@ func (h *DepartmentHandler) ImportDepartments(c *gin.Context) {
 		}).Warn("Failed to read CSV header")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid CSV format: unable to read header",
+			"error":      "Неверный формат CSV: не удалось прочитать заголовок",
 			"request_id": requestID,
 		})
 		return
@@ -579,7 +579,7 @@ func (h *DepartmentHandler) BulkDeleteDepartments(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -587,7 +587,7 @@ func (h *DepartmentHandler) BulkDeleteDepartments(c *gin.Context) {
 
 	if len(req.DepartmentIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No department IDs provided",
+			"error":      "Не указаны ID отделов",
 			"request_id": requestID,
 		})
 		return

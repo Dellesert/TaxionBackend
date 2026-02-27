@@ -34,8 +34,8 @@ func AdminOnlyMiddleware() gin.HandlerFunc {
 		userRole, exists := c.Get("user_role")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Authentication required",
-				"message":    "Please log in to access admin features",
+				"error":      "Требуется аутентификация",
+				"message":    "Пожалуйста, войдите в систему для доступа к функциям администратора",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -45,7 +45,7 @@ func AdminOnlyMiddleware() gin.HandlerFunc {
 		role, ok := userRole.(models.Role)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Invalid authentication data",
+				"error":      "Неверные данные аутентификации",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -68,8 +68,8 @@ func AdminOnlyMiddleware() gin.HandlerFunc {
 			}).Warn("Unauthorized admin access attempt")
 
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":      "Admin access required",
-				"message":    "This action requires administrator privileges",
+				"error":      "Требуется доступ администратора",
+				"message":    "Это действие требует прав администратора",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -90,7 +90,7 @@ func SuperAdminOnlyMiddleware() gin.HandlerFunc {
 		userRole, exists := c.Get("user_role")
 		if !exists {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Authentication required",
+				"error":      "Требуется аутентификация",
 				"message":    "Please log in to access super admin features",
 				"request_id": requestID,
 			})
@@ -101,7 +101,7 @@ func SuperAdminOnlyMiddleware() gin.HandlerFunc {
 		role, ok := userRole.(models.Role)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Invalid authentication data",
+				"error":      "Неверные данные аутентификации",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -124,8 +124,8 @@ func SuperAdminOnlyMiddleware() gin.HandlerFunc {
 			}).Warn("Unauthorized super admin access attempt")
 
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":      "Super admin access required",
-				"message":    "This action requires super administrator privileges",
+				"error":      "Требуется доступ суперадмина",
+				"message":    "Это действие требует прав суперадминистратора",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -206,8 +206,8 @@ func ValidateAdminRequest() gin.HandlerFunc {
 
 		if !isJSON && !isMultipart {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Invalid Content-Type",
-				"message":    "Content-Type must be application/json or multipart/form-data for this request",
+				"error":      "Неверный Content-Type",
+				"message":    "Content-Type должен быть application/json или multipart/form-data для этого запроса",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -230,7 +230,7 @@ func RequireAdminOrDepartmentHead(departmentIDParam string) gin.HandlerFunc {
 
 		if !roleExists || !userIDExists {
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Authentication required",
+				"error":      "Требуется аутентификация",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -240,7 +240,7 @@ func RequireAdminOrDepartmentHead(departmentIDParam string) gin.HandlerFunc {
 		role, ok := userRole.(models.Role)
 		if !ok {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Invalid authentication data",
+				"error":      "Неверные данные аутентификации",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -259,7 +259,7 @@ func RequireAdminOrDepartmentHead(departmentIDParam string) gin.HandlerFunc {
 			departmentIDStr := c.Param(departmentIDParam)
 			if departmentIDStr == "" {
 				c.JSON(http.StatusBadRequest, gin.H{
-					"error":      "Department ID required",
+					"error":      "Требуется ID отдела",
 					"request_id": requestID,
 				})
 				c.Abort()
@@ -285,8 +285,8 @@ func RequireAdminOrDepartmentHead(departmentIDParam string) gin.HandlerFunc {
 		}).Warn("Unauthorized department access attempt")
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Insufficient permissions",
-			"message":    "Only admins and department heads can perform this action",
+			"error":      "Недостаточно прав",
+			"message":    "Только администраторы и руководители отделов могут выполнять это действие",
 			"request_id": requestID,
 		})
 		c.Abort()

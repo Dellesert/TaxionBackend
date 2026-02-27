@@ -37,7 +37,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		}).Warn("Invalid request body for create user")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -52,7 +52,7 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 		}).Error("Failed to create user")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to create user",
+			"error":      "Не удалось создать пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -84,7 +84,7 @@ func (h *UserHandler) GetUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -247,7 +247,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 			}).Error("Failed to get users with advanced filters")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to get users",
+				"error":      "Не удалось получить пользователей",
 				"request_id": requestID,
 			})
 			return
@@ -265,7 +265,7 @@ func (h *UserHandler) GetUsers(c *gin.Context) {
 			}).Error("Failed to get users")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to get users",
+				"error":      "Не удалось получить пользователей",
 				"request_id": requestID,
 			})
 			return
@@ -368,7 +368,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -383,7 +383,7 @@ func (h *UserHandler) UpdateUser(c *gin.Context) {
 		}).Warn("Invalid request body for update user")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -434,7 +434,7 @@ func (h *UserHandler) DeleteUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -486,7 +486,7 @@ func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
 	idsStr := c.Query("ids")
 	if idsStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "IDs parameter is required",
+			"error":      "Параметр IDs обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -504,7 +504,7 @@ func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
 
 	if len(ids) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No valid IDs provided",
+			"error":      "Не предоставлены валидные ID",
 			"request_id": requestID,
 		})
 		return
@@ -519,7 +519,7 @@ func (h *UserHandler) GetUsersByIDs(c *gin.Context) {
 		}).Error("Failed to get users by IDs")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get users",
+			"error":      "Не удалось получить пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -547,7 +547,7 @@ func (h *UserHandler) GetUsersByDepartment(c *gin.Context) {
 		}).Warn("Invalid department ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid department ID",
+			"error":      "Неверный ID отдела",
 			"request_id": requestID,
 		})
 		return
@@ -563,7 +563,7 @@ func (h *UserHandler) GetUsersByDepartment(c *gin.Context) {
 		}).Error("Failed to get users by department")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get department users",
+			"error":      "Не удалось получить пользователей отдела",
 			"request_id": requestID,
 		})
 		return
@@ -706,7 +706,7 @@ func (h *UserHandler) GetAllUsers(c *gin.Context) {
 		}).Error("Failed to get all users")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get users",
+			"error":      "Не удалось получить пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -736,7 +736,7 @@ func (h *UserHandler) ResetOnlineStatuses(c *gin.Context) {
 		}).Error("Failed to reset online statuses")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to reset online statuses",
+			"error":      "Не удалось сбросить онлайн-статусы",
 			"request_id": requestID,
 		})
 		return
@@ -770,7 +770,7 @@ func (h *UserHandler) CleanupStatuses(c *gin.Context) {
 		}).Warn("Invalid request body for cleanup statuses")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -785,7 +785,7 @@ func (h *UserHandler) CleanupStatuses(c *gin.Context) {
 		}).Error("Failed to cleanup statuses")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to cleanup statuses",
+			"error":      "Не удалось очистить статусы",
 			"request_id": requestID,
 		})
 		return
@@ -817,7 +817,7 @@ func (h *UserHandler) GetUsersWithBirthdays(c *gin.Context) {
 		}).Error("Failed to get users with birthdays")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get users with birthdays",
+			"error":      "Не удалось получить пользователей с днями рождения",
 			"request_id": requestID,
 		})
 		return

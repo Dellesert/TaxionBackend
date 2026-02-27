@@ -26,7 +26,7 @@ func (h *TaskHandler) GetTaskPermissions(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -43,7 +43,7 @@ func (h *TaskHandler) GetTaskPermissions(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return
@@ -98,7 +98,7 @@ func (h *TaskHandler) EmergencyCompleteTask(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -115,7 +115,7 @@ func (h *TaskHandler) EmergencyCompleteTask(c *gin.Context) {
 		}).Warn("Invalid task ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid task ID",
+			"error":      "Неверный ID задачи",
 			"request_id": requestID,
 		})
 		return

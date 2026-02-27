@@ -198,24 +198,24 @@ func InternalError(message string) *APIError {
 
 // InvalidCredentialsError creates an invalid credentials error
 func InvalidCredentialsError() *APIError {
-	return NewAPIError(http.StatusUnauthorized, AuthInvalidCredentials, "Invalid email or password")
+	return NewAPIError(http.StatusUnauthorized, AuthInvalidCredentials, "Неверный email или пароль")
 }
 
 // AccountDeactivatedError creates an account deactivated error
 func AccountDeactivatedError() *APIError {
-	return NewAPIError(http.StatusForbidden, AuthAccountDeactivated, "Account is deactivated")
+	return NewAPIError(http.StatusForbidden, AuthAccountDeactivated, "Аккаунт деактивирован")
 }
 
 // TwoFactorRequiredError creates a 2FA required error
 func TwoFactorRequiredError() *APIError {
-	return NewAPIError(http.StatusForbidden, Auth2FARequired, "Two-factor authentication is required").
+	return NewAPIError(http.StatusForbidden, Auth2FARequired, "Требуется двухфакторная аутентификация").
 		WithMetadata("next_step", "send_2fa_code").
 		WithMetadata("endpoint", "/api/v1/auth/2fa/send")
 }
 
 // PasskeyOnlyError creates a passkey-only mode error
 func PasskeyOnlyError() *APIError {
-	return NewAPIError(http.StatusForbidden, AuthPasskeyOnly, "Password login is disabled. Please use Passkey authentication").
+	return NewAPIError(http.StatusForbidden, AuthPasskeyOnly, "Вход по паролю отключён. Используйте аутентификацию через Passkey").
 		WithMetadata("available_methods", []string{"passkey"}).
 		WithMetadata("endpoints", map[string]string{
 			"passkey_login_begin":        "/api/v1/auth/passkey/login/begin",
@@ -225,12 +225,12 @@ func PasskeyOnlyError() *APIError {
 
 // SuperAdminWebOnlyError creates a super admin web-only error
 func SuperAdminWebOnlyError() *APIError {
-	return NewAPIError(http.StatusForbidden, AuthSuperAdminWebOnly, "Super admin access is restricted to web dashboard only")
+	return NewAPIError(http.StatusForbidden, AuthSuperAdminWebOnly, "Доступ суперадмина ограничен только веб-панелью")
 }
 
 // PasswordExpiredError creates a password expired error
 func PasswordExpiredError() *APIError {
-	return NewAPIError(http.StatusForbidden, AuthPasswordExpired, "Password has expired. Please change your password").
+	return NewAPIError(http.StatusForbidden, AuthPasswordExpired, "Срок действия пароля истёк. Пожалуйста, смените пароль").
 		WithMetadata("must_change_password", true)
 }
 
@@ -238,27 +238,27 @@ func PasswordExpiredError() *APIError {
 
 // RequiredFieldError creates a required field validation error
 func RequiredFieldError(field string) *APIError {
-	return NewAPIError(http.StatusBadRequest, ValidationRequiredField, "Validation failed").
-		WithField(field, ValidationRequiredField, field+" is required")
+	return NewAPIError(http.StatusBadRequest, ValidationRequiredField, "Ошибка валидации").
+		WithField(field, ValidationRequiredField, "Поле "+field+" обязательно для заполнения")
 }
 
 // InvalidEmailError creates an invalid email validation error
 func InvalidEmailError() *APIError {
-	return NewAPIError(http.StatusBadRequest, ValidationInvalidEmail, "Invalid email format").
-		WithField("email", ValidationInvalidEmail, "Invalid email format")
+	return NewAPIError(http.StatusBadRequest, ValidationInvalidEmail, "Неверный формат email").
+		WithField("email", ValidationInvalidEmail, "Неверный формат email")
 }
 
 // PasswordTooShortError creates a password too short validation error
 func PasswordTooShortError(minLength int) *APIError {
-	return NewAPIError(http.StatusBadRequest, ValidationPasswordTooShort, "Password is too short").
-		WithField("password", ValidationPasswordTooShort, "Password must be at least "+string(rune(minLength))+" characters long").
+	return NewAPIError(http.StatusBadRequest, ValidationPasswordTooShort, "Пароль слишком короткий").
+		WithField("password", ValidationPasswordTooShort, "Пароль должен содержать не менее "+string(rune(minLength))+" символов").
 		WithMetadata("min_length", minLength)
 }
 
 // PasswordTooWeakError creates a password too weak validation error
 func PasswordTooWeakError() *APIError {
-	return NewAPIError(http.StatusBadRequest, ValidationPasswordTooWeak, "Password is too weak").
-		WithField("password", ValidationPasswordTooWeak, "Password must contain at least one letter and one number or symbol")
+	return NewAPIError(http.StatusBadRequest, ValidationPasswordTooWeak, "Пароль слишком слабый").
+		WithField("password", ValidationPasswordTooWeak, "Пароль должен содержать хотя бы одну букву и одну цифру или символ")
 }
 
 // File specific errors

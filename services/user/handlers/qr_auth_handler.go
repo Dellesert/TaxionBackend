@@ -71,7 +71,7 @@ func (h *QRAuthHandler) GenerateQRToken(c *gin.Context) {
 		}).Error("Failed to generate QR token")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to generate QR token",
+			"error":      "Не удалось сгенерировать QR-токен",
 			"request_id": requestID,
 		})
 		return
@@ -99,7 +99,7 @@ func (h *QRAuthHandler) GenerateQRToken(c *gin.Context) {
 		}).Error("Failed to marshal QR token")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to generate QR token",
+			"error":      "Не удалось сгенерировать QR-токен",
 			"request_id": requestID,
 		})
 		return
@@ -114,7 +114,7 @@ func (h *QRAuthHandler) GenerateQRToken(c *gin.Context) {
 		}).Error("Failed to store QR token in Redis")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to generate QR token",
+			"error":      "Не удалось сгенерировать QR-токен",
 			"request_id": requestID,
 		})
 		return
@@ -140,7 +140,7 @@ func (h *QRAuthHandler) GetQRTokenStatus(c *gin.Context) {
 
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Token is required",
+			"error":      "Токен обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -153,7 +153,7 @@ func (h *QRAuthHandler) GetQRTokenStatus(c *gin.Context) {
 	if err == redis.Nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"status":     "expired",
-			"error":      "QR token expired or not found",
+			"error":      "QR-токен истёк или не найден",
 			"request_id": requestID,
 		})
 		return
@@ -165,7 +165,7 @@ func (h *QRAuthHandler) GetQRTokenStatus(c *gin.Context) {
 		}).Error("Failed to get QR token from Redis")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to check QR token status",
+			"error":      "Не удалось проверить статус QR-токена",
 			"request_id": requestID,
 		})
 		return
@@ -174,7 +174,7 @@ func (h *QRAuthHandler) GetQRTokenStatus(c *gin.Context) {
 	var qrToken QRLoginToken
 	if err := json.Unmarshal([]byte(data), &qrToken); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to parse QR token",
+			"error":      "Не удалось разобрать QR-токен",
 			"request_id": requestID,
 		})
 		return
@@ -215,7 +215,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Authentication required",
+			"error":      "Требуется аутентификация",
 			"request_id": requestID,
 		})
 		return
@@ -226,7 +226,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Token is required",
+			"error":      "Токен обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -236,7 +236,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	user, err := h.userRepo.GetByID(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user data",
+			"error":      "Не удалось получить данные пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -245,7 +245,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	// Block super_admin from QR login (same restriction as regular login)
 	if user.Role == sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Super admin access is restricted to web dashboard only",
+			"error":      "Доступ суперадмина ограничен только веб-панелью",
 			"request_id": requestID,
 		})
 		return
@@ -254,7 +254,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	// Check if user is active
 	if !user.IsActive {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "User account is deactivated",
+			"error":      "Аккаунт пользователя деактивирован",
 			"request_id": requestID,
 		})
 		return
@@ -267,7 +267,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	data, err := h.redisClient.Get(ctx, key).Result()
 	if err == redis.Nil {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":      "QR token expired or not found",
+			"error":      "QR-токен истёк или не найден",
 			"request_id": requestID,
 		})
 		return
@@ -279,7 +279,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 		}).Error("Failed to get QR token from Redis")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to process QR login",
+			"error":      "Не удалось обработать QR-вход",
 			"request_id": requestID,
 		})
 		return
@@ -288,7 +288,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	var qrToken QRLoginToken
 	if err := json.Unmarshal([]byte(data), &qrToken); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to parse QR token",
+			"error":      "Не удалось разобрать QR-токен",
 			"request_id": requestID,
 		})
 		return
@@ -297,7 +297,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	// Token must be in pending status
 	if qrToken.Status != qrStatusPending {
 		c.JSON(http.StatusConflict, gin.H{
-			"error":      "QR token already used",
+			"error":      "QR-токен уже использован",
 			"request_id": requestID,
 		})
 		return
@@ -307,7 +307,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 	authConfig := middleware.GetAuthConfig()
 	if authConfig == nil || authConfig.SessionStore == nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Session management not available",
+			"error":      "Управление сессиями недоступно",
 			"request_id": requestID,
 		})
 		return
@@ -330,7 +330,7 @@ func (h *QRAuthHandler) ConfirmQRLogin(c *gin.Context) {
 		}).Error("Failed to create session for QR login")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to create session",
+			"error":      "Не удалось создать сессию",
 			"request_id": requestID,
 		})
 		return

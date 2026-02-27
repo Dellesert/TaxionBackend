@@ -661,14 +661,14 @@ func (h *PasskeyHandler) FinishAuthentication(c *gin.Context) {
 func (h *PasskeyHandler) ListPasskeys(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	passkeys, err := h.passkeyUsecase.ListUserPasskeys(userID.(uint))
 	if err != nil {
 		logger.WithField("error", err.Error()).Error("Failed to list passkeys")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to get passkeys"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить ключи доступа"})
 		return
 	}
 
@@ -694,13 +694,13 @@ func (h *PasskeyHandler) ListPasskeys(c *gin.Context) {
 func (h *PasskeyHandler) DeletePasskey(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	passkeyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid passkey id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID ключа доступа"})
 		return
 	}
 
@@ -721,14 +721,14 @@ func (h *PasskeyHandler) DeletePasskey(c *gin.Context) {
 func (h *PasskeyHandler) UpdatePasskeyName(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	passkeyID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Invalid passkey ID")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid passkey id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID ключа доступа"})
 		return
 	}
 
@@ -736,7 +736,7 @@ func (h *PasskeyHandler) UpdatePasskeyName(c *gin.Context) {
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		logger.WithField("error", err.Error()).Warn("Failed to read request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный запрос"})
 		return
 	}
 

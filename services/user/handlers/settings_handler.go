@@ -37,7 +37,7 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 		}).Error("Failed to get system settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get system settings",
+			"error":      "Не удалось получить системные настройки",
 			"request_id": requestID,
 		})
 		return
@@ -76,7 +76,7 @@ func (h *SettingsHandler) ApplyPreset(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -91,7 +91,7 @@ func (h *SettingsHandler) ApplyPreset(c *gin.Context) {
 		}).Warn("Invalid request body for apply preset")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body. preset must be 'minimal', 'medium', or 'maximum'",
+			"error":      "Неверное тело запроса. Пресет должен быть 'minimal', 'medium' или 'maximum'",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -109,7 +109,7 @@ func (h *SettingsHandler) ApplyPreset(c *gin.Context) {
 		}).Error("Failed to apply security preset")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to apply security preset",
+			"error":      "Не удалось применить пресет безопасности",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -143,7 +143,7 @@ func (h *SettingsHandler) UpdateCustomSettings(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -158,7 +158,7 @@ func (h *SettingsHandler) UpdateCustomSettings(c *gin.Context) {
 		}).Warn("Invalid request body for update custom settings")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -175,7 +175,7 @@ func (h *SettingsHandler) UpdateCustomSettings(c *gin.Context) {
 		}).Error("Failed to update custom settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to update custom settings",
+			"error":      "Не удалось обновить пользовательские настройки",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -207,7 +207,7 @@ func (h *SettingsHandler) GetSummary(c *gin.Context) {
 		}).Error("Failed to get security summary")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get security summary",
+			"error":      "Не удалось получить сводку безопасности",
 			"request_id": requestID,
 		})
 		return
@@ -245,7 +245,7 @@ func (h *SettingsHandler) SetAuthMode(c *gin.Context) {
 	requestID := requestid.Get(c)
 
 	c.JSON(http.StatusBadRequest, gin.H{
-		"error":      "This endpoint is deprecated",
+		"error":      "Этот эндпоинт устарел",
 		"message":    "Please use PUT /admin/settings/auth/preset or PUT /admin/settings/auth/custom instead",
 		"request_id": requestID,
 	})
@@ -263,7 +263,7 @@ func (h *SettingsHandler) GetAuthSettings(c *gin.Context) {
 		}).Error("Failed to get auth settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get auth settings",
+			"error":      "Не удалось получить настройки аутентификации",
 			"request_id": requestID,
 		})
 		return
@@ -291,7 +291,7 @@ func (h *SettingsHandler) GetUserSettings(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -306,7 +306,7 @@ func (h *SettingsHandler) GetUserSettings(c *gin.Context) {
 		}).Error("Failed to get user settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user settings",
+			"error":      "Не удалось получить настройки пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -375,7 +375,7 @@ func (h *SettingsHandler) UpdateUserSettings(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -390,7 +390,7 @@ func (h *SettingsHandler) UpdateUserSettings(c *gin.Context) {
 		}).Warn("Invalid request body for update user settings")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -406,7 +406,7 @@ func (h *SettingsHandler) UpdateUserSettings(c *gin.Context) {
 		}).Error("Failed to update user settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to update user settings",
+			"error":      "Не удалось обновить настройки пользователя",
 			"request_id": requestID,
 		})
 		return

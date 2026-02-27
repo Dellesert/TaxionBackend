@@ -27,7 +27,7 @@ func (h *ActivityHandler) GetTaskActivities(c *gin.Context) {
 	// Get task ID from path
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 

@@ -50,7 +50,7 @@ func (h *SMTPHandler) GetSettings(c *gin.Context) {
 		}).Error("Failed to get SMTP settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to get SMTP settings",
+			"error":   "Не удалось получить настройки SMTP",
 			"details": err.Error(),
 		})
 		return
@@ -94,7 +94,7 @@ func (h *SMTPHandler) UpdateSettings(c *gin.Context) {
 		}).Error("Invalid request body for updating SMTP settings")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request body",
+			"error":   "Неверное тело запроса",
 			"details": err.Error(),
 		})
 		return
@@ -109,7 +109,7 @@ func (h *SMTPHandler) UpdateSettings(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
+			"error": "Не авторизован",
 		})
 		return
 	}
@@ -130,7 +130,7 @@ func (h *SMTPHandler) UpdateSettings(c *gin.Context) {
 		}).Error("Failed to update SMTP settings")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to update SMTP settings",
+			"error":   "Не удалось обновить настройки SMTP",
 			"details": err.Error(),
 		})
 		return
@@ -169,7 +169,7 @@ func (h *SMTPHandler) TestConnection(c *gin.Context) {
 		}).Error("Invalid request body for testing SMTP connection")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "Invalid request body",
+			"error":   "Неверное тело запроса",
 			"details": err.Error(),
 		})
 		return
@@ -190,7 +190,7 @@ func (h *SMTPHandler) TestConnection(c *gin.Context) {
 		}).Error("Failed to test SMTP connection")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":   "Failed to test SMTP connection",
+			"error":   "Не удалось протестировать SMTP-соединение",
 			"details": err.Error(),
 		})
 		return

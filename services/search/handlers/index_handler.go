@@ -28,7 +28,7 @@ func (h *IndexHandler) IndexDocument(c *gin.Context) {
 	var req models.IndexDocumentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -44,7 +44,7 @@ func (h *IndexHandler) IndexDocument(c *gin.Context) {
 		}).Error("Failed to index document")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to index document",
+			"error":      "Не удалось проиндексировать документ",
 			"request_id": requestID,
 		})
 		return
@@ -64,7 +64,7 @@ func (h *IndexHandler) BulkIndex(c *gin.Context) {
 	var req models.BulkIndexRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -79,7 +79,7 @@ func (h *IndexHandler) BulkIndex(c *gin.Context) {
 		}).Error("Failed to bulk index documents")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to bulk index documents",
+			"error":      "Не удалось массово проиндексировать документы",
 			"request_id": requestID,
 		})
 		return
@@ -98,7 +98,7 @@ func (h *IndexHandler) DeleteDocument(c *gin.Context) {
 	var req models.DeleteDocumentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -114,7 +114,7 @@ func (h *IndexHandler) DeleteDocument(c *gin.Context) {
 		}).Error("Failed to delete document")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to delete document",
+			"error":      "Не удалось удалить документ",
 			"request_id": requestID,
 		})
 		return

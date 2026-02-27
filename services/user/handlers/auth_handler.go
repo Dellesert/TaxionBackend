@@ -45,7 +45,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		}).Warn("Unauthorized registration attempt")
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Free registration is disabled. Please use the invitation system.",
+			"error":      "Свободная регистрация отключена. Пожалуйста, используйте систему приглашений.",
 			"request_id": requestID,
 		})
 		return
@@ -59,7 +59,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		}).Warn("Invalid request body for user registration")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -70,7 +70,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if strings.TrimSpace(req.Email) == "" {
 		logger.WithField("request_id", requestID).Warn("Email is required for registration")
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Email is required",
+			"error":      "Email обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -79,7 +79,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if strings.TrimSpace(req.Name) == "" {
 		logger.WithField("request_id", requestID).Warn("Name is required for registration")
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Name is required",
+			"error":      "Имя обязательно",
 			"request_id": requestID,
 		})
 		return
@@ -88,7 +88,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	if strings.TrimSpace(req.Password) == "" {
 		logger.WithField("request_id", requestID).Warn("Password is required for registration")
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Password is required",
+			"error":      "Пароль обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -105,11 +105,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 
 		// Determine appropriate HTTP status code based on error
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to register user"
+		errorMessage := "Не удалось зарегистрировать пользователя"
 
 		if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
-			errorMessage = "User with this email already exists"
+			errorMessage = "Пользователь с таким email уже существует"
 		} else if strings.Contains(err.Error(), "invalid email") ||
 			strings.Contains(err.Error(), "invalid password") ||
 			strings.Contains(err.Error(), "invalid role") ||
@@ -497,7 +497,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		}).Warn("Failed to get user ID for logout")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -521,7 +521,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		}).Error("Failed to logout user")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to logout",
+			"error":      "Не удалось выйти из системы",
 			"request_id": requestID,
 		})
 		return
@@ -581,7 +581,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		}).Warn("Invalid request body for token refresh")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

@@ -30,7 +30,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	userIDRaw, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -47,7 +47,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	var req models.SearchRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid search parameters",
+			"error":      "Неверные параметры поиска",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -63,7 +63,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 	for _, t := range req.Types {
 		if !t.IsValid() {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Invalid entity type: " + string(t),
+				"error":      "Неверный тип сущности: " + string(t),
 				"request_id": requestID,
 			})
 			return
@@ -90,7 +90,7 @@ func (h *SearchHandler) Search(c *gin.Context) {
 		}).Error("Search failed")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Search failed",
+			"error":      "Поиск не удался",
 			"request_id": requestID,
 		})
 		return

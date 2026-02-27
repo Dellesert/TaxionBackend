@@ -40,7 +40,7 @@ func (h *MetricsHandler) GetDatabaseMetrics(c *gin.Context) {
 
 	dbMetrics, err := h.db.GetMetrics()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get database metrics"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить метрики базы данных"})
 		return
 	}
 

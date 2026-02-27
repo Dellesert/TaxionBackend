@@ -31,7 +31,7 @@ func NewInternalHandler(fileUsecase *usecase.FileUsecase) *InternalHandler {
 func (h *InternalHandler) GetFileStats(c *gin.Context) {
 	stats, err := h.fileUsecase.GetFileStatsInternal()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get file statistics"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить статистику файлов"})
 		return
 	}
 

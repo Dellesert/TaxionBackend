@@ -34,7 +34,7 @@ func (h *ScheduleTemplateHandler) CreateTemplate(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -43,7 +43,7 @@ func (h *ScheduleTemplateHandler) CreateTemplate(c *gin.Context) {
 	var req models.CreateScheduleTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -59,7 +59,7 @@ func (h *ScheduleTemplateHandler) CreateTemplate(c *gin.Context) {
 		}).Error("Failed to create template")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to create template",
+			"error":      "Не удалось создать шаблон",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -81,7 +81,7 @@ func (h *ScheduleTemplateHandler) GetTemplates(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -122,7 +122,7 @@ func (h *ScheduleTemplateHandler) GetTemplates(c *gin.Context) {
 		}).Error("Failed to get templates")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get templates",
+			"error":      "Не удалось получить шаблоны",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -140,7 +140,7 @@ func (h *ScheduleTemplateHandler) GetTemplate(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -149,7 +149,7 @@ func (h *ScheduleTemplateHandler) GetTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -163,7 +163,7 @@ func (h *ScheduleTemplateHandler) GetTemplate(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get template",
+			"error":      "Не удалось получить шаблон",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -184,7 +184,7 @@ func (h *ScheduleTemplateHandler) UpdateTemplate(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -193,7 +193,7 @@ func (h *ScheduleTemplateHandler) UpdateTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -202,7 +202,7 @@ func (h *ScheduleTemplateHandler) UpdateTemplate(c *gin.Context) {
 	var req models.UpdateScheduleTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -217,7 +217,7 @@ func (h *ScheduleTemplateHandler) UpdateTemplate(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update template",
+			"error":      "Не удалось обновить шаблон",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -239,7 +239,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplate(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -248,7 +248,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -261,7 +261,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplate(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete template",
+			"error":      "Не удалось удалить шаблон",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -285,7 +285,7 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -294,7 +294,7 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -304,7 +304,7 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 	bodyBytes, err := c.GetRawData()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Failed to read request body",
+			"error":      "Не удалось прочитать тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -319,7 +319,7 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 			entry, err := h.templateUsecase.AddTemplateEntry(userID, uint(templateID), &entryReq)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{
-					"error":      "Failed to add template entry",
+					"error":      "Не удалось добавить запись шаблона",
 					"details":    err.Error(),
 					"request_id": requestID,
 				})
@@ -341,7 +341,7 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 	var req models.CreateTemplateEntryRequest
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -351,7 +351,7 @@ func (h *ScheduleTemplateHandler) AddTemplateEntry(c *gin.Context) {
 	entry, err := h.templateUsecase.AddTemplateEntry(userID, uint(templateID), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to add template entry",
+			"error":      "Не удалось добавить запись шаблона",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -373,7 +373,7 @@ func (h *ScheduleTemplateHandler) GetTemplateEntries(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -382,7 +382,7 @@ func (h *ScheduleTemplateHandler) GetTemplateEntries(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -391,7 +391,7 @@ func (h *ScheduleTemplateHandler) GetTemplateEntries(c *gin.Context) {
 	entries, err := h.templateUsecase.GetTemplateEntries(userID, uint(templateID))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get template entries",
+			"error":      "Не удалось получить записи шаблона",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -412,7 +412,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplateEntry(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -421,7 +421,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplateEntry(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -430,7 +430,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplateEntry(c *gin.Context) {
 	entryID, err := strconv.ParseUint(c.Param("entry_id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid entry ID",
+			"error":      "Неверный ID записи",
 			"request_id": requestID,
 		})
 		return
@@ -438,7 +438,7 @@ func (h *ScheduleTemplateHandler) DeleteTemplateEntry(c *gin.Context) {
 
 	if err := h.templateUsecase.DeleteTemplateEntry(userID, uint(templateID), uint(entryID)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to delete template entry",
+			"error":      "Не удалось удалить запись шаблона",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -459,7 +459,7 @@ func (h *ScheduleTemplateHandler) ApplyTemplate(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -468,7 +468,7 @@ func (h *ScheduleTemplateHandler) ApplyTemplate(c *gin.Context) {
 	templateID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid template ID",
+			"error":      "Неверный ID шаблона",
 			"request_id": requestID,
 		})
 		return
@@ -478,7 +478,7 @@ func (h *ScheduleTemplateHandler) ApplyTemplate(c *gin.Context) {
 	scheduleIDStr := c.Query("schedule_id")
 	if scheduleIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "schedule_id is required",
+			"error":      "schedule_id обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -487,7 +487,7 @@ func (h *ScheduleTemplateHandler) ApplyTemplate(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(scheduleIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule_id",
+			"error":      "Неверный schedule_id",
 			"request_id": requestID,
 		})
 		return
@@ -496,7 +496,7 @@ func (h *ScheduleTemplateHandler) ApplyTemplate(c *gin.Context) {
 	var req models.ApplyTemplateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -514,7 +514,7 @@ func (h *ScheduleTemplateHandler) ApplyTemplate(c *gin.Context) {
 		}).Error("Failed to apply template")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to apply template",
+			"error":      "Не удалось применить шаблон",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

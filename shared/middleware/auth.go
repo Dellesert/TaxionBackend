@@ -150,7 +150,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		config := GetAuthConfig()
 		if config == nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Authentication not configured",
+				"error": "Аутентификация не настроена",
 			})
 			c.Abort()
 			return
@@ -180,7 +180,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		default:
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Invalid authentication mode",
+				"error": "Неверный режим аутентификации",
 			})
 			c.Abort()
 			return
@@ -188,7 +188,7 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		// Authentication failed
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Authentication required",
+			"error": "Требуется аутентификация",
 		})
 		c.Abort()
 	}

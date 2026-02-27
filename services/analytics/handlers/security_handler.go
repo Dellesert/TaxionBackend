@@ -37,7 +37,7 @@ func (h *SecurityHandler) RecordLoginAttempt(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body",
+			"error": "Неверное тело запроса",
 		})
 		return
 	}
@@ -56,7 +56,7 @@ func (h *SecurityHandler) RecordLoginAttempt(c *gin.Context) {
 
 	if err := h.securityUsecase.RecordLoginAttempt(attempt); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to record login attempt",
+			"error": "Не удалось записать попытку входа",
 		})
 		return
 	}
@@ -79,14 +79,14 @@ func (h *SecurityHandler) TrackSession(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body",
+			"error": "Неверное тело запроса",
 		})
 		return
 	}
 
 	if err := h.securityUsecase.TrackSession(req.UserID, req.SessionID, req.IPAddress, req.UserAgent, req.ExpiresAt); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to track session",
+			"error": "Не удалось отследить сессию",
 		})
 		return
 	}
@@ -102,14 +102,14 @@ func (h *SecurityHandler) DeactivateSession(c *gin.Context) {
 	sessionID := c.Param("session_id")
 	if sessionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Session ID is required",
+			"error": "ID сессии обязателен",
 		})
 		return
 	}
 
 	if err := h.securityUsecase.DeactivateSession(sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to deactivate session",
+			"error": "Не удалось деактивировать сессию",
 		})
 		return
 	}
@@ -130,7 +130,7 @@ func (h *SecurityHandler) TrackDevice(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid request body",
+			"error": "Неверное тело запроса",
 		})
 		return
 	}
@@ -138,7 +138,7 @@ func (h *SecurityHandler) TrackDevice(c *gin.Context) {
 	isNewDevice, err := h.securityUsecase.TrackDevice(req.UserID, req.UserAgent, req.IPAddress)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to track device",
+			"error": "Не удалось отследить устройство",
 		})
 		return
 	}
@@ -159,7 +159,7 @@ func (h *SecurityHandler) GetDashboard(c *gin.Context) {
 	dashboard, err := h.securityUsecase.GetSecurityDashboard(start, end)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch security dashboard",
+			"error": "Не удалось получить панель безопасности",
 		})
 		return
 	}
@@ -177,7 +177,7 @@ func (h *SecurityHandler) GetLoginAttempts(c *gin.Context) {
 	attempts, err := h.securityUsecase.GetLoginAttempts(start, end, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch login attempts",
+			"error": "Не удалось получить попытки входа",
 		})
 		return
 	}
@@ -204,7 +204,7 @@ func (h *SecurityHandler) GetFailedLogins(c *gin.Context) {
 	attempts, err := h.securityUsecase.GetFailedLoginAttempts(start, end, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch failed login attempts",
+			"error": "Не удалось получить неудачные попытки входа",
 		})
 		return
 	}
@@ -228,7 +228,7 @@ func (h *SecurityHandler) GetLoginStats(c *gin.Context) {
 	stats, err := h.securityUsecase.GetLoginStats(start, end)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch login stats",
+			"error": "Не удалось получить статистику входов",
 		})
 		return
 	}
@@ -254,7 +254,7 @@ func (h *SecurityHandler) GetTopFailedIPs(c *gin.Context) {
 	ips, err := h.securityUsecase.GetTopFailedLoginIPs(start, end, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch top failed IPs",
+			"error": "Не удалось получить IP с наибольшим количеством неудачных попыток",
 		})
 		return
 	}
@@ -277,7 +277,7 @@ func (h *SecurityHandler) GetSuspiciousActivities(c *gin.Context) {
 	activities, err := h.securityUsecase.GetSuspiciousActivities(start, end, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch suspicious activities",
+			"error": "Не удалось получить подозрительные активности",
 		})
 		return
 	}
@@ -297,7 +297,7 @@ func (h *SecurityHandler) GetUnresolvedSuspiciousActivities(c *gin.Context) {
 	activities, err := h.securityUsecase.GetUnresolvedSuspiciousActivities(limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch unresolved suspicious activities",
+			"error": "Не удалось получить нерешённые подозрительные активности",
 		})
 		return
 	}
@@ -315,7 +315,7 @@ func (h *SecurityHandler) ResolveSuspiciousActivity(c *gin.Context) {
 	activityID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid activity ID",
+			"error": "Неверный ID активности",
 		})
 		return
 	}
@@ -324,7 +324,7 @@ func (h *SecurityHandler) ResolveSuspiciousActivity(c *gin.Context) {
 	resolvedBy, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error": "Unauthorized",
+			"error": "Не авторизован",
 		})
 		return
 	}
@@ -336,7 +336,7 @@ func (h *SecurityHandler) ResolveSuspiciousActivity(c *gin.Context) {
 			userID = uint64(uintVal)
 		} else {
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": "Invalid user ID format",
+				"error": "Неверный формат ID пользователя",
 			})
 			return
 		}
@@ -344,7 +344,7 @@ func (h *SecurityHandler) ResolveSuspiciousActivity(c *gin.Context) {
 
 	if err := h.securityUsecase.ResolveSuspiciousActivity(activityID, userID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to resolve suspicious activity",
+			"error": "Не удалось разрешить подозрительную активность",
 		})
 		return
 	}
@@ -360,7 +360,7 @@ func (h *SecurityHandler) GetActiveSessions(c *gin.Context) {
 	sessions, err := h.securityUsecase.GetAllActiveSessions()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch active sessions",
+			"error": "Не удалось получить активные сессии",
 		})
 		return
 	}
@@ -377,7 +377,7 @@ func (h *SecurityHandler) GetUserActiveSessions(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
+			"error": "Неверный ID пользователя",
 		})
 		return
 	}
@@ -385,7 +385,7 @@ func (h *SecurityHandler) GetUserActiveSessions(c *gin.Context) {
 	sessions, err := h.securityUsecase.GetActiveSessions(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch user sessions",
+			"error": "Не удалось получить сессии пользователя",
 		})
 		return
 	}
@@ -402,7 +402,7 @@ func (h *SecurityHandler) GetUserKnownDevices(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("user_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid user ID",
+			"error": "Неверный ID пользователя",
 		})
 		return
 	}
@@ -410,7 +410,7 @@ func (h *SecurityHandler) GetUserKnownDevices(c *gin.Context) {
 	devices, err := h.securityUsecase.GetUserKnownDevices(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to fetch user devices",
+			"error": "Не удалось получить устройства пользователя",
 		})
 		return
 	}
@@ -427,14 +427,14 @@ func (h *SecurityHandler) RemoveKnownDevice(c *gin.Context) {
 	deviceID, err := strconv.ParseUint(c.Param("device_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid device ID",
+			"error": "Неверный ID устройства",
 		})
 		return
 	}
 
 	if err := h.securityUsecase.RemoveKnownDevice(deviceID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to remove device",
+			"error": "Не удалось удалить устройство",
 		})
 		return
 	}
@@ -450,14 +450,14 @@ func (h *SecurityHandler) TrustDevice(c *gin.Context) {
 	deviceID, err := strconv.ParseUint(c.Param("device_id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid device ID",
+			"error": "Неверный ID устройства",
 		})
 		return
 	}
 
 	if err := h.securityUsecase.TrustDevice(deviceID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to trust device",
+			"error": "Не удалось сделать устройство доверенным",
 		})
 		return
 	}
@@ -473,14 +473,14 @@ func (h *SecurityHandler) TerminateSession(c *gin.Context) {
 	sessionID := c.Param("session_id")
 	if sessionID == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Session ID is required",
+			"error": "ID сессии обязателен",
 		})
 		return
 	}
 
 	if err := h.securityUsecase.TerminateSession(sessionID); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to terminate session",
+			"error": "Не удалось завершить сессию",
 		})
 		return
 	}

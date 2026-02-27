@@ -27,14 +27,14 @@ func (h *ChecklistHandler) CreateChecklist(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get task ID from path
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *ChecklistHandler) GetTaskChecklists(c *gin.Context) {
 	// Get task ID from path
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 
@@ -84,14 +84,14 @@ func (h *ChecklistHandler) UpdateChecklist(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get checklist ID from path
 	checklistID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid checklist ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID чек-листа"})
 		return
 	}
 
@@ -121,14 +121,14 @@ func (h *ChecklistHandler) DeleteChecklist(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get checklist ID from path
 	checklistID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid checklist ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID чек-листа"})
 		return
 	}
 
@@ -147,14 +147,14 @@ func (h *ChecklistHandler) CreateChecklistItem(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get checklist ID from path
 	checklistID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid checklist ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID чек-листа"})
 		return
 	}
 
@@ -184,14 +184,14 @@ func (h *ChecklistHandler) UpdateChecklistItem(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get item ID from path
 	itemID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid item ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID элемента"})
 		return
 	}
 
@@ -226,14 +226,14 @@ func (h *ChecklistHandler) ToggleChecklistItem(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get item ID from path
 	itemID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid item ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID элемента"})
 		return
 	}
 
@@ -253,14 +253,14 @@ func (h *ChecklistHandler) DeleteChecklistItem(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get item ID from path
 	itemID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid item ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID элемента"})
 		return
 	}
 

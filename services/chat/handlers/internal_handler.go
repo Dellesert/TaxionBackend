@@ -44,7 +44,7 @@ func (h *InternalHandler) BroadcastToUser(c *gin.Context) {
 		}).Warn("Invalid request for broadcast to user")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -92,7 +92,7 @@ func (h *InternalHandler) DisconnectSession(c *gin.Context) {
 		}).Warn("Invalid request for disconnect session")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

@@ -49,7 +49,7 @@ func (h *AppVersionHandler) CreateAppVersion(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -58,7 +58,7 @@ func (h *AppVersionHandler) CreateAppVersion(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleSuperAdmin && userRole != sharedmodels.RoleAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can create app versions",
+			"error":      "Только администраторы могут создавать версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -68,7 +68,7 @@ func (h *AppVersionHandler) CreateAppVersion(c *gin.Context) {
 	var req models.CreateAppVersionRequest
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request data",
+			"error":      "Неверные данные запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -90,7 +90,7 @@ func (h *AppVersionHandler) CreateAppVersion(c *gin.Context) {
 		}).Error("Failed to create app version")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create app version"
+		errorMessage := "Не удалось создать версию приложения"
 
 		if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
@@ -140,7 +140,7 @@ func (h *AppVersionHandler) ListAppVersions(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleSuperAdmin && userRole != sharedmodels.RoleAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can list app versions",
+			"error":      "Только администраторы могут просматривать версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -173,7 +173,7 @@ func (h *AppVersionHandler) ListAppVersions(c *gin.Context) {
 		}).Error("Failed to list app versions")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to list app versions",
+			"error":      "Не удалось получить версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -196,7 +196,7 @@ func (h *AppVersionHandler) GetAppVersion(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleSuperAdmin && userRole != sharedmodels.RoleAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can view app versions",
+			"error":      "Только администраторы могут просматривать версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -205,7 +205,7 @@ func (h *AppVersionHandler) GetAppVersion(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid version ID",
+			"error":      "Неверный ID версии",
 			"request_id": requestID,
 		})
 		return
@@ -250,7 +250,7 @@ func (h *AppVersionHandler) UpdateAppVersion(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -259,7 +259,7 @@ func (h *AppVersionHandler) UpdateAppVersion(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleSuperAdmin && userRole != sharedmodels.RoleAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can update app versions",
+			"error":      "Только администраторы могут обновлять версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -268,7 +268,7 @@ func (h *AppVersionHandler) UpdateAppVersion(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid version ID",
+			"error":      "Неверный ID версии",
 			"request_id": requestID,
 		})
 		return
@@ -277,7 +277,7 @@ func (h *AppVersionHandler) UpdateAppVersion(c *gin.Context) {
 	var req models.UpdateAppVersionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -332,7 +332,7 @@ func (h *AppVersionHandler) DeleteAppVersion(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -341,7 +341,7 @@ func (h *AppVersionHandler) DeleteAppVersion(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can delete app versions",
+			"error":      "Только суперадмин может удалять версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -350,7 +350,7 @@ func (h *AppVersionHandler) DeleteAppVersion(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid version ID",
+			"error":      "Неверный ID версии",
 			"request_id": requestID,
 		})
 		return
@@ -402,7 +402,7 @@ func (h *AppVersionHandler) ActivateVersion(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -411,7 +411,7 @@ func (h *AppVersionHandler) ActivateVersion(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleSuperAdmin && userRole != sharedmodels.RoleAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can activate app versions",
+			"error":      "Только администраторы могут активировать версии приложения",
 			"request_id": requestID,
 		})
 		return
@@ -420,7 +420,7 @@ func (h *AppVersionHandler) ActivateVersion(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid version ID",
+			"error":      "Неверный ID версии",
 			"request_id": requestID,
 		})
 		return
@@ -466,7 +466,7 @@ func (h *AppVersionHandler) GetStats(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || (userRole != sharedmodels.RoleSuperAdmin && userRole != sharedmodels.RoleAdmin) {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only admins can view statistics",
+			"error":      "Только администраторы могут просматривать статистику",
 			"request_id": requestID,
 		})
 		return
@@ -480,7 +480,7 @@ func (h *AppVersionHandler) GetStats(c *gin.Context) {
 		}).Error("Failed to get app version stats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get statistics",
+			"error":      "Не удалось получить статистику",
 			"request_id": requestID,
 		})
 		return
@@ -508,7 +508,7 @@ func (h *AppVersionHandler) GetLatestVersions(c *gin.Context) {
 		}).Error("Failed to get latest versions")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get latest versions",
+			"error":      "Не удалось получить последние версии",
 			"request_id": requestID,
 		})
 		return
@@ -567,7 +567,7 @@ func (h *AppVersionHandler) DownloadLatest(c *gin.Context) {
 	// iOS doesn't support direct download
 	if platform == models.AppPlatformIOS {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "iOS apps must be downloaded from the App Store",
+			"error":      "Приложения iOS необходимо загружать из App Store",
 			"request_id": requestID,
 		})
 		return
@@ -591,7 +591,7 @@ func (h *AppVersionHandler) DownloadLatest(c *gin.Context) {
 		}).Error("Failed to get download path")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "File not available for download",
+			"error":      "Файл недоступен для скачивания",
 			"request_id": requestID,
 		})
 		return
@@ -629,7 +629,7 @@ func (h *AppVersionHandler) DownloadVersion(c *gin.Context) {
 	// iOS doesn't support direct download
 	if platform == models.AppPlatformIOS {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "iOS apps must be downloaded from the App Store",
+			"error":      "Приложения iOS необходимо загружать из App Store",
 			"request_id": requestID,
 		})
 		return
@@ -638,7 +638,7 @@ func (h *AppVersionHandler) DownloadVersion(c *gin.Context) {
 	// Validate platform
 	if !isValidPlatform(platform) {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid platform. Must be 'windows' or 'android'",
+			"error":      "Неверная платформа. Допустимые значения: 'windows' или 'android'",
 			"request_id": requestID,
 		})
 		return
@@ -649,7 +649,7 @@ func (h *AppVersionHandler) DownloadVersion(c *gin.Context) {
 	if err != nil {
 		logger.Warnf("[%s] Version not found: platform=%s version=%s error=%v", requestID, platform, version, err)
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":      "Version not found",
+			"error":      "Версия не найдена",
 			"request_id": requestID,
 		})
 		return
@@ -658,7 +658,7 @@ func (h *AppVersionHandler) DownloadVersion(c *gin.Context) {
 	// Check if file exists
 	if appVersion.FilePath == "" {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":      "File not found",
+			"error":      "Файл не найден",
 			"request_id": requestID,
 		})
 		return
@@ -668,7 +668,7 @@ func (h *AppVersionHandler) DownloadVersion(c *gin.Context) {
 	if _, err := os.Stat(appVersion.FilePath); os.IsNotExist(err) {
 		logger.Errorf("[%s] File not found on disk: %s", requestID, appVersion.FilePath)
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":      "File not found on disk",
+			"error":      "Файл не найден на диске",
 			"request_id": requestID,
 		})
 		return

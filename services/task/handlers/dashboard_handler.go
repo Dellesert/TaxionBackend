@@ -39,7 +39,7 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success":    false,
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -64,7 +64,7 @@ func (h *DashboardHandler) GetDashboard(c *gin.Context) {
 
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success":    false,
-			"error":      "Failed to get dashboard",
+			"error":      "Не удалось получить дашборд",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

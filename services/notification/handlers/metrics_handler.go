@@ -59,7 +59,7 @@ func (h *MetricsHandler) GetWorkerMetrics(c *gin.Context) {
 		}).Error("Failed to get queue stats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get worker metrics",
+			"error": "Не удалось получить метрики воркера",
 		})
 		return
 	}
@@ -94,7 +94,7 @@ func (h *MetricsHandler) GetDatabaseMetrics(c *gin.Context) {
 		}).Error("Failed to get database metrics")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to get database metrics",
+			"error": "Не удалось получить метрики базы данных",
 		})
 		return
 	}

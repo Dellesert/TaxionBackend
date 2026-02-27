@@ -41,7 +41,7 @@ func (h *ScheduleHandler) CreateSchedule(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -50,7 +50,7 @@ func (h *ScheduleHandler) CreateSchedule(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -80,7 +80,7 @@ func (h *ScheduleHandler) CreateSchedule(c *gin.Context) {
 		}).Warn("Invalid request body for create schedule")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -102,7 +102,7 @@ func (h *ScheduleHandler) CreateSchedule(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create schedule",
+			"error":      "Не удалось создать график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -131,7 +131,7 @@ func (h *ScheduleHandler) GetSchedules(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -140,7 +140,7 @@ func (h *ScheduleHandler) GetSchedules(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -198,7 +198,7 @@ func (h *ScheduleHandler) GetSchedules(c *gin.Context) {
 		}).Error("Failed to get schedules")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get schedules",
+			"error":      "Не удалось получить графики",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -216,7 +216,7 @@ func (h *ScheduleHandler) GetSchedule(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -225,7 +225,7 @@ func (h *ScheduleHandler) GetSchedule(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -234,7 +234,7 @@ func (h *ScheduleHandler) GetSchedule(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -251,7 +251,7 @@ func (h *ScheduleHandler) GetSchedule(c *gin.Context) {
 		}).Error("Failed to check schedule visibility")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to check schedule visibility",
+			"error":      "Не удалось проверить видимость графика",
 			"request_id": requestID,
 		})
 		return
@@ -279,7 +279,7 @@ func (h *ScheduleHandler) GetSchedule(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get schedule",
+			"error":      "Не удалось получить график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -300,7 +300,7 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -309,7 +309,7 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -318,7 +318,7 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -340,7 +340,7 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update schedule",
+			"error":      "Не удалось обновить график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -365,7 +365,7 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 	var req models.UpdateScheduleRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -389,7 +389,7 @@ func (h *ScheduleHandler) UpdateSchedule(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update schedule",
+			"error":      "Не удалось обновить график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -417,7 +417,7 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -426,7 +426,7 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -435,7 +435,7 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -457,7 +457,7 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete schedule",
+			"error":      "Не удалось удалить график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -493,7 +493,7 @@ func (h *ScheduleHandler) DeleteSchedule(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete schedule",
+			"error":      "Не удалось удалить график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -520,7 +520,7 @@ func (h *ScheduleHandler) PublishSchedule(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -529,7 +529,7 @@ func (h *ScheduleHandler) PublishSchedule(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -538,7 +538,7 @@ func (h *ScheduleHandler) PublishSchedule(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -552,7 +552,7 @@ func (h *ScheduleHandler) PublishSchedule(c *gin.Context) {
 			statusCode = http.StatusNotFound
 		}
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to publish schedule",
+			"error":      "Не удалось опубликовать график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -576,7 +576,7 @@ func (h *ScheduleHandler) PublishSchedule(c *gin.Context) {
 			statusCode = http.StatusBadRequest
 		}
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to publish schedule",
+			"error":      "Не удалось опубликовать график",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -604,7 +604,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -613,7 +613,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -622,7 +622,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -644,7 +644,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create schedule entry",
+			"error":      "Не удалось создать запись графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -670,7 +670,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 	rawBody, err := c.GetRawData()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Failed to read request body",
+			"error":      "Не удалось прочитать тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -691,7 +691,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 			}).Error("Failed to create schedule entries")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to create schedule entries",
+				"error":      "Не удалось создать записи графика",
 				"details":    err.Error(),
 				"request_id": requestID,
 			})
@@ -712,7 +712,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 	var req models.CreateScheduleEntryRequest
 	if err := json.Unmarshal(rawBody, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -734,7 +734,7 @@ func (h *ScheduleHandler) CreateScheduleEntry(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create schedule entry",
+			"error":      "Не удалось создать запись графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -769,7 +769,7 @@ func (h *ScheduleHandler) GetScheduleEntries(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -778,7 +778,7 @@ func (h *ScheduleHandler) GetScheduleEntries(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -787,7 +787,7 @@ func (h *ScheduleHandler) GetScheduleEntries(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -804,7 +804,7 @@ func (h *ScheduleHandler) GetScheduleEntries(c *gin.Context) {
 		}).Error("Failed to check schedule visibility")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to check schedule visibility",
+			"error":      "Не удалось проверить видимость графика",
 			"request_id": requestID,
 		})
 		return
@@ -860,7 +860,7 @@ func (h *ScheduleHandler) GetScheduleEntries(c *gin.Context) {
 		}).Error("Failed to get schedule entries")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get schedule entries",
+			"error":      "Не удалось получить записи графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -878,7 +878,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -887,7 +887,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -896,7 +896,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -918,7 +918,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update schedule entry",
+			"error":      "Не удалось обновить запись графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -943,7 +943,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 	entryID, err := strconv.ParseUint(c.Param("entry_id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid entry ID",
+			"error":      "Неверный ID записи",
 			"request_id": requestID,
 		})
 		return
@@ -952,7 +952,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 	var req models.UpdateScheduleEntryRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -977,7 +977,7 @@ func (h *ScheduleHandler) UpdateScheduleEntry(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update schedule entry",
+			"error":      "Не удалось обновить запись графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1012,7 +1012,7 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1021,7 +1021,7 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1030,7 +1030,7 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -1052,7 +1052,7 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete schedule entry",
+			"error":      "Не удалось удалить запись графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1077,7 +1077,7 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 	entryID, err := strconv.ParseUint(c.Param("entry_id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid entry ID",
+			"error":      "Неверный ID записи",
 			"request_id": requestID,
 		})
 		return
@@ -1098,7 +1098,7 @@ func (h *ScheduleHandler) DeleteScheduleEntry(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete schedule entry",
+			"error":      "Не удалось удалить запись графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1119,7 +1119,7 @@ func (h *ScheduleHandler) GetMyScheduleEntries(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1132,7 +1132,7 @@ func (h *ScheduleHandler) GetMyScheduleEntries(c *gin.Context) {
 	startDate, err := time.Parse("2006-01-02", startDateStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid start_date format (expected YYYY-MM-DD)",
+			"error":      "Неверный формат start_date (ожидается ГГГГ-ММ-ДД)",
 			"request_id": requestID,
 		})
 		return
@@ -1141,7 +1141,7 @@ func (h *ScheduleHandler) GetMyScheduleEntries(c *gin.Context) {
 	endDate, err := time.Parse("2006-01-02", endDateStr)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid end_date format (expected YYYY-MM-DD)",
+			"error":      "Неверный формат end_date (ожидается ГГГГ-ММ-ДД)",
 			"request_id": requestID,
 		})
 		return
@@ -1156,7 +1156,7 @@ func (h *ScheduleHandler) GetMyScheduleEntries(c *gin.Context) {
 		}).Error("Failed to get user schedule entries")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get schedule entries",
+			"error":      "Не удалось получить записи графика",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1179,7 +1179,7 @@ func (h *ScheduleHandler) GetDailySummary(c *gin.Context) {
 	_, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1226,7 +1226,7 @@ func (h *ScheduleHandler) GetScheduleGroupMembers(c *gin.Context) {
 	scheduleID, err := strconv.ParseUint(scheduleIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid schedule ID",
+			"error":      "Неверный ID графика",
 			"request_id": requestID,
 		})
 		return
@@ -1241,7 +1241,7 @@ func (h *ScheduleHandler) GetScheduleGroupMembers(c *gin.Context) {
 		}).Error("Failed to get schedule group members")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get group members",
+			"error":      "Не удалось получить участников группы",
 			"request_id": requestID,
 		})
 		return

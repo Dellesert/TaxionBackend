@@ -37,14 +37,14 @@ func (h *InternalHandler) GetTaskForChat(c *gin.Context) {
 	taskIDStr := c.Param("id")
 	taskID, err := strconv.ParseUint(taskIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 
 	// Get task using internal method (no auth check)
 	task, err := h.taskUsecase.GetTaskByIDInternal(uint(taskID))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Task not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Задача не найдена"})
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *InternalHandler) GetTaskStats(c *gin.Context) {
 
 	stats, err := h.taskUsecase.GetTaskStatsInternal(period)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get task statistics"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить статистику задач"})
 		return
 	}
 

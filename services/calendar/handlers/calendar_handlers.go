@@ -40,7 +40,7 @@ func (h *CalendarHandler) CreateEvent(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -55,7 +55,7 @@ func (h *CalendarHandler) CreateEvent(c *gin.Context) {
 		}).Warn("Invalid request body for create event")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -79,7 +79,7 @@ func (h *CalendarHandler) CreateEvent(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create event",
+			"error":      "Не удалось создать событие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -114,7 +114,7 @@ func (h *CalendarHandler) GetEvent(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -132,7 +132,7 @@ func (h *CalendarHandler) GetEvent(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -181,7 +181,7 @@ func (h *CalendarHandler) UpdateEvent(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -199,7 +199,7 @@ func (h *CalendarHandler) UpdateEvent(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -215,7 +215,7 @@ func (h *CalendarHandler) UpdateEvent(c *gin.Context) {
 		}).Warn("Invalid request body for update event")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -243,7 +243,7 @@ func (h *CalendarHandler) UpdateEvent(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update event",
+			"error":      "Не удалось обновить событие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -277,7 +277,7 @@ func (h *CalendarHandler) DeleteEvent(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -295,7 +295,7 @@ func (h *CalendarHandler) DeleteEvent(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -318,7 +318,7 @@ func (h *CalendarHandler) DeleteEvent(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete event",
+			"error":      "Не удалось удалить событие",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -351,7 +351,7 @@ func (h *CalendarHandler) GetUserEvents(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -367,7 +367,7 @@ func (h *CalendarHandler) GetUserEvents(c *gin.Context) {
 		}).Warn("Invalid filter parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid filter parameters",
+			"error":      "Неверные параметры фильтра",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -412,7 +412,7 @@ func (h *CalendarHandler) GetUserEvents(c *gin.Context) {
 		}).Error("Failed to get user events")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get events",
+			"error":      "Не удалось получить события",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -473,7 +473,7 @@ func (h *CalendarHandler) GetUserCalendar(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -489,7 +489,7 @@ func (h *CalendarHandler) GetUserCalendar(c *gin.Context) {
 		}).Warn("Invalid calendar parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid calendar parameters",
+			"error":      "Неверные параметры календаря",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -512,7 +512,7 @@ func (h *CalendarHandler) GetUserCalendar(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get calendar",
+			"error":      "Не удалось получить календарь",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -543,7 +543,7 @@ func (h *CalendarHandler) SearchEvents(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -553,7 +553,7 @@ func (h *CalendarHandler) SearchEvents(c *gin.Context) {
 	searchQuery := c.Query("q")
 	if searchQuery == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Search query parameter 'q' is required",
+			"error":      "Параметр поиска 'q' обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -569,7 +569,7 @@ func (h *CalendarHandler) SearchEvents(c *gin.Context) {
 		}).Warn("Invalid filter parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid filter parameters",
+			"error":      "Неверные параметры фильтра",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -591,7 +591,7 @@ func (h *CalendarHandler) SearchEvents(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to search events",
+			"error":      "Не удалось найти события",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -622,7 +622,7 @@ func (h *CalendarHandler) InviteParticipants(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -640,7 +640,7 @@ func (h *CalendarHandler) InviteParticipants(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -656,7 +656,7 @@ func (h *CalendarHandler) InviteParticipants(c *gin.Context) {
 		}).Warn("Invalid request body for invite participants")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -683,7 +683,7 @@ func (h *CalendarHandler) InviteParticipants(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to invite participants",
+			"error":      "Не удалось пригласить участников",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -717,7 +717,7 @@ func (h *CalendarHandler) RemoveParticipant(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -735,7 +735,7 @@ func (h *CalendarHandler) RemoveParticipant(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -754,7 +754,7 @@ func (h *CalendarHandler) RemoveParticipant(c *gin.Context) {
 		}).Warn("Invalid participant ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid participant ID",
+			"error":      "Неверный ID участника",
 			"request_id": requestID,
 		})
 		return
@@ -778,7 +778,7 @@ func (h *CalendarHandler) RemoveParticipant(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to remove participant",
+			"error":      "Не удалось удалить участника",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -812,7 +812,7 @@ func (h *CalendarHandler) UpdateParticipantStatus(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -830,7 +830,7 @@ func (h *CalendarHandler) UpdateParticipantStatus(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -846,7 +846,7 @@ func (h *CalendarHandler) UpdateParticipantStatus(c *gin.Context) {
 		}).Warn("Invalid request body for update participant status")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -873,7 +873,7 @@ func (h *CalendarHandler) UpdateParticipantStatus(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update participant status",
+			"error":      "Не удалось обновить статус участника",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -907,7 +907,7 @@ func (h *CalendarHandler) SetReminder(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -925,7 +925,7 @@ func (h *CalendarHandler) SetReminder(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -941,7 +941,7 @@ func (h *CalendarHandler) SetReminder(c *gin.Context) {
 		}).Warn("Invalid request body for set reminder")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -967,7 +967,7 @@ func (h *CalendarHandler) SetReminder(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to set reminder",
+			"error":      "Не удалось установить напоминание",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1003,7 +1003,7 @@ func (h *CalendarHandler) RemoveReminder(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1021,7 +1021,7 @@ func (h *CalendarHandler) RemoveReminder(c *gin.Context) {
 		}).Warn("Invalid event ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid event ID",
+			"error":      "Неверный ID события",
 			"request_id": requestID,
 		})
 		return
@@ -1040,7 +1040,7 @@ func (h *CalendarHandler) RemoveReminder(c *gin.Context) {
 		}).Warn("Invalid reminder ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid reminder ID",
+			"error":      "Неверный ID напоминания",
 			"request_id": requestID,
 		})
 		return
@@ -1064,7 +1064,7 @@ func (h *CalendarHandler) RemoveReminder(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to remove reminder",
+			"error":      "Не удалось удалить напоминание",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1098,7 +1098,7 @@ func (h *CalendarHandler) GetEventStats(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1113,7 +1113,7 @@ func (h *CalendarHandler) GetEventStats(c *gin.Context) {
 		}).Error("Failed to get event stats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get event stats",
+			"error":      "Не удалось получить статистику событий",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1140,7 +1140,7 @@ func (h *CalendarHandler) CheckTimeConflict(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1160,7 +1160,7 @@ func (h *CalendarHandler) CheckTimeConflict(c *gin.Context) {
 		}).Warn("Invalid request body for check conflict")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1183,7 +1183,7 @@ func (h *CalendarHandler) CheckTimeConflict(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to check time conflict",
+			"error":      "Не удалось проверить конфликт времени",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1288,7 +1288,7 @@ func (h *CalendarHandler) GetTodayEvents(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "user_id is required",
+			"error":      "user_id обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -1297,7 +1297,7 @@ func (h *CalendarHandler) GetTodayEvents(c *gin.Context) {
 	userID, err := strconv.ParseUint(userIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user_id",
+			"error":      "Неверный user_id",
 			"request_id": requestID,
 		})
 		return
@@ -1320,7 +1320,7 @@ func (h *CalendarHandler) GetTodayEvents(c *gin.Context) {
 		startTime, err = time.Parse(time.RFC3339, startStr)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Invalid start time format",
+				"error":      "Неверный формат времени начала",
 				"request_id": requestID,
 			})
 			return
@@ -1335,7 +1335,7 @@ func (h *CalendarHandler) GetTodayEvents(c *gin.Context) {
 		endTime, err = time.Parse(time.RFC3339, endStr)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Invalid end time format",
+				"error":      "Неверный формат времени окончания",
 				"request_id": requestID,
 			})
 			return
@@ -1353,7 +1353,7 @@ func (h *CalendarHandler) GetTodayEvents(c *gin.Context) {
 		}).Error("Failed to get today's events")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get today's events",
+			"error":      "Не удалось получить события на сегодня",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

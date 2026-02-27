@@ -49,7 +49,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 			}).Error("Session store not configured for WebSocket")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Session authentication not configured",
+				"error":      "Аутентификация по сессии не настроена",
 				"request_id": requestID,
 			})
 			return
@@ -63,7 +63,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 			}).Error("Failed to validate session for WebSocket")
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Invalid or expired session",
+				"error":      "Недействительная или истекшая сессия",
 				"request_id": requestID,
 			})
 			return
@@ -99,7 +99,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 			}).Error("No authentication provided for WebSocket connection")
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Authentication required - provide session_id or token in query parameter",
+				"error":      "Требуется аутентификация — укажите session_id или token в параметрах запроса",
 				"request_id": requestID,
 			})
 			return
@@ -117,7 +117,7 @@ func (h *WebSocketHandler) HandleWebSocket(c *gin.Context) {
 			}).Error("Failed to validate JWT token for WebSocket")
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Invalid or expired token",
+				"error":      "Недействительный или истекший токен",
 				"request_id": requestID,
 			})
 			return

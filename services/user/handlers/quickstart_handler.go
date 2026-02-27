@@ -54,7 +54,7 @@ func (h *QuickStartHandler) ImportQuickStart(c *gin.Context) {
 		}).Warn("No file provided for quick start import")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "ZIP file is required",
+			"error":      "Требуется ZIP-файл",
 			"request_id": requestID,
 		})
 		return
@@ -69,7 +69,7 @@ func (h *QuickStartHandler) ImportQuickStart(c *gin.Context) {
 		}).Error("Failed to open uploaded file")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to read ZIP file",
+			"error":      "Не удалось прочитать ZIP-файл",
 			"request_id": requestID,
 		})
 		return
@@ -85,7 +85,7 @@ func (h *QuickStartHandler) ImportQuickStart(c *gin.Context) {
 		}).Error("Failed to read file bytes")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to read ZIP file",
+			"error":      "Не удалось прочитать ZIP-файл",
 			"request_id": requestID,
 		})
 		return
@@ -100,7 +100,7 @@ func (h *QuickStartHandler) ImportQuickStart(c *gin.Context) {
 		}).Warn("Invalid ZIP file")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid ZIP file format",
+			"error":      "Неверный формат ZIP-файла",
 			"request_id": requestID,
 		})
 		return
@@ -170,7 +170,7 @@ func (h *QuickStartHandler) ImportQuickStart(c *gin.Context) {
 	// Validate required files
 	if len(departmentsCSV) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "departments.csv not found in ZIP archive",
+			"error":      "departments.csv не найден в ZIP-архиве",
 			"hint":       "ZIP file must contain departments.csv, subdepartments.csv, and users.csv",
 			"request_id": requestID,
 		})

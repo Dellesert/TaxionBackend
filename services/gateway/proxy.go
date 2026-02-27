@@ -125,7 +125,7 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 			}).Error("Failed to parse target URL")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Service configuration error",
+				"error":      "Ошибка конфигурации сервиса",
 				"request_id": requestID,
 			})
 			return
@@ -162,7 +162,7 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 					}).Error("Failed to read request body")
 
 					c.JSON(http.StatusBadRequest, gin.H{
-						"error":      "Failed to read request body",
+						"error":      "Не удалось прочитать тело запроса",
 						"request_id": requestID,
 					})
 					return
@@ -182,7 +182,7 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 			}).Error("Failed to create proxy request")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to create proxy request",
+				"error":      "Не удалось создать прокси-запрос",
 				"request_id": requestID,
 			})
 			return
@@ -268,7 +268,7 @@ func proxyRequest(targetURL, serviceName string) gin.HandlerFunc {
 			}).Error("Failed to read response body")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to read service response",
+				"error":      "Не удалось прочитать ответ сервиса",
 				"request_id": requestID,
 			})
 			return
@@ -365,7 +365,7 @@ func proxyWebSocket(c *gin.Context, targetURL, serviceName, requestID string) {
 			"service":    serviceName,
 			"error":      err.Error(),
 		}).Error("Failed to parse target URL for WebSocket")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Service configuration error"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка конфигурации сервиса"})
 		return
 	}
 

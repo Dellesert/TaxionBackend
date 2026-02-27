@@ -46,7 +46,7 @@ func (h *SubdepartmentHandler) GetSubdepartments(c *gin.Context) {
 			}).Warn("Invalid department ID")
 
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Invalid department ID",
+				"error":      "Неверный ID отдела",
 				"request_id": requestID,
 			})
 			return
@@ -62,11 +62,11 @@ func (h *SubdepartmentHandler) GetSubdepartments(c *gin.Context) {
 			}).Error("Failed to get subdepartments by department")
 
 			statusCode := http.StatusInternalServerError
-			errorMessage := "Failed to get subdepartments"
+			errorMessage := "Не удалось получить подотделы"
 
 			if strings.Contains(err.Error(), "not found") {
 				statusCode = http.StatusNotFound
-				errorMessage = "Department not found"
+				errorMessage = "Отдел не найден"
 			}
 
 			c.JSON(statusCode, gin.H{
@@ -99,7 +99,7 @@ func (h *SubdepartmentHandler) GetSubdepartments(c *gin.Context) {
 		}).Error("Failed to get subdepartments")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get subdepartments",
+			"error":      "Не удалось получить подотделы",
 			"request_id": requestID,
 		})
 		return
@@ -131,7 +131,7 @@ func (h *SubdepartmentHandler) GetSubdepartment(c *gin.Context) {
 		}).Warn("Invalid subdepartment ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid subdepartment ID",
+			"error":      "Неверный ID подотдела",
 			"request_id": requestID,
 		})
 		return
@@ -146,11 +146,11 @@ func (h *SubdepartmentHandler) GetSubdepartment(c *gin.Context) {
 		}).Error("Failed to get subdepartment")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get subdepartment"
+		errorMessage := "Не удалось получить подотдел"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Subdepartment not found"
+			errorMessage = "Подотдел не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -183,7 +183,7 @@ func (h *SubdepartmentHandler) CreateSubdepartment(c *gin.Context) {
 		}).Warn("Invalid subdepartment creation request")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request data",
+			"error":      "Неверные данные запроса",
 			"request_id": requestID,
 		})
 		return
@@ -199,7 +199,7 @@ func (h *SubdepartmentHandler) CreateSubdepartment(c *gin.Context) {
 		}).Error("Failed to create subdepartment")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create subdepartment"
+		errorMessage := "Не удалось создать подотдел"
 
 		if strings.Contains(err.Error(), "validation") || strings.Contains(err.Error(), "required") {
 			statusCode = http.StatusBadRequest
@@ -246,7 +246,7 @@ func (h *SubdepartmentHandler) UpdateSubdepartment(c *gin.Context) {
 		}).Warn("Invalid subdepartment ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid subdepartment ID",
+			"error":      "Неверный ID подотдела",
 			"request_id": requestID,
 		})
 		return
@@ -261,7 +261,7 @@ func (h *SubdepartmentHandler) UpdateSubdepartment(c *gin.Context) {
 		}).Warn("Invalid subdepartment update request")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request data",
+			"error":      "Неверные данные запроса",
 			"request_id": requestID,
 		})
 		return
@@ -276,7 +276,7 @@ func (h *SubdepartmentHandler) UpdateSubdepartment(c *gin.Context) {
 		}).Error("Failed to update subdepartment")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update subdepartment"
+		errorMessage := "Не удалось обновить подотдел"
 
 		if strings.Contains(err.Error(), "validation") || strings.Contains(err.Error(), "required") {
 			statusCode = http.StatusBadRequest
@@ -321,7 +321,7 @@ func (h *SubdepartmentHandler) DeleteSubdepartment(c *gin.Context) {
 		}).Warn("Invalid subdepartment ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid subdepartment ID",
+			"error":      "Неверный ID подотдела",
 			"request_id": requestID,
 		})
 		return
@@ -336,11 +336,11 @@ func (h *SubdepartmentHandler) DeleteSubdepartment(c *gin.Context) {
 		}).Error("Failed to delete subdepartment")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete subdepartment"
+		errorMessage := "Не удалось удалить подотдел"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "Subdepartment not found"
+			errorMessage = "Подотдел не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -374,7 +374,7 @@ func (h *SubdepartmentHandler) ImportSubdepartments(c *gin.Context) {
 		}).Warn("No file provided for subdepartment import")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "CSV file is required",
+			"error":      "Требуется CSV-файл",
 			"request_id": requestID,
 		})
 		return
@@ -389,7 +389,7 @@ func (h *SubdepartmentHandler) ImportSubdepartments(c *gin.Context) {
 		}).Error("Failed to open uploaded file")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to read CSV file",
+			"error":      "Не удалось прочитать CSV-файл",
 			"request_id": requestID,
 		})
 		return
@@ -408,7 +408,7 @@ func (h *SubdepartmentHandler) ImportSubdepartments(c *gin.Context) {
 		}).Warn("Failed to read CSV header")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid CSV format: unable to read header",
+			"error":      "Неверный формат CSV: не удалось прочитать заголовок",
 			"request_id": requestID,
 		})
 		return
@@ -608,7 +608,7 @@ func (h *SubdepartmentHandler) BulkDeleteSubdepartments(c *gin.Context) {
 
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -616,7 +616,7 @@ func (h *SubdepartmentHandler) BulkDeleteSubdepartments(c *gin.Context) {
 
 	if len(req.SubdepartmentIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No subdepartment IDs provided",
+			"error":      "Не указаны ID подотделов",
 			"request_id": requestID,
 		})
 		return

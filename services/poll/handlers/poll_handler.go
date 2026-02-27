@@ -44,7 +44,7 @@ func (h *PollHandler) CreatePoll(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -59,7 +59,7 @@ func (h *PollHandler) CreatePoll(c *gin.Context) {
 		}).Warn("Invalid request body for create poll")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -91,7 +91,7 @@ func (h *PollHandler) CreatePoll(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create poll",
+			"error":      "Не удалось создать опрос",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -126,7 +126,7 @@ func (h *PollHandler) GetPoll(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -142,7 +142,7 @@ func (h *PollHandler) GetPoll(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -160,7 +160,7 @@ func (h *PollHandler) GetPoll(c *gin.Context) {
 		}).Warn("Invalid poll ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid poll ID",
+			"error":      "Неверный ID опроса",
 			"request_id": requestID,
 		})
 		return
@@ -183,7 +183,7 @@ func (h *PollHandler) GetPoll(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get poll",
+			"error":      "Не удалось получить опрос",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -210,7 +210,7 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -226,7 +226,7 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -244,7 +244,7 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		}).Warn("Invalid poll ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid poll ID",
+			"error":      "Неверный ID опроса",
 			"request_id": requestID,
 		})
 		return
@@ -260,7 +260,7 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		}).Warn("Invalid request body for update poll")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -286,7 +286,7 @@ func (h *PollHandler) UpdatePoll(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update poll",
+			"error":      "Не удалось обновить опрос",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -320,7 +320,7 @@ func (h *PollHandler) DeletePoll(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -336,7 +336,7 @@ func (h *PollHandler) DeletePoll(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -354,7 +354,7 @@ func (h *PollHandler) DeletePoll(c *gin.Context) {
 		}).Warn("Invalid poll ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid poll ID",
+			"error":      "Неверный ID опроса",
 			"request_id": requestID,
 		})
 		return
@@ -377,7 +377,7 @@ func (h *PollHandler) DeletePoll(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete poll",
+			"error":      "Не удалось удалить опрос",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -410,7 +410,7 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -426,7 +426,7 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -442,7 +442,7 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		}).Warn("Invalid filter parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid filter parameters",
+			"error":      "Неверные параметры фильтра",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -477,7 +477,7 @@ func (h *PollHandler) GetPolls(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get polls",
+			"error":      "Не удалось получить опросы",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -538,7 +538,7 @@ func (h *PollHandler) SearchPolls(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -548,7 +548,7 @@ func (h *PollHandler) SearchPolls(c *gin.Context) {
 	searchQuery := strings.TrimSpace(c.Query("q"))
 	if searchQuery == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Search query is required",
+			"error":      "Поисковый запрос обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -565,7 +565,7 @@ func (h *PollHandler) SearchPolls(c *gin.Context) {
 		}).Warn("Invalid filter parameters")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid filter parameters",
+			"error":      "Неверные параметры фильтра",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -587,7 +587,7 @@ func (h *PollHandler) SearchPolls(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to search polls",
+			"error":      "Не удалось найти опросы",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -618,7 +618,7 @@ func (h *PollHandler) VotePoll(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -636,7 +636,7 @@ func (h *PollHandler) VotePoll(c *gin.Context) {
 		}).Warn("Invalid poll ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid poll ID",
+			"error":      "Неверный ID опроса",
 			"request_id": requestID,
 		})
 		return
@@ -652,7 +652,7 @@ func (h *PollHandler) VotePoll(c *gin.Context) {
 		}).Warn("Invalid request body for vote poll")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -678,7 +678,7 @@ func (h *PollHandler) VotePoll(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to vote on poll",
+			"error":      "Не удалось проголосовать в опросе",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -713,7 +713,7 @@ func (h *PollHandler) GetPollResults(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -731,7 +731,7 @@ func (h *PollHandler) GetPollResults(c *gin.Context) {
 		}).Warn("Invalid poll ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid poll ID",
+			"error":      "Неверный ID опроса",
 			"request_id": requestID,
 		})
 		return
@@ -754,7 +754,7 @@ func (h *PollHandler) GetPollResults(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get poll results",
+			"error":      "Не удалось получить результаты опроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -825,7 +825,7 @@ func (h *PollHandler) GetPollVoters(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -841,7 +841,7 @@ func (h *PollHandler) GetPollVoters(c *gin.Context) {
 		}).Error("Failed to get user role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -857,7 +857,7 @@ func (h *PollHandler) GetPollVoters(c *gin.Context) {
 		}).Warn("Invalid poll ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid poll ID",
+			"error":      "Неверный ID опроса",
 			"request_id": requestID,
 		})
 		return
@@ -881,7 +881,7 @@ func (h *PollHandler) GetPollVoters(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get poll voters",
+			"error":      "Не удалось получить голосующих опроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -911,7 +911,7 @@ func (h *PollHandler) GetPendingPolls(c *gin.Context) {
 	userIDStr := c.Query("user_id")
 	if userIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "user_id is required",
+			"error":      "user_id обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -920,7 +920,7 @@ func (h *PollHandler) GetPendingPolls(c *gin.Context) {
 	userID, err := strconv.ParseUint(userIDStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user_id",
+			"error":      "Неверный user_id",
 			"request_id": requestID,
 		})
 		return
@@ -943,7 +943,7 @@ func (h *PollHandler) GetPendingPolls(c *gin.Context) {
 		}).Error("Failed to get pending polls")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get pending polls",
+			"error":      "Не удалось получить ожидающие опросы",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})

@@ -35,14 +35,14 @@ func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 	// Get user ID from context (set by JWT middleware)
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get task ID from path
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 
@@ -70,7 +70,7 @@ func (h *AttachmentHandler) UploadAttachment(c *gin.Context) {
 	// Old approach: direct file upload
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded and no file_id provided"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл не загружен и file_id не указан"})
 		return
 	}
 
@@ -93,7 +93,7 @@ func (h *AttachmentHandler) GetTaskAttachments(c *gin.Context) {
 	// Get task ID from path
 	taskID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid task ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID задачи"})
 		return
 	}
 
@@ -113,14 +113,14 @@ func (h *AttachmentHandler) DeleteAttachment(c *gin.Context) {
 	// Get user ID from context
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Не авторизован"})
 		return
 	}
 
 	// Get attachment ID from path
 	attachmentID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid attachment ID"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID вложения"})
 		return
 	}
 

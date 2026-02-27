@@ -39,7 +39,7 @@ func (m *PermissionsMiddleware) RequirePermission(action string) gin.HandlerFunc
 			}).Error("Failed to get user ID from context")
 
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"error":      "Unauthorized",
+				"error":      "Не авторизован",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -58,7 +58,7 @@ func (m *PermissionsMiddleware) RequirePermission(action string) gin.HandlerFunc
 			}).Warn("Invalid task ID")
 
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error":      "Invalid task ID",
+				"error":      "Неверный ID задачи",
 				"request_id": requestID,
 			})
 			c.Abort()
@@ -99,8 +99,8 @@ func (m *PermissionsMiddleware) RequirePermission(action string) gin.HandlerFunc
 			}).Warn("Permission denied")
 
 			c.JSON(http.StatusForbidden, gin.H{
-				"error":      "Permission denied",
-				"details":    "You don't have permission to " + action + " this task",
+				"error":      "Доступ запрещён",
+				"details":    "У вас нет прав на " + action + " этой задачи",
 				"request_id": requestID,
 			})
 			c.Abort()

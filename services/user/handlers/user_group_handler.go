@@ -42,7 +42,7 @@ func (h *UserGroupHandler) GetGroups(c *gin.Context) {
 			}).Error("Failed to get user groups with members")
 
 			c.JSON(http.StatusInternalServerError, gin.H{
-				"error":      "Failed to get user groups",
+				"error":      "Не удалось получить группы пользователей",
 				"request_id": requestID,
 			})
 			return
@@ -64,7 +64,7 @@ func (h *UserGroupHandler) GetGroups(c *gin.Context) {
 		}).Error("Failed to get user groups")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user groups",
+			"error":      "Не удалось получить группы пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -90,7 +90,7 @@ func (h *UserGroupHandler) GetGroup(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid group ID",
+			"error":      "Неверный ID группы",
 			"request_id": requestID,
 		})
 		return
@@ -99,11 +99,11 @@ func (h *UserGroupHandler) GetGroup(c *gin.Context) {
 	group, err := h.userGroupUsecase.GetGroup(uint(id))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to get user group"
+		errorMessage := "Не удалось получить группу пользователей"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User group not found"
+			errorMessage = "Группа пользователей не найдена"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -126,7 +126,7 @@ func (h *UserGroupHandler) CreateGroup(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Authentication required",
+			"error":      "Требуется аутентификация",
 			"request_id": requestID,
 		})
 		return
@@ -135,7 +135,7 @@ func (h *UserGroupHandler) CreateGroup(c *gin.Context) {
 	var req models.CreateUserGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -145,7 +145,7 @@ func (h *UserGroupHandler) CreateGroup(c *gin.Context) {
 	group, err := h.userGroupUsecase.CreateGroup(&req, userID.(uint))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create user group"
+		errorMessage := "Не удалось создать группу пользователей"
 
 		if strings.Contains(err.Error(), "validation") || strings.Contains(err.Error(), "required") || strings.Contains(err.Error(), "must be") {
 			statusCode = http.StatusBadRequest
@@ -181,7 +181,7 @@ func (h *UserGroupHandler) UpdateGroup(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid group ID",
+			"error":      "Неверный ID группы",
 			"request_id": requestID,
 		})
 		return
@@ -193,7 +193,7 @@ func (h *UserGroupHandler) UpdateGroup(c *gin.Context) {
 	var req models.UpdateUserGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -203,11 +203,11 @@ func (h *UserGroupHandler) UpdateGroup(c *gin.Context) {
 	group, err := h.userGroupUsecase.UpdateGroup(uint(id), &req, userID.(uint), string(userRole.(sharedmodels.Role)))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update user group"
+		errorMessage := "Не удалось обновить группу пользователей"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User group not found"
+			errorMessage = "Группа пользователей не найдена"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -244,7 +244,7 @@ func (h *UserGroupHandler) DeleteGroup(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid group ID",
+			"error":      "Неверный ID группы",
 			"request_id": requestID,
 		})
 		return
@@ -256,11 +256,11 @@ func (h *UserGroupHandler) DeleteGroup(c *gin.Context) {
 	err = h.userGroupUsecase.DeleteGroup(uint(id), userID.(uint), string(userRole.(sharedmodels.Role)))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete user group"
+		errorMessage := "Не удалось удалить группу пользователей"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User group not found"
+			errorMessage = "Группа пользователей не найдена"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -292,7 +292,7 @@ func (h *UserGroupHandler) UpdateMembers(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid group ID",
+			"error":      "Неверный ID группы",
 			"request_id": requestID,
 		})
 		return
@@ -304,7 +304,7 @@ func (h *UserGroupHandler) UpdateMembers(c *gin.Context) {
 	var req models.UpdateUserGroupMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -314,11 +314,11 @@ func (h *UserGroupHandler) UpdateMembers(c *gin.Context) {
 	group, err := h.userGroupUsecase.SetMembers(uint(id), &req, userID.(uint), string(userRole.(sharedmodels.Role)))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update group members"
+		errorMessage := "Не удалось обновить участников группы"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User group not found"
+			errorMessage = "Группа пользователей не найдена"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -352,7 +352,7 @@ func (h *UserGroupHandler) AddMembers(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid group ID",
+			"error":      "Неверный ID группы",
 			"request_id": requestID,
 		})
 		return
@@ -364,7 +364,7 @@ func (h *UserGroupHandler) AddMembers(c *gin.Context) {
 	var req models.AddRemoveUserGroupMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -374,11 +374,11 @@ func (h *UserGroupHandler) AddMembers(c *gin.Context) {
 	err = h.userGroupUsecase.AddMembers(uint(id), &req, userID.(uint), string(userRole.(sharedmodels.Role)))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to add members to group"
+		errorMessage := "Не удалось добавить участников в группу"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User group not found"
+			errorMessage = "Группа пользователей не найдена"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -410,7 +410,7 @@ func (h *UserGroupHandler) ReorderGroups(c *gin.Context) {
 	var req models.ReorderUserGroupsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -425,7 +425,7 @@ func (h *UserGroupHandler) ReorderGroups(c *gin.Context) {
 		}).Error("Failed to reorder user groups")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to reorder user groups",
+			"error":      "Не удалось переупорядочить группы пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -450,7 +450,7 @@ func (h *UserGroupHandler) RemoveMembers(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid group ID",
+			"error":      "Неверный ID группы",
 			"request_id": requestID,
 		})
 		return
@@ -462,7 +462,7 @@ func (h *UserGroupHandler) RemoveMembers(c *gin.Context) {
 	var req models.AddRemoveUserGroupMembersRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -472,11 +472,11 @@ func (h *UserGroupHandler) RemoveMembers(c *gin.Context) {
 	err = h.userGroupUsecase.RemoveMembers(uint(id), &req, userID.(uint), string(userRole.(sharedmodels.Role)))
 	if err != nil {
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to remove members from group"
+		errorMessage := "Не удалось удалить участников из группы"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User group not found"
+			errorMessage = "Группа пользователей не найдена"
 		} else if strings.Contains(err.Error(), "insufficient permissions") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()

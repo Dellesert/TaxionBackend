@@ -41,7 +41,7 @@ func (h *InvitationHandler) CreateInvitation(c *gin.Context) {
 		}).Warn("Failed to get user ID for invitation creation")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -56,7 +56,7 @@ func (h *InvitationHandler) CreateInvitation(c *gin.Context) {
 		}).Warn("Unauthorized invitation creation attempt")
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can create invitations",
+			"error":      "Только суперадмин может создавать приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -70,7 +70,7 @@ func (h *InvitationHandler) CreateInvitation(c *gin.Context) {
 		}).Warn("Invalid request body for invitation creation")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -88,7 +88,7 @@ func (h *InvitationHandler) CreateInvitation(c *gin.Context) {
 		}).Error("Failed to create invitation")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create invitation"
+		errorMessage := "Не удалось создать приглашение"
 
 		if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
@@ -128,7 +128,7 @@ func (h *InvitationHandler) ListInvitations(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can list invitations",
+			"error":      "Только суперадмин может просматривать приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -171,7 +171,7 @@ func (h *InvitationHandler) ListInvitations(c *gin.Context) {
 		}).Error("Failed to list invitations")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to list invitations",
+			"error":      "Не удалось получить список приглашений",
 			"request_id": requestID,
 		})
 		return
@@ -191,7 +191,7 @@ func (h *InvitationHandler) GetInvitation(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can view invitations",
+			"error":      "Только суперадмин может просматривать приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -201,7 +201,7 @@ func (h *InvitationHandler) GetInvitation(c *gin.Context) {
 	invitationID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid invitation ID",
+			"error":      "Неверный ID приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -242,7 +242,7 @@ func (h *InvitationHandler) ResendInvitation(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -251,7 +251,7 @@ func (h *InvitationHandler) ResendInvitation(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can resend invitations",
+			"error":      "Только суперадмин может повторно отправлять приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -261,7 +261,7 @@ func (h *InvitationHandler) ResendInvitation(c *gin.Context) {
 	invitationID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid invitation ID",
+			"error":      "Неверный ID приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -278,7 +278,7 @@ func (h *InvitationHandler) ResendInvitation(c *gin.Context) {
 		}).Error("Failed to resend invitation")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to resend invitation"
+		errorMessage := "Не удалось повторно отправить приглашение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
@@ -320,7 +320,7 @@ func (h *InvitationHandler) CancelInvitation(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -329,7 +329,7 @@ func (h *InvitationHandler) CancelInvitation(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can cancel invitations",
+			"error":      "Только суперадмин может отменять приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -339,7 +339,7 @@ func (h *InvitationHandler) CancelInvitation(c *gin.Context) {
 	invitationID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid invitation ID",
+			"error":      "Неверный ID приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -356,7 +356,7 @@ func (h *InvitationHandler) CancelInvitation(c *gin.Context) {
 		}).Error("Failed to cancel invitation")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to cancel invitation"
+		errorMessage := "Не удалось отменить приглашение"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
@@ -396,7 +396,7 @@ func (h *InvitationHandler) GetStats(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can view invitation statistics",
+			"error":      "Только суперадмин может просматривать статистику приглашений",
 			"request_id": requestID,
 		})
 		return
@@ -411,7 +411,7 @@ func (h *InvitationHandler) GetStats(c *gin.Context) {
 		}).Error("Failed to get invitation statistics")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get statistics",
+			"error":      "Не удалось получить статистику",
 			"request_id": requestID,
 		})
 		return
@@ -431,7 +431,7 @@ func (h *InvitationHandler) ValidateInvitation(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Token is required",
+			"error":      "Токен обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -472,7 +472,7 @@ func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "User not authenticated",
+			"error":      "Пользователь не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -481,7 +481,7 @@ func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
 	userRole, err := middleware.GetUserRoleFromContext(c)
 	if err != nil || userRole != sharedmodels.RoleSuperAdmin {
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super admin can send bulk invitations",
+			"error":      "Только суперадмин может отправлять массовые приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -495,7 +495,7 @@ func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
 		}).Warn("Invalid request body for bulk send invitations")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -505,7 +505,7 @@ func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
 	// Validate user IDs list
 	if len(req.UserIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "At least one user ID is required",
+			"error":      "Требуется хотя бы один ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -522,7 +522,7 @@ func (h *InvitationHandler) BulkSendInvitations(c *gin.Context) {
 		}).Error("Failed to send bulk invitations")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to send bulk invitations",
+			"error":      "Не удалось отправить массовые приглашения",
 			"request_id": requestID,
 		})
 		return
@@ -904,7 +904,7 @@ func (h *InvitationHandler) AcceptInvitation(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Token is required",
+			"error":      "Токен обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -918,7 +918,7 @@ func (h *InvitationHandler) AcceptInvitation(c *gin.Context) {
 		}).Warn("Invalid request body for invitation acceptance")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -949,7 +949,7 @@ func (h *InvitationHandler) AcceptInvitation(c *gin.Context) {
 			statusCode = http.StatusConflict
 		} else {
 			statusCode = http.StatusInternalServerError
-			errorMessage = "Failed to accept invitation"
+			errorMessage = "Не удалось принять приглашение"
 		}
 
 		c.JSON(statusCode, gin.H{

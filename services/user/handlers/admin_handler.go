@@ -138,7 +138,7 @@ func (h *AdminHandler) GetUsers(c *gin.Context) {
 		}).Error("Failed to get users")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get users",
+			"error":      "Не удалось получить пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -172,7 +172,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -187,7 +187,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		}).Warn("Invalid request body for admin create user")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -202,7 +202,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		}).Warn("Email is required for user creation")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Email is required",
+			"error":      "Email обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -215,7 +215,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		}).Warn("Name is required for user creation")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Name is required",
+			"error":      "Имя обязательно",
 			"request_id": requestID,
 		})
 		return
@@ -228,7 +228,7 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 		}).Warn("Password is required for user creation")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Password is required",
+			"error":      "Пароль обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -245,11 +245,11 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 
 		// Determine appropriate HTTP status code based on error
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to create user"
+		errorMessage := "Не удалось создать пользователя"
 
 		if strings.Contains(err.Error(), "already exists") {
 			statusCode = http.StatusConflict
-			errorMessage = "User with this email already exists"
+			errorMessage = "Пользователь с таким email уже существует"
 		} else if strings.Contains(err.Error(), "invalid email") ||
 			strings.Contains(err.Error(), "invalid password") ||
 			strings.Contains(err.Error(), "invalid role") ||
@@ -292,7 +292,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -310,7 +310,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -327,7 +327,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		}).Warn("Invalid request body for admin update user")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -369,7 +369,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		}).Warn("Attempt to modify protected fields through update endpoint")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":            "Cannot modify protected fields",
+			"error":            "Нельзя изменять защищённые поля",
 			"message":          errorMsg,
 			"protected_fields": foundProtectedFields,
 			"request_id":       requestID,
@@ -382,7 +382,7 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 	bodyBytes, _ := json.Marshal(rawBody)
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request format",
+			"error":      "Неверный формат запроса",
 			"request_id": requestID,
 		})
 		return
@@ -398,11 +398,11 @@ func (h *AdminHandler) UpdateUser(c *gin.Context) {
 		}).Error("Failed to update user by admin")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update user"
+		errorMessage := "Не удалось обновить пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "validation failed") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -441,7 +441,7 @@ func (h *AdminHandler) GetUserStats(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -456,7 +456,7 @@ func (h *AdminHandler) GetUserStats(c *gin.Context) {
 		}).Error("Failed to get user stats")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user statistics",
+			"error":      "Не удалось получить статистику пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -487,7 +487,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -505,7 +505,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -521,7 +521,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		}).Error("Failed to get admin role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin role not found",
+			"error":      "Роль администратора не найдена",
 			"request_id": requestID,
 		})
 		return
@@ -537,7 +537,7 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		}).Warn("Invalid request body for update user role")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -555,20 +555,20 @@ func (h *AdminHandler) UpdateUserRole(c *gin.Context) {
 		}).Error("Failed to update user role")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update user role"
+		errorMessage := "Не удалось обновить роль пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "invalid role") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "cannot modify your own role") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot modify your own role"
+			errorMessage = "Нельзя изменить свою собственную роль"
 		} else if strings.Contains(err.Error(), "cannot remove the last super admin") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot remove the last super admin from the system"
+			errorMessage = "Нельзя удалить последнего суперадмина из системы"
 		} else if strings.Contains(err.Error(), "only super admin") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -608,7 +608,7 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -626,7 +626,7 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -642,7 +642,7 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		}).Warn("Invalid request body for update user status")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -660,17 +660,17 @@ func (h *AdminHandler) UpdateUserStatus(c *gin.Context) {
 		}).Error("Failed to update user status")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to update user status"
+		errorMessage := "Не удалось обновить статус пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "invalid status") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
 		} else if strings.Contains(err.Error(), "cannot modify your own status") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot modify your own status"
+			errorMessage = "Нельзя изменить свой собственный статус"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -707,7 +707,7 @@ func (h *AdminHandler) ActivateUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -725,7 +725,7 @@ func (h *AdminHandler) ActivateUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -741,14 +741,14 @@ func (h *AdminHandler) ActivateUser(c *gin.Context) {
 		}).Error("Failed to activate user")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to activate user"
+		errorMessage := "Не удалось активировать пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "cannot modify your own activation status") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot modify your own activation status"
+			errorMessage = "Нельзя изменить свой собственный статус активации"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -784,7 +784,7 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -802,7 +802,7 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -818,7 +818,7 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 		}).Error("Failed to get admin role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin role not found",
+			"error":      "Роль администратора не найдена",
 			"request_id": requestID,
 		})
 		return
@@ -834,17 +834,17 @@ func (h *AdminHandler) DeactivateUser(c *gin.Context) {
 		}).Error("Failed to deactivate user")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to deactivate user"
+		errorMessage := "Не удалось деактивировать пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "cannot deactivate your own account") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot deactivate your own account"
+			errorMessage = "Нельзя деактивировать свой собственный аккаунт"
 		} else if strings.Contains(err.Error(), "cannot deactivate the last active super admin") {
 			statusCode = http.StatusForbidden
-			errorMessage = "Cannot deactivate the last active super admin in the system"
+			errorMessage = "Нельзя деактивировать последнего активного суперадмина в системе"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -880,7 +880,7 @@ func (h *AdminHandler) HideUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -898,7 +898,7 @@ func (h *AdminHandler) HideUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -914,11 +914,11 @@ func (h *AdminHandler) HideUser(c *gin.Context) {
 		}).Error("Failed to hide user")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to hide user"
+		errorMessage := "Не удалось скрыть пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "cannot hide admin") {
 			statusCode = http.StatusForbidden
 			errorMessage = err.Error()
@@ -957,7 +957,7 @@ func (h *AdminHandler) UnhideUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -975,7 +975,7 @@ func (h *AdminHandler) UnhideUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -991,11 +991,11 @@ func (h *AdminHandler) UnhideUser(c *gin.Context) {
 		}).Error("Failed to unhide user")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to unhide user"
+		errorMessage := "Не удалось показать пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1031,7 +1031,7 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1049,7 +1049,7 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 		}).Warn("Invalid user ID")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -1065,11 +1065,11 @@ func (h *AdminHandler) DeleteUser(c *gin.Context) {
 		}).Error("Failed to delete user")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to delete user"
+		errorMessage := "Не удалось удалить пользователя"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1101,7 +1101,7 @@ func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
 
 	if !adminIDExists || !adminRoleExists {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1117,7 +1117,7 @@ func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
 		}).Warn("Non-super admin attempted to manage 2FA")
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super administrators can manage 2FA settings",
+			"error":      "Только суперадминистраторы могут управлять настройками 2FA",
 			"request_id": requestID,
 		})
 		return
@@ -1128,7 +1128,7 @@ func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -1138,7 +1138,7 @@ func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
 	var req models.AdminUpdate2FARequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"request_id": requestID,
 		})
 		return
@@ -1152,7 +1152,7 @@ func (h *AdminHandler) UpdateUser2FA(c *gin.Context) {
 
 		if strings.Contains(errorMessage, "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		}
 
 		c.JSON(statusCode, gin.H{
@@ -1187,7 +1187,7 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 
 	if !adminIDExists || !adminRoleExists {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1203,7 +1203,7 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 		}).Warn("Non-super admin attempted to reset password")
 
 		c.JSON(http.StatusForbidden, gin.H{
-			"error":      "Only super administrators can reset passwords",
+			"error":      "Только суперадминистраторы могут сбрасывать пароли",
 			"request_id": requestID,
 		})
 		return
@@ -1221,7 +1221,7 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 		}).Warn("Invalid user ID for password reset")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -1241,7 +1241,7 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 		}).Warn("Invalid request body for password reset")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1251,7 +1251,7 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 	// Validate new password is not empty
 	if strings.TrimSpace(req.NewPassword) == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "New password is required",
+			"error":      "Новый пароль обязателен",
 			"request_id": requestID,
 		})
 		return
@@ -1268,11 +1268,11 @@ func (h *AdminHandler) ResetUserPassword(c *gin.Context) {
 		}).Error("Failed to reset user password")
 
 		statusCode := http.StatusInternalServerError
-		errorMessage := "Failed to reset password"
+		errorMessage := "Не удалось сбросить пароль"
 
 		if strings.Contains(err.Error(), "not found") {
 			statusCode = http.StatusNotFound
-			errorMessage = "User not found"
+			errorMessage = "Пользователь не найден"
 		} else if strings.Contains(err.Error(), "password") && strings.Contains(err.Error(), "weak") {
 			statusCode = http.StatusBadRequest
 			errorMessage = err.Error()
@@ -1401,7 +1401,7 @@ func (h *AdminHandler) BulkActivateUsers(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1420,7 +1420,7 @@ func (h *AdminHandler) BulkActivateUsers(c *gin.Context) {
 		}).Warn("Invalid request body for bulk activate users")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1429,7 +1429,7 @@ func (h *AdminHandler) BulkActivateUsers(c *gin.Context) {
 
 	if len(req.UserIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No user IDs provided",
+			"error":      "Не предоставлены ID пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -1495,7 +1495,7 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1511,7 +1511,7 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 		}).Error("Failed to get admin role from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin role not found",
+			"error":      "Роль администратора не найдена",
 			"request_id": requestID,
 		})
 		return
@@ -1530,7 +1530,7 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 		}).Warn("Invalid request body for bulk deactivate users")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1539,7 +1539,7 @@ func (h *AdminHandler) BulkDeactivateUsers(c *gin.Context) {
 
 	if len(req.UserIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No user IDs provided",
+			"error":      "Не предоставлены ID пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -1605,7 +1605,7 @@ func (h *AdminHandler) BulkAssignDepartment(c *gin.Context) {
 		}).Error("Failed to get admin ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Admin not authenticated",
+			"error":      "Администратор не аутентифицирован",
 			"request_id": requestID,
 		})
 		return
@@ -1625,7 +1625,7 @@ func (h *AdminHandler) BulkAssignDepartment(c *gin.Context) {
 		}).Warn("Invalid request body for bulk assign department")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -1634,7 +1634,7 @@ func (h *AdminHandler) BulkAssignDepartment(c *gin.Context) {
 
 	if len(req.UserIDs) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No user IDs provided",
+			"error":      "Не предоставлены ID пользователей",
 			"request_id": requestID,
 		})
 		return
@@ -1710,7 +1710,7 @@ func (h *AdminHandler) ImportUsers(c *gin.Context) {
 		}).Warn("Failed to get admin ID from context for user import")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -1725,7 +1725,7 @@ func (h *AdminHandler) ImportUsers(c *gin.Context) {
 		}).Warn("No file uploaded for user import")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "No file uploaded",
+			"error":      "Файл не загружен",
 			"request_id": requestID,
 		})
 		return
@@ -1741,7 +1741,7 @@ func (h *AdminHandler) ImportUsers(c *gin.Context) {
 		}).Error("Failed to parse CSV file")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Failed to parse CSV file: " + err.Error(),
+			"error":      "Не удалось разобрать CSV-файл: " + err.Error(),
 			"request_id": requestID,
 		})
 		return
@@ -1757,7 +1757,7 @@ func (h *AdminHandler) ImportUsers(c *gin.Context) {
 		}).Error("Failed to import users from CSV")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to import users",
+			"error":      "Не удалось импортировать пользователей",
 			"request_id": requestID,
 		})
 		return

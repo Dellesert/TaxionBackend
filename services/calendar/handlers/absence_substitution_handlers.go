@@ -34,7 +34,7 @@ func (h *SubstitutionHandler) GetSubstitutions(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -54,7 +54,7 @@ func (h *SubstitutionHandler) GetSubstitutions(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to get substitutions",
+			"error":      "Не удалось получить замещения",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -83,7 +83,7 @@ func (h *SubstitutionHandler) CreateSubstitution(c *gin.Context) {
 		}).Error("Failed to get user ID from context")
 
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -92,7 +92,7 @@ func (h *SubstitutionHandler) CreateSubstitution(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -108,7 +108,7 @@ func (h *SubstitutionHandler) CreateSubstitution(c *gin.Context) {
 		}).Warn("Invalid request body for create substitution")
 
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -133,7 +133,7 @@ func (h *SubstitutionHandler) CreateSubstitution(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to create substitution",
+			"error":      "Не удалось создать замещение",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -164,7 +164,7 @@ func (h *SubstitutionHandler) UpdateSubstitution(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -173,7 +173,7 @@ func (h *SubstitutionHandler) UpdateSubstitution(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -182,7 +182,7 @@ func (h *SubstitutionHandler) UpdateSubstitution(c *gin.Context) {
 	subID, err := strconv.ParseUint(c.Param("sub_id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid substitution ID",
+			"error":      "Неверный ID замещения",
 			"request_id": requestID,
 		})
 		return
@@ -191,7 +191,7 @@ func (h *SubstitutionHandler) UpdateSubstitution(c *gin.Context) {
 	var req models.UpdateSubstitutionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid request body",
+			"error":      "Неверное тело запроса",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -216,7 +216,7 @@ func (h *SubstitutionHandler) UpdateSubstitution(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to update substitution",
+			"error":      "Не удалось обновить замещение",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -246,7 +246,7 @@ func (h *SubstitutionHandler) DeleteSubstitution(c *gin.Context) {
 	userID, err := middleware.GetUserIDFromContext(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
-			"error":      "Unauthorized",
+			"error":      "Не авторизован",
 			"request_id": requestID,
 		})
 		return
@@ -255,7 +255,7 @@ func (h *SubstitutionHandler) DeleteSubstitution(c *gin.Context) {
 	absenceID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid absence ID",
+			"error":      "Неверный ID отсутствия",
 			"request_id": requestID,
 		})
 		return
@@ -264,7 +264,7 @@ func (h *SubstitutionHandler) DeleteSubstitution(c *gin.Context) {
 	subID, err := strconv.ParseUint(c.Param("sub_id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid substitution ID",
+			"error":      "Неверный ID замещения",
 			"request_id": requestID,
 		})
 		return
@@ -285,7 +285,7 @@ func (h *SubstitutionHandler) DeleteSubstitution(c *gin.Context) {
 		}
 
 		c.JSON(statusCode, gin.H{
-			"error":      "Failed to delete substitution",
+			"error":      "Не удалось удалить замещение",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
@@ -313,7 +313,7 @@ func (h *SubstitutionHandler) GetUserSubstitutions(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error":      "Invalid user ID",
+			"error":      "Неверный ID пользователя",
 			"request_id": requestID,
 		})
 		return
@@ -347,7 +347,7 @@ func (h *SubstitutionHandler) GetUserSubstitutions(c *gin.Context) {
 		}).Error("Failed to get user substitutions")
 
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error":      "Failed to get user substitutions",
+			"error":      "Не удалось получить замещения пользователя",
 			"details":    err.Error(),
 			"request_id": requestID,
 		})
