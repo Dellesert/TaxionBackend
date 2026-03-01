@@ -507,6 +507,7 @@ func setupRoutes(router *gin.Engine, userHandler *handlers.UserHandler, authHand
 		users.Use(middleware.AuthMiddleware()) // Apply unified auth middleware
 		{
 			users.GET("", userHandler.GetUsers)
+			users.GET("/batch", userHandler.GetUsersByIDs) // Batch fetch users by IDs
 			users.POST("", middleware.RequireRole("admin", "super_admin"), userHandler.CreateUser)
 			users.GET("/:id", userHandler.GetUser)
 			users.PUT("/:id", userHandler.UpdateUser)

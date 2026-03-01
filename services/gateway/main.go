@@ -142,6 +142,7 @@ func setupRoutes(router *gin.Engine, cfg *config.Config) {
 		users := v1.Group("/users")
 		{
 			users.GET("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
+			users.GET("/batch", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name)) // Batch fetch users by IDs
 			users.POST("", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			users.GET("/:id", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))
 			users.PUT("/:id", proxyRequest(proxyConfig.UserService.URL, proxyConfig.UserService.Name))

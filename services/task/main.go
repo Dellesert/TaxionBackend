@@ -152,7 +152,7 @@ func main() {
 	internalHandler := handlers.NewInternalHandler(taskUsecase)
 	dashboardHandler := handlers.NewDashboardHandler(dashboardUsecase)
 	activityHandler := handlers.NewActivityHandler(activityUsecase)
-	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase, taskUsecase)
+	attachmentHandler := handlers.NewAttachmentHandler(attachmentUsecase, taskUsecase, userClient)
 	checklistHandler := handlers.NewChecklistHandler(checklistUsecase)
 	metricsHandler := handlers.NewMetricsHandler(db, redisClient, "task-service", startTime)
 

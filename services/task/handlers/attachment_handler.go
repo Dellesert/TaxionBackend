@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"tachyon-messenger/services/task/clients"
+	"tachyon-messenger/services/task/models"
 	"tachyon-messenger/services/task/usecase"
 
 	"github.com/gin-gonic/gin"
@@ -19,13 +21,15 @@ type TaskUsecaseNotifications interface {
 type AttachmentHandler struct {
 	attachmentUsecase usecase.AttachmentUsecase
 	taskUsecase       TaskUsecaseNotifications
+	userClient        *clients.UserClient
 }
 
 // NewAttachmentHandler creates a new attachment handler
-func NewAttachmentHandler(attachmentUsecase usecase.AttachmentUsecase, taskUsecase TaskUsecaseNotifications) *AttachmentHandler {
+func NewAttachmentHandler(attachmentUsecase usecase.AttachmentUsecase, taskUsecase TaskUsecaseNotifications, userClient *clients.UserClient) *AttachmentHandler {
 	return &AttachmentHandler{
 		attachmentUsecase: attachmentUsecase,
 		taskUsecase:       taskUsecase,
+		userClient:        userClient,
 	}
 }
 
@@ -104,7 +108,40 @@ func (h *AttachmentHandler) GetTaskAttachments(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, attachments)
+	// Convert to response models
+	responses := make([]*models.TaskAttachmentResponse, len(attachments))
+	for i, a := range attachments {
+		responses[i] = a.ToResponse()
+	}
+
+	// Batch-fetch user info for all uploaders
+	userIDs := make([]uint, 0, len(attachments))
+	seen := make(map[uint]bool)
+	for _, a := range attachments {
+		if !seen[a.UploadedByUserID] {
+			userIDs = append(userIDs, a.UploadedByUserID)
+			seen[a.UploadedByUserID] = true
+		}
+	}
+
+	if len(userIDs) > 0 {
+		users, err := h.userClient.GetUsersByIDs(userIDs)
+		if err == nil {
+			for _, resp := range responses {
+				if u, exists := users[resp.UploadedByUserID]; exists {
+					resp.UploadedBy = &models.UserInfo{
+						ID:       u.ID,
+						Name:     u.Name,
+						Email:    u.Email,
+						Avatar:   u.Avatar,
+						Position: u.Position,
+					}
+				}
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, responses)
 }
 
 // DeleteAttachment deletes an attachment
