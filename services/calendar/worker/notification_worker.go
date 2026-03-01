@@ -145,6 +145,11 @@ func (w *NotificationWorker) processEventNotifications(event *models.Event, now 
 		return
 	}
 
+	// Skip absence events — no reminders needed for vacation, sick leave, etc.
+	if event.Type == models.EventTypeAbsence {
+		return
+	}
+
 	timeUntilEvent := time.Until(event.StartTime)
 
 	// Get all participants for this event

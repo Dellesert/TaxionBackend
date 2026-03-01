@@ -478,6 +478,18 @@ func (u *calendarUsecase) ProcessEventReminders() error {
 			continue
 		}
 
+		// Skip absence events — no reminders needed for vacation, sick leave, etc.
+		if event.Type == models.EventTypeAbsence {
+			// Mark as sent so it won't be processed again
+			if err := u.reminderRepo.MarkReminderSent(reminder.ID); err != nil {
+				logger.WithFields(map[string]interface{}{
+					"reminder_id": reminder.ID,
+					"error":       err.Error(),
+				}).Error("Failed to mark absence reminder as sent")
+			}
+			continue
+		}
+
 		// Calculate minutes before
 		minutesBefore := int(time.Until(event.StartTime).Minutes())
 		if minutesBefore < 0 {
