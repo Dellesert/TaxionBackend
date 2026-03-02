@@ -1632,6 +1632,14 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 		dataBuilder.SetCustomField("sender_name", senderName)
 	}
 
+	// Calculate unread notification count for badge
+	var badgeCount *int
+	unreadCount, err := u.notificationRepo.GetUnreadCount(notification.UserID)
+	if err == nil {
+		count := int(unreadCount)
+		badgeCount = &count
+	}
+
 	// Create push notifications for each device
 	pushNotifications := make([]*push.PushNotification, 0, len(devices))
 	for _, device := range devices {
@@ -1655,7 +1663,7 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 			SenderName: senderName,
 
 			// Platform-specific settings
-			Badge:           nil, // TODO: Calculate unread count
+			Badge:           badgeCount,
 			Sound:           u.getSoundForPriority(notification.Priority),
 			ChannelID:       u.getChannelIDForType(notification.Type),
 			AndroidPriority: u.getAndroidPriority(notification.Priority),
