@@ -1834,6 +1834,7 @@ func (u *notificationUsecase) tryGroupNotification(req *models.CreateNotificatio
 	// MessageCount is already incremented, so use it directly
 	newTitle := u.buildGroupedNotificationTitle(req, updatedNotification.MessageCount)
 	updatedNotification.Title = newTitle
+	updatedNotification.Message = req.Message
 	if err := u.notificationRepo.UpdateNotification(updatedNotification); err != nil {
 		logger.WithField("notification_id", updatedNotification.ID).Warn("Failed to update notification title")
 	}
