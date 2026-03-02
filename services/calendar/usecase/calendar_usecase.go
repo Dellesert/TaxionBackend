@@ -994,6 +994,16 @@ func (u *calendarUsecase) GetTodayEvents(userID uint, startTime, endTime time.Ti
 		return nil, 0, fmt.Errorf("failed to get today's events: %w", err)
 	}
 
+	// Filter out absence events from dashboard
+	filtered := make([]*models.Event, 0, len(events))
+	for _, event := range events {
+		if event.Type == models.EventTypeAbsence {
+			continue
+		}
+		filtered = append(filtered, event)
+	}
+	events = filtered
+
 	total := int64(len(events))
 
 	// Apply limit
