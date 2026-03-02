@@ -1573,6 +1573,10 @@ func (u *notificationUsecase) sendPushNotification(notification *models.Notifica
 			if action, ok := notifData["action"].(string); ok && action != "" {
 				customAction = action
 			}
+			// Add attachment_url if present (for push notification media preview)
+			if attachmentURL, ok := notifData["attachment_url"].(string); ok && attachmentURL != "" {
+				dataBuilder.SetCustomField("attachment_url", attachmentURL)
+			}
 		}
 	}
 

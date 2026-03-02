@@ -1627,9 +1627,68 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 		senderName = "Кто-то"
 	}
 
-	// Truncate message content for notification (max 100 characters)
+	// Build notification body based on message type and attachments
 	messageContent := message.Content
-	if len(messageContent) > 100 {
+	var attachmentThumbnailURL string
+
+	if len(response.Attachments) > 0 {
+		// Determine attachment label
+		attachmentLabel := ""
+		firstAttachment := response.Attachments[0]
+
+		if len(response.Attachments) == 1 {
+			switch firstAttachment.FileType {
+			case "image":
+				attachmentLabel = "📷 Фото"
+			case "video":
+				attachmentLabel = "📹 Видео"
+			case "audio":
+				attachmentLabel = "🎵 Аудио"
+			default:
+				attachmentLabel = fmt.Sprintf("📎 %s", firstAttachment.FileName)
+			}
+		} else {
+			// Multiple attachments
+			allImages := true
+			allVideos := true
+			for _, att := range response.Attachments {
+				if att.FileType != "image" {
+					allImages = false
+				}
+				if att.FileType != "video" {
+					allVideos = false
+				}
+			}
+			count := len(response.Attachments)
+			if allImages {
+				attachmentLabel = fmt.Sprintf("📷 %d фото", count)
+			} else if allVideos {
+				attachmentLabel = fmt.Sprintf("📹 %d видео", count)
+			} else {
+				attachmentLabel = fmt.Sprintf("📎 %d файлов", count)
+			}
+		}
+
+		if strings.TrimSpace(messageContent) == "" {
+			// Attachment-only message
+			messageContent = attachmentLabel
+		} else {
+			// Text + attachment
+			if len(messageContent) > 80 {
+				messageContent = messageContent[:77] + "..."
+			}
+			messageContent = messageContent + "\n" + attachmentLabel
+		}
+
+		// Get thumbnail URL for push notification preview (right side)
+		if firstAttachment.FileType == "image" || firstAttachment.FileType == "video" {
+			if firstAttachment.ThumbnailSmallURL != "" {
+				attachmentThumbnailURL = firstAttachment.ThumbnailSmallURL
+			} else if firstAttachment.ThumbnailURL != "" {
+				attachmentThumbnailURL = firstAttachment.ThumbnailURL
+			}
+		}
+	} else if len(messageContent) > 100 {
 		messageContent = messageContent[:97] + "..."
 	}
 
@@ -1720,6 +1779,15 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 			channels = []string{"in_app"} // Only in-app notification, no push
 		}
 
+		notifData := map[string]interface{}{
+			"chat_id":    chatID,
+			"message_id": message.ID,
+			"sender_id":  senderID, // Add sender_id for notification grouping
+		}
+		if attachmentThumbnailURL != "" {
+			notifData["attachment_url"] = attachmentThumbnailURL
+		}
+
 		notificationReq := &client.NotificationRequest{
 			UserID:      memberID,
 			Type:        "message",
@@ -1728,12 +1796,8 @@ func (uc *messageUsecase) sendMessageNotifications(senderID, chatID uint, messag
 			Priority:    &priority,
 			RelatedID:   &message.ID,
 			RelatedType: "message",
-			Data: map[string]interface{}{
-				"chat_id":    chatID,
-				"message_id": message.ID,
-				"sender_id":  senderID, // Add sender_id for notification grouping
-			},
-			Channels: channels,
+			Data:        notifData,
+			Channels:    channels,
 		}
 
 		// Send notification async (don't block on errors)

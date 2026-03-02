@@ -30,6 +30,7 @@ type NotificationRequest struct {
 	RelatedID   *uint                  `json:"related_id,omitempty"`
 	RelatedType string                 `json:"related_type,omitempty"`
 	ActionURL   string                 `json:"action_url,omitempty"`
+	ImageURL    string                 `json:"image_url,omitempty"`
 	Data        map[string]interface{} `json:"data,omitempty"`
 	Channels    []string               `json:"channels,omitempty"`
 }

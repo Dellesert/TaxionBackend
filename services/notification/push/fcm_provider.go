@@ -384,8 +384,8 @@ func (f *FCMProvider) buildAPNSConfig(notification *PushNotification) *messaging
 	}
 
 	// Enable mutable-content so the Notification Service Extension can
-	// download the sender avatar and attach it to the notification
-	if notification.ImageURL != "" {
+	// download the sender avatar and attachment thumbnail
+	if notification.ImageURL != "" || notification.Data["attachment_url"] != nil {
 		aps.MutableContent = true
 	}
 
@@ -401,14 +401,18 @@ func (f *FCMProvider) buildAPNSConfig(notification *PushNotification) *messaging
 
 	config.Payload.Aps = aps
 
-	// Pass sender avatar and name in custom APNS payload for Notification Service Extension
-	if notification.ImageURL != "" || notification.SenderName != "" {
+	// Pass sender avatar, name, and attachment URL in custom APNS payload for Notification Service Extension
+	if notification.ImageURL != "" || notification.SenderName != "" || notification.Data["attachment_url"] != nil {
 		customData := make(map[string]interface{})
 		if notification.ImageURL != "" {
 			customData["sender_avatar"] = notification.ImageURL
 		}
 		if notification.SenderName != "" {
 			customData["sender_name"] = notification.SenderName
+		}
+		// Pass attachment thumbnail URL for rich notification preview (right side image)
+		if attachmentURL, ok := notification.Data["attachment_url"]; ok {
+			customData["attachment_url"] = fmt.Sprintf("%v", attachmentURL)
 		}
 		config.Payload.CustomData = customData
 	}
